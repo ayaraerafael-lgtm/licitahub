@@ -1,0 +1,6 @@
+-- LicitaHub database entrypoint.
+-- The detailed PostgreSQL schema is maintained at:
+-- ../licitahub-schema-postgresql.sql
+--
+-- Keep this file as the app-local migration starting point when
+-- migrations are introduced.

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relatório Técnico-Operacional de Análise do Edital - DNIT 0226/2026</title>
+<style>
+:root {
+  --bg:#f5f7fb; --panel:#ffffff; --text:#172033; --muted:#617085; --line:#dbe3ef;
+  --brand:#0f3d5e; --brand-2:#126782; --accent:#24a0a0; --warn:#b7791f; --soft:#eaf4f8;
+  --radius:18px; --shadow:0 18px 45px rgba(15,61,94,.10); --shadow-sm:0 8px 20px rgba(15,61,94,.08);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 Inter,Segoe UI,Roboto,Arial,sans-serif}
+a{color:inherit}
+.layout{display:grid;grid-template-columns:290px 1fr;min-height:100vh}
+.sidebar{position:sticky;top:0;height:100vh;background:linear-gradient(180deg,var(--brand),#092538);color:#fff;padding:26px 20px;overflow:auto}
+.logo{display:flex;gap:12px;align-items:center;margin-bottom:28px}
+.logo-mark{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#d7edf5,var(--accent));display:grid;place-items:center;color:var(--brand);font-weight:900}
+.logo strong{display:block;font-size:16px;line-height:1.15}
+.logo small{color:#c8d9e6}
+.nav-title{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#a9c2d6;margin:18px 0 8px}
+.nav-link{display:block;text-decoration:none;padding:10px 12px;border-radius:12px;margin:4px 0;color:#e7f1f7;font-size:13px}
+.nav-link:hover,.nav-link.active{background:rgba(255,255,255,.12)}
+.content{padding:34px 42px 80px;max-width:1380px;width:100%}
+.hero{border-radius:28px;background:radial-gradient(circle at top right,rgba(36,160,160,.35),transparent 28%),linear-gradient(135deg,#113b5a,#0a2d45 65%,#061c2c);color:#fff;padding:34px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;right:-70px;bottom:-85px;width:280px;height:280px;border:28px solid rgba(255,255,255,.08);border-radius:50%}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#a9dfe5;font-weight:700}
+h1{font-size:34px;line-height:1.08;margin:10px 0 10px;letter-spacing:-.02em}
+.subtitle{font-size:17px;color:#dbeef4;max-width:760px}
+.hero-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:26px}
+.metric{background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.16);border-radius:18px;padding:16px;backdrop-filter:blur(6px)}
+.metric span{display:block;color:#b8d4e4;font-size:12px}
+.metric strong{font-size:18px}
+.toolbar{position:sticky;top:0;z-index:4;display:flex;gap:10px;justify-content:flex-end;padding:14px 0;background:linear-gradient(180deg,var(--bg) 70%,rgba(245,247,251,.75))}
+.btn{border:0;border-radius:999px;padding:10px 14px;background:var(--brand);color:#fff;font-weight:700;cursor:pointer;box-shadow:var(--shadow-sm)}
+.btn.secondary{background:#fff;color:var(--brand);border:1px solid var(--line)}
+.section-title{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:28px 0 14px}
+h2{font-size:24px;margin:0;color:var(--brand)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:22px;margin-bottom:18px}
+.table-responsive{overflow-x:auto;border-radius:14px;border:1px solid var(--line);margin:14px 0;background:white}
+table{width:100%;border-collapse:collapse;min-width:760px}
+th{background:#eef5f9;color:var(--brand);font-size:12px;text-transform:uppercase;letter-spacing:.04em;text-align:left}
+th,td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+.basic-table th:first-child,.basic-table td:first-child{width:230px;font-weight:700;color:#173b55}
+.basic-table td:nth-child(3){color:var(--muted);font-size:13px}
+.accordion-card{margin:14px 0;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);overflow:hidden;scroll-margin-top:90px}
+.accordion-trigger{width:100%;display:flex;align-items:center;gap:12px;justify-content:space-between;background:#fff;border:0;padding:18px 20px;text-align:left;font-size:18px;font-weight:800;color:var(--brand);cursor:pointer}
+.accordion-trigger:hover{background:#f8fbfd}
+.accordion-panel{padding:0 20px 20px}
+.chev{transition:.2s transform;opacity:.7}
+.accordion-trigger[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.pill{margin-left:auto;background:#e7f5f5;color:#126782;border:1px solid #bfe4e4;font-size:12px;border-radius:999px;padding:4px 9px;white-space:nowrap}
+.grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:14px 0}
+.info-card{background:linear-gradient(180deg,#ffffff,#f7fbfd);border:1px solid var(--line);border-radius:16px;padding:16px}
+.info-card strong{display:block;color:var(--brand);font-size:18px;line-height:1.25}
+.info-card p{margin:8px 0 0;color:var(--muted)}
+.kicker{display:block;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;font-weight:800;font-size:11px;margin-bottom:6px}
+.alert{border-left:5px solid var(--warn);background:#fff8eb;border-radius:14px;padding:14px 16px;margin:16px 0;color:#49300d}
+.formula-card{background:#0b2538;color:#eaf7fb;border-radius:16px;padding:16px;margin:14px 0;overflow:auto}
+.formula-card strong{display:block;margin-bottom:8px;color:#9ee1e1}
+.formula-card code{font-family:Consolas,Monaco,monospace;white-space:nowrap;font-size:15px}
+.formula-card p{margin:8px 0 0;color:#c8dbe5}
+.clean-list{padding-left:20px}
+.clean-list li{margin:7px 0}
+.score-bars{display:grid;gap:10px;margin:18px 0}
+.score-row{display:grid;grid-template-columns:310px 1fr 120px;gap:14px;align-items:center}
+.score-label{display:flex;justify-content:space-between;gap:8px;color:var(--brand)}
+.bar{height:13px;background:#e7eef5;border-radius:999px;overflow:hidden}
+.bar span{display:block;height:100%;background:linear-gradient(90deg,var(--brand-2),var(--accent));border-radius:999px}
+.score-row small{color:var(--muted)}
+.map-card{margin:18px 0}
+.map-card svg{width:100%;height:auto;display:block;filter:drop-shadow(0 10px 25px rgba(15,61,94,.10))}
+.map-bg{fill:#eef6f8}
+.map-shape{fill:#dbeadf;stroke:#9fc7b4;stroke-width:2}
+.map-line{stroke:#88b0c2;stroke-width:2;stroke-dasharray:5 6}
+.map-point circle{fill:#d14b41;stroke:#fff;stroke-width:3}
+.map-point text{font-size:13px;fill:#12344b;font-weight:800}
+.map-point .sub{font-size:10px;fill:#607184;font-weight:600}
+.map-title{font-size:16px;fill:#0f3d5e;font-weight:900}
+.map-caption{font-size:11px;fill:#617085}
+.footer{margin-top:34px;color:var(--muted);font-size:13px}
+.mobile-toggle{display:none}
+@media (max-width: 960px){
+  .layout{grid-template-columns:1fr}
+  .sidebar{position:fixed;inset:0 auto 0 0;width:290px;z-index:20;transform:translateX(-100%);transition:.22s transform}
+  .sidebar.open{transform:translateX(0)}
+  .mobile-toggle{display:inline-flex;position:fixed;left:16px;bottom:16px;z-index:30}
+  .content{padding:24px 18px 70px}
+  .hero-grid{grid-template-columns:repeat(2,1fr)}
+  .grid-2{grid-template-columns:1fr}
+  .score-row{grid-template-columns:1fr}
+  h1{font-size:28px}
+}
+@media (max-width: 620px){.hero-grid{grid-template-columns:1fr} .toolbar{justify-content:flex-start;flex-wrap:wrap}}
+@media print{
+  body{background:#fff;color:#000;font-size:12px}
+  .layout{display:block}
+  .sidebar,.toolbar,.mobile-toggle{display:none!important}
+  .content{padding:0;max-width:none}
+  .hero{box-shadow:none;border-radius:0;color:#000;background:#fff;border-bottom:2px solid #000}
+  .hero-grid{display:none}
+  .accordion-card,.panel{box-shadow:none;border:1px solid #888;break-inside:avoid}
+  .accordion-panel{display:block!important;padding:0 12px 12px}
+  .accordion-panel[hidden]{display:block!important}
+  .accordion-trigger{font-size:15px;padding:10px;background:#eee;color:#000}
+  .chev,.pill{display:none}
+  table{min-width:0;font-size:10px}
+  th,td{padding:6px}
+}
+</style>
+</head>
+<body>
+<button class="btn mobile-toggle" id="menuBtn">Menu</button>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+  <div class="logo"><div class="logo-mark">DN</div><div><strong>Análise de Edital</strong><small>DNIT CE 0226/2026</small></div></div>
+  <div class="nav-title">Navegação</div>
+  <a href="#dados" class="nav-link">Dados Básicos do Edital</a>
+  <a href="#localizacao" class="nav-link">Localização do Objeto / Área de Execução</a><a href="#hab-operacional" class="nav-link">Habilitação Técnica Operacional da Empresa</a><a href="#hab-profissional" class="nav-link">Habilitação Técnica Profissional</a><a href="#hab-economica" class="nav-link">Habilitação Econômico-Financeira</a><a href="#hab-juridica" class="nav-link">Habilitação Jurídica</a><a href="#hab-fiscal" class="nav-link">Habilitação Fiscal, Social e Trabalhista</a><a href="#matriz" class="nav-link">Matriz de Avaliação, Forma de Seleção e Pontuação Técnica</a><a href="#pont-equipe" class="nav-link">Pontuação da Equipe Técnica</a><a href="#pont-metodologia" class="nav-link">Pontuação da Metodologia e Programa de Trabalho</a><a href="#pont-conhecimento" class="nav-link">Pontuação do Conhecimento do Objeto</a><a href="#pont-produtos" class="nav-link">Pontuação da Descrição dos Produtos</a><a href="#pont-certificacoes" class="nav-link">Pontuação de Certificações e Inovação</a><a href="#preco" class="nav-link">Regras de Preço, Fórmula de Julgamento e Nota de Preço</a>
+  <div class="nav-title">Fontes</div>
+  <div style="font-size:12px;color:#c8d9e6">Edital, Termo de Referência e planilha anexa enviados para análise.</div>
+</aside>
+<main class="content">
+<header class="hero">
+  <div class="eyebrow">Relatório técnico-operacional</div>
+  <h1>RELATÓRIO TÉCNICO-OPERACIONAL DE ANÁLISE DO EDITAL</h1>
+  <div class="subtitle">Análise de habilitação, pontuação técnica, julgamento e estratégia comercial</div>
+  <div class="hero-grid">
+    <div class="metric"><span>Processo</span><strong>50603.002506/2025-07</strong></div>
+    <div class="metric"><span>Critério</span><strong>Técnica e Preço</strong></div>
+    <div class="metric"><span>Valor estimado</span><strong>R$ 94,59 mi</strong></div>
+    <div class="metric"><span>Sessão</span><strong>11/08/2026 - 09h30</strong></div>
+  </div>
+</header>
+<div class="toolbar"><button class="btn" id="expandAll">Expandir tudo</button><button class="btn secondary" id="collapseAll">Recolher tudo</button></div>
+<section id="dados" class="panel">
+  <div class="section-title"><h2>Dados Básicos do Edital</h2><span class="pill">Seção principal - sempre visível</span></div>
+  <div class="table-responsive"><table class="basic-table"><thead><tr><th>Campo</th><th>Informação localizada</th><th>Referência</th></tr></thead><tbody><tr><td>Número do edital</td><td>Concorrência Eletrônica nº 00226/2026-03 / Edital nº 0226/2026/DNIT</td><td>Edital, capa, p. 1</td></tr><tr><td>Processo administrativo</td><td>50603.002506/2025-07</td><td>Edital, capa, p. 1; TR, capa, p. 1</td></tr><tr><td>Órgão licitador</td><td>Departamento Nacional de Infraestrutura de Transportes - DNIT</td><td>Edital, capa, p. 1</td></tr><tr><td>Unidade responsável</td><td>Superintendência Regional DNIT/CE - UASG 393024</td><td>Edital, capa, p. 1</td></tr><tr><td>Objeto da licitação</td><td>Contratação de empresa de consultoria para execução dos serviços técnicos especializados de supervisão e apoio à fiscalização na execução das ações de manutenção e restauração rodoviária, sob a jurisdição da Superintendência Regional do DNIT no Estado do Ceará, constantes no PPA.</td><td>Edital, item 1.1, p. 3; TR, item 1.1.1, p. 1</td></tr><tr><td>Valor referencial / estimado</td><td>R$ 94.594.314,55</td><td>Edital, capa, p. 1; TR, itens 1.1.1 e 35.3</td></tr><tr><td>Modalidade</td><td>Concorrência, na forma eletrônica</td><td>Edital, preâmbulo, p. 3; TR, itens 1.7 e 1.12</td></tr><tr><td>Critério de julgamento</td><td>Técnica e Preço</td><td>Edital, capa, p. 1; TR, item 1.8</td></tr><tr><td>Regime de execução</td><td>Empreitada por preço unitário de produto</td><td>TR, item 1.9</td></tr><tr><td>Modo de disputa</td><td>Fechado</td><td>Edital, capa, p. 1; TR, item 1.13</td></tr><tr><td>Data e horário da sessão pública</td><td>11/08/2026 às 09h30, horário de Brasília</td><td>Edital, capa, p. 1</td></tr><tr><td>Local / sistema eletrônico da sessão</td><td>Compras.gov.br - www.gov.br/compras / UASG 393024</td><td>Edital, capa e item 2.1</td></tr><tr><td>Prazo de execução</td><td>36 meses consecutivos, contados da assinatura do contrato</td><td>TR, item 1.4</td></tr><tr><td>Vigência contratual</td><td>42 meses; serviço de natureza continuada, com possibilidade de prorrogação sucessiva até o limite legal, conforme TR.</td><td>TR, itens 1.4 e 1.13.1</td></tr><tr><td>Permissão de consórcio</td><td>Sim</td><td>TR, item 1.5; Edital, item 11.1</td></tr><tr><td>Quantidade máxima de empresas em consórcio</td><td>Até 3 empresas</td><td>TR, item 1.5; TR, item 20.1.4</td></tr><tr><td>Restrições essenciais do consórcio</td><td>Todos os membros devem possuir atividade principal CNAE &quot;Serviços de Engenharia Consultiva&quot;; responsabilidade solidária; indicação de empresa líder; vedada participação simultânea isolada e consorciada.</td><td>TR, item 1.5; Edital, itens 11.2 a 11.5</td></tr><tr><td>Tratamento diferenciado ME/EPP</td><td>Não. Preferência ME/EPP/equiparadas: NÃO; exclusividade/benefício ME/EPP não aplicável.</td><td>Edital, p. 2; TR, item 1.15</td></tr><tr><td>Garantia de proposta</td><td>Não localizada como exigência expressa de apresentação nos documentos analisados. Há menção genérica à perda da garantia de proposta em caso de recusa injustificada do adjudicatário.</td><td>Edital, item 9.9</td></tr><tr><td>Garantia contratual</td><td>Exigida, nos termos dos arts. 96 e seguintes da Lei nº 14.133/2021, no percentual e condições descritas no contrato. Seguro-garantia: até 1 mês da homologação e antes da assinatura. Caução/fiança: até 10 dias úteis após assinatura.</td><td>TR, itens 4.2.1 a 4.2.4</td></tr><tr><td>Garantia adicional</td><td>Exigida do licitante vencedor com proposta inferior a 85% do valor orçado, equivalente à diferença entre 85% do orçamento e o valor da proposta.</td><td>Edital, item 5.17.4; TR, item 4.4</td></tr><tr><td>Subcontratação</td><td>Permitida para produtos por demanda 13D, 14B, 14C, 14D, 16, 17, 18 a 25; vedada subcontratação completa ou da parcela principal.</td><td>TR, itens 1.6 e 4.1</td></tr><tr><td>Mês/ano de referência do orçamento</td><td>Janeiro/2026</td><td>TR, item 1.14.1</td></tr></tbody></table></div>
+  <div class="alert"><strong>Observação Técnica:</strong> a estrutura do certame concentra disputa por técnica e preço, com peso final 70/30. Há pontos de atenção documentais: divergência de acréscimo econômico-financeiro para consórcio (10% x 30%) e divergência textual sobre NDP (15 pontos no item 25.2 x 14 pontos na matriz consolidada).</div>
+</section>
+<section id="localizacao" class="accordion-card">
+  <button class="accordion-trigger" aria-expanded="false" aria-controls="panel-localizacao">
+    <span>Localização do Objeto / Área de Execução</span><span class="pill">Área de execução</span><span class="chev">▾</span>
+  </button>
+  <div class="accordion-panel" id="panel-localizacao" hidden>
+    
+<p>O objeto abrange a <strong>Superintendência Regional do DNIT no Estado do Ceará</strong>, com execução de supervisão e apoio à fiscalização das ações de manutenção e restauração rodoviária constantes no PPA. A malha referencial é apresentada no TR em quadro de segmentos rodoviários sob jurisdição da SR/DNIT/CE, com possibilidade de acréscimos/decréscimos por federalizações, concessões ou gestão compartilhada.</p>
+<div class="grid-2">
+  <div class="info-card"><span class="kicker">Abrangência documental</span><strong>Estado do Ceará</strong><p>Jurisdição da Superintendência Regional DNIT/CE, incluindo trechos rodoviários da malha federal e trechos que venham a integrar o escopo mediante autorização da fiscalização.</p></div>
+  <div class="info-card"><span class="kicker">Rodovias mencionadas na malha</span><strong>BR-020, BR-116, BR-122, BR-222, BR-226, BR-230, BR-304, BR-402, BR-403, BR-404 e BR-437</strong><p>Relação extraída da malha referencial apresentada nos quadros do TR.</p></div>
+</div>
+<figure class="map-card"><svg viewBox="0 0 720 420" role="img" aria-label="Mapa esquemático das OAEs indicadas no edital">
+    <rect x="0" y="0" width="720" height="420" rx="18" class="map-bg"/>
+    <path d="M90 60 C160 90, 155 150, 205 185 C275 245, 265 305, 345 330 C410 350, 490 310, 565 360 C620 390, 650 330, 630 270 C610 220, 640 150, 590 110 C510 60, 415 70, 360 45 C260 0, 190 40, 90 60 Z" class="map-shape"/>
+    <line x1="195.1" y1="204.5" x2="583.6" y2="365.0" class="map-line" /><line x1="583.6" y1="365.0" x2="665.0" y2="126.4" class="map-line" /><line x1="665.0" y1="126.4" x2="55.0" y2="55.0" class="map-line" />
+    <g class="map-point"><circle cx="195.1" cy="204.5" r="8"/><text x="207.1" y="198.5">30012 - Ponte sobre o Rio Bom Jesus</text><text x="207.1" y="214.5" class="sub">BR-020 km 140,41 • lat -5.556983333, long -40.074900000</text></g><g class="map-point"><circle cx="583.6" cy="365.0" r="8"/><text x="595.6" y="359.0">30116 - Ponte sobre o Riacho dos Porcos</text><text x="595.6" y="375.0" class="sub">BR-116 km 485,79 • lat -7.324766667, long -38.937733333</text></g><g class="map-point"><circle cx="665.0" cy="126.4" r="8"/><text x="677.0" y="120.4">30276 - Ponte sobre o Rio Pirangi</text><text x="677.0" y="136.4" class="sub">BR-122 km 52,43 • lat -4.696150000, long -38.699500000</text></g><g class="map-point"><circle cx="55.0" cy="55.0" r="8"/><text x="67.0" y="49.0">30171 - Ponte sobre o Riacho Seco</text><text x="67.0" y="65.0" class="sub">BR-403 km 145,44 • lat -3.910083333, long -40.484883333</text></g>
+    <text x="24" y="36" class="map-title">Representação esquemática - OAEs de conhecimento in loco</text>
+    <text x="24" y="395" class="map-caption">Esquema gerado a partir das coordenadas constantes no quadro NCO; não substitui mapa oficial.</text>
+    </svg></figure>
+<div class="table-responsive"><table class=""><thead><tr><th>BR</th><th>UF</th><th>Tipo de trecho</th><th>Código</th><th>Latitude</th><th>Longitude</th><th>Km</th><th>Estrutura</th><th>SNV</th></tr></thead><tbody><tr><td>BR-020</td><td>CE</td><td>Eixo Principal</td><td>30012</td><td>-5.556983333</td><td>-40.074900000</td><td>140,41</td><td>Ponte sobre o Rio Bom Jesus</td><td>020BCE0540</td></tr><tr><td>BR-116</td><td>CE</td><td>Eixo Principal</td><td>30116</td><td>-7.324766667</td><td>-38.937733333</td><td>485,79</td><td>Ponte sobre o Riacho dos Porcos</td><td>116BCE0390</td></tr><tr><td>BR-122</td><td>CE</td><td>Eixo Principal</td><td>30276</td><td>-4.696150000</td><td>-38.699500000</td><td>52,43</td><td>Ponte sobre o Rio Pirangi</td><td>122BCE0050</td></tr><tr><td>BR-403</td><td>CE</td><td>Eixo Principal</td><td>30171</td><td>-3.910083333</td><td>-40.484883333</td><td>145,44</td><td>Ponte sobre o Riacho Seco</td><td>403BCE0075</td></tr></tbody></table></div>
+<div class="alert"><strong>Observação Técnica:</strong> não foram inventadas coordenadas. O mapa acima é apenas representação esquemática gerada com base nas coordenadas expressamente indicadas para as OAEs de conhecimento in loco. A malha rodoviária completa deve ser conferida no quadro de malha referencial do TR, páginas 1 a 4.</div>
+
+  </div>
+</section>
+<section id="hab-operacional" class="accordion-card">
+  <button class="accordion-trigger" aria-expanded="false" aria-controls="panel-hab-operacional">
+    <span>Habilitação Técnica Operacional da Empresa</span><span class="pill">Eliminatória</span><span class="chev">▾</span>
+  </button>
+  <div class="accordion-panel" id="panel-hab-operacional" hidden>
+    
+<p>A habilitação técnico-operacional da empresa deve demonstrar capacidade compatível com o objeto por meio de atestados/certidões/declarações emitidos por pessoa jurídica de direito público ou privado. O limite consolidado é de até <strong>4 atestados</strong>, considerados conjuntamente.</p>
+<div class="table-responsive"><table class=""><thead><tr><th>Lote</th><th>Serviços supervisionados</th><th>Quantitativo do escopo</th><th>Quantitativo a comprovar</th><th>Qtd. máxima de atestados</th><th>Quantidade mínima por atestado</th></tr></thead><tbody><tr><td>Único</td><td>Construção/Duplicação/Adequação de Capacidade; Restauração/Restauração com Melhoramentos; Recuperação e Manutenção (CREMA ou similar); Serviços de Conservação Rodoviária (PATO ou similar)</td><td>2.382,40 km</td><td>1.191,20 km</td><td>4</td><td>Somatório dos quantitativos dos atestados deve contemplar ao menos 50% do escopo.</td></tr><tr><td>Único</td><td>Construção/Reabilitação/Alargamento/Reforço/Manutenção de OAE (pontes e viadutos, exceto passarela)</td><td>7.680,0 m²</td><td>3.840,00 m²</td><td>4</td><td>Atestados considerados conjuntamente dentro do limite máximo; exige aderência ao escopo.</td></tr></tbody></table></div>
+<ul class="clean-list">
+<li>Em consórcio, exige-se no mínimo um atestado técnico-operacional por empresa integrante, aderente ao escopo.</li>
+<li>Atestado de subcontratada deve vir acompanhado de documentação do contratante principal: declaração, autorização de subcontratação ou contrato registrado, conforme o caso.</li>
+<li>Atestados emitidos pelo próprio DNIT podem ser aceitos isoladamente, sem prejuízo de diligência.</li>
+<li>Devem constar, quando aplicável: nome do contratado e contratante, objeto, profissional, localização do serviço e serviços executados.</li>
+</ul>
+<div class="alert"><strong>Observação Técnica:</strong> a tabela diferencia habilitação operacional de pontuação. Esses quantitativos são requisitos eliminatórios de capacidade operacional e não se confundem com a pontuação da proposta técnica.</div>
+
+  </div>
+</section>
+<section id="hab-profissional" class="accordion-card">
+  <button class="accordion-trigger" aria-expanded="false" aria-controls="panel-hab-profissional">
+    <span>Habilitação Técnica Profissional</span><span class="pill">Eliminatória</span><span class="chev">▾</span>
+  </button>
+  <div class="accordion-panel" id="panel-hab-profissional" hidden>
+    
+<p>Os profissionais do <strong>Grupo 1</strong> são exigidos como condição de habilitação técnico-profissional e também são avaliados na pontuação técnica. A habilitação deve ser comprovada por atestados e/ou certidões emitidos por pessoa jurídica de direito público ou privado, devidamente registrados/certificados pelo conselho profissional competente.</p>
+<div class="table-responsive"><table class=""><thead><tr><th>Profissional</th><th>Grupo / função no edital</th><th>Formação / registro</th><th>Experiência mínima</th><th>Experiência técnica a comprovar</th><th>Forma de comprovação</th></tr></thead><tbody><tr><td>Engenheiro Coordenador-Geral - Produto 01</td><td>Grupo 1 / habilitação e pontuação</td><td>Engenharia Civil; registro em conselho competente</td><td>Mais de 10 anos</td><td>Responsável Técnico, Coordenador, Gerente ou Supervisor em serviços de supervisão, gerenciamento, apoio, assessoria ou coordenação técnica de obras/programas rodoviários, incluindo OAE.</td><td>Atestados/certidões emitidos por pessoa jurídica de direito público ou privado e registrados/certificados pelo conselho competente.</td></tr><tr><td>Engenheiro Coordenador Técnico de Terraplenagem e Pavimentação - Produto 01</td><td>Grupo 1 / habilitação e pontuação</td><td>Engenharia Civil; registro em conselho competente</td><td>Mais de 10 anos</td><td>Funções de coordenação, gerência, supervisão, fiscalização ou membro de equipe em serviços rodoviários de construção, duplicação, adequação, restauração, conservação ou CREMA/similar.</td><td>Atestados/certidões emitidos por pessoa jurídica de direito público ou privado e registrados/certificados pelo conselho competente.</td></tr><tr><td>Engenheiro Coordenador Técnico de Obras de Arte Especiais - Produto 01</td><td>Grupo 1 / habilitação e pontuação</td><td>Engenharia Civil; registro em conselho competente</td><td>Mais de 5 anos</td><td>Atuação em obras de construção, reabilitação, alargamento, recuperação, reforma ou reforço de OAE, incluindo pontes e viadutos.</td><td>Atestados/certidões emitidos por pessoa jurídica de direito público ou privado e registrados/certificados pelo conselho competente; também aceita atuação relacionada ao PROARTE, quando aplicável.</td></tr></tbody></table></div>
+<div class="info-card"><span class="kicker">Vínculo profissional</span><p>A comprovação de vínculo pode ocorrer por contrato social, ata de eleição, CTPS/contrato de trabalho, certidão de RT, ficha de registro, contrato social/aditivo, contrato de prestação de serviço ou contrato futuro. Cada profissional poderá compor a equipe técnica de uma única empresa ou consórcio.</p></div>
+<div class="alert"><strong>Observação Técnica:</strong> os profissionais do Grupo 2 (Engenheiro Pleno e Júnior dos Produtos 02 e Engenheiro Júnior do Produto 04) aparecem como pontuáveis e vinculados à mobilização, com comprovação prévia à mobilização, mas não foram tratados aqui como exigência de habilitação eliminatória.</div>
+
+  </div>
+</section>
+<section id="hab-economica" class="accordion-card">
+  <button class="accordion-trigger" aria-expanded="false" aria-controls="panel-hab-economica">
+    <span>Habilitação Econômico-Financeira</span><span class="pill">Habilitação</span><span class="chev">▾</span>
+  </button>
+  <div class="accordion-panel" id="panel-hab-economica" hidden>
+    
+<div class="table-responsive"><table class=""><thead><tr><th>Documento / requisito</th><th>Exigência localizada</th><th>Referência</th></tr></thead><tbody><tr><td>Certidão de insolvência civil</td><td>Exigida se pessoa física admitida ou sociedade simples.</td><td>TR, item 32.4.1</td></tr><tr><td>Certidão negativa de falência</td><td>Expedida pelo distribuidor da sede do fornecedor.</td><td>TR, item 32.4.2</td></tr><tr><td>Balanço e demonstrações contábeis</td><td>Balanço patrimonial, DRE e demais demonstrações dos 2 últimos exercícios sociais, comprovando ao menos em um exercício os requisitos econômico-financeiros.</td><td>TR, item 32.4.3</td></tr><tr><td>Índices financeiros</td><td>LG, LC e SG superiores a 1. Fórmulas detalhadas não localizadas nos documentos analisados.</td><td>TR, item 32.4.4</td></tr><tr><td>Capital Circulante Líquido / Capital de Giro</td><td>Ativo Circulante - Passivo Circulante de, no mínimo, 16,66% do valor estimado da contratação.</td><td>TR, item 32.4.5</td></tr><tr><td>Patrimônio líquido ou capital social</td><td>Mínimo de 10% do valor a ser ofertado pelo licitante.</td><td>TR, item 32.4.6</td></tr><tr><td>Empresas novas</td><td>Empresas criadas no exercício financeiro poderão substituir demonstrações contábeis pelo balanço de abertura.</td><td>TR, itens 32.4.7 e 32.4.11</td></tr><tr><td>Relação de compromissos</td><td>Declaração de que 1/12 dos contratos vigentes com Administração Pública e/ou iniciativa privada não é superior ao patrimônio líquido, acompanhada da DRE. Divergência superior a 10% deve ser justificada.</td><td>TR, item 32.4.10</td></tr><tr><td>Declaração contábil</td><td>Atendimento dos índices econômicos deve ser atestado por declaração assinada por profissional habilitado da área contábil.</td><td>TR, item 32.4.12</td></tr></tbody></table></div>
+<div class="alert"><strong>Observação Técnica:</strong> há divergência interna no edital quanto ao acréscimo econômico-financeiro para consórcio: o item 6.4.1 menciona 10%, enquanto o item 11.4 menciona 30%. A divergência deve ser saneada por pedido de esclarecimento/impugnação, se relevante para a estratégia de participação.</div>
+
+  </div>
+</section>
+<section id="hab-juridica" class="accordion-card">
+  <button class="accordion-trigger" aria-expanded="false" aria-controls="panel-hab-juridica">
+    <span>Habilitação Jurídica</span><span class="pill">Habilitação</span><span class="chev">▾</span>
+  </button>
+  <div class="accordion-panel" id="panel-hab-juridica" hidden>
+    <div class="table-responsive"><table class=""><thead><tr><th>Tipo de licitante / documento</th><th>Exigência localizada</th><th>Referência</th></tr></thead><tbody><tr><td>Empresário individual</td><td>Inscrição no Registro Público de Empresas Mercantis, a cargo da Junta Comercial.</td><td>TR, item 32.2.1</td></tr><tr><td>MEI</td><td>Certificado da Condição de Microempreendedor Individual - CCMEI, com verificação de autenticidade.</td><td>TR, item 32.2.2</td></tr><tr><td>Sociedade empresária / SLU / EIRELI</td><td>Ato constitutivo, estatuto ou contrato social no Registro Público de Empresas Mercantis, com documento dos administradores.</td><td>TR, item 32.2.3</td></tr><tr><td>Sociedade empresária estrangeira</td><td>Portaria de autorização de funcionamento no Brasil, publicada no DOU e arquivada na Junta Comercial.</td><td>TR, item 32.2.4</td></tr><tr><td>Sociedade simples</td><td>Inscrição do ato constitutivo no Registro Civil de Pessoas Jurídicas e documento dos administradores.</td><td>TR, item 32.2.5</td></tr><tr><td>Filial, sucursal ou agência</td><td>Inscrição do ato constitutivo no registro competente, com averbação no registro da matriz.</td><td>TR, item 32.2.6</td></tr><tr><td>CREA / conselho competente</td><td>Certidão comprobatória de inscrição ou registro da licitante e dos responsáveis técnicos no CREA ou outro conselho competente.</td><td>TR, item 32.2.7</td></tr><tr><td>Alterações societárias</td><td>Documentos acompanhados de todas as alterações ou da consolidação respectiva.</td><td>TR, item 32.2.8</td></tr></tbody></table></div><div class="alert"><strong>Observação Técnica:</strong> o item 32.2.7 inclui a certidão de inscrição/registro no CREA ou conselho competente dentro do bloco de habilitação jurídica, embora o conteúdo tenha natureza técnica-profissional/registral.</div>
+  </div>
+</section>
+<section id="hab-fiscal" class="accordion-card">
+  <button class="accordion-trigger" aria-expanded="false" aria-controls="panel-hab-fiscal">
+    <span>Habilitação Fiscal, Social e Trabalhista</span><span class="pill">Habilitação</span><span class="chev">▾</span>
+  </button>
+  <div class="accordion-panel" id="panel-hab-fiscal" hidden>
+    <div class="table-responsive"><table class=""><thead><tr><th>Documento</th><th>Exigência localizada</th><th>Referência</th></tr></thead><tbody><tr><td>Inscrição CNPJ/CPF</td><td>Prova de inscrição no Cadastro Nacional de Pessoas Jurídicas ou no CPF, conforme o caso.</td><td>TR, item 32.3.1</td></tr><tr><td>Fazenda Nacional</td><td>Certidão conjunta RFB/PGFN relativa a créditos tributários federais e dívida ativa da União, inclusive Seguridade Social.</td><td>TR, item 32.3.2</td></tr><tr><td>FGTS</td><td>Prova de regularidade com o Fundo de Garantia do Tempo de Serviço.</td><td>TR, item 32.3.3</td></tr><tr><td>Trabalhista</td><td>CNDT ou certidão positiva com efeito de negativa.</td><td>TR, item 32.3.4</td></tr><tr><td>Cadastro municipal</td><td>Prova de inscrição no cadastro de contribuintes municipal relativo ao domicílio ou sede, compatível com o objeto.</td><td>TR, item 32.3.5</td></tr><tr><td>Fazenda Municipal</td><td>Prova de regularidade com a Fazenda Municipal do domicílio ou sede.</td><td>TR, item 32.3.6</td></tr><tr><td>Isenção tributária</td><td>Se isento, comprovar por declaração da Fazenda respectiva ou equivalente.</td><td>TR, item 32.3.7</td></tr><tr><td>MEI</td><td>MEI que pretenda benefícios da LC 123 fica dispensado da prova de inscrição nos cadastros estadual e municipal.</td><td>TR, item 32.3.8</td></tr></tbody></table></div><div class="alert"><strong>Observação Técnica:</strong> a habilitação fiscal, social e trabalhista poderá ser verificada pelo SICAF, quando contemplada no cadastro, sem prejuízo da apresentação de documentos não abrangidos pelo sistema.</div>
+  </div>
+</section>
+<section id="matriz" class="accordion-card">
+  <button class="accordion-trigger" aria-expanded="false" aria-controls="panel-matriz">
+    <span>Matriz de Avaliação, Forma de Seleção e Pontuação Técnica</span><span class="pill">100 pontos</span><span class="chev">▾</span>
+  </button>
+  <div class="accordion-panel" id="panel-matriz" hidden>
+    
+<p>O julgamento adota técnica e preço. A pontuação técnica máxima é de <strong>100 pontos</strong>, distribuída nos critérios abaixo. A nota final combina <strong>70% técnica</strong> e <strong>30% preço</strong>.</p>
+<div class="score-bars">
+    <div class="score-row"><div class="score-label"><span>QTP - Equipe técnica</span><strong>20 pts</strong></div><div class="bar"><span style="width:20%"></span></div><small>20% da NFPT</small></div>
+    <div class="score-row"><div class="score-label"><span>NMP1 - Organização e gestão</span><strong>10 pts</strong></div><div class="bar"><span style="width:10%"></span></div><small>10% da NFPT</small></div>
+    <div class="score-row"><div class="score-label"><span>NMP2 - Inovação/certificação</span><strong>20 pts</strong></div><div class="bar"><span style="width:20%"></span></div><small>20% da NFPT</small></div>
+    <div class="score-row"><div class="score-label"><span>NCO - Conhecimento do objeto</span><strong>36 pts</strong></div><div class="bar"><span style="width:36%"></span></div><small>36% da NFPT</small></div>
+    <div class="score-row"><div class="score-label"><span>NDP - Produtos entregues</span><strong>14 pts</strong></div><div class="bar"><span style="width:14%"></span></div><small>14% da NFPT</small></div></div>
+<div class="table-responsive"><table class=""><thead><tr><th>Macrocritério</th><th>Sigla</th><th>Pontuação máxima</th><th>Representatividade</th><th>Limite de páginas</th><th>Tipo de avaliação</th><th>Referência</th></tr></thead><tbody><tr><td>Qualificação das equipes técnicas</td><td>QTP</td><td>20,0</td><td>20%</td><td>Não se aplica</td><td>Objetiva/relativa</td><td>TR, itens 21, 22 e 26.2; planilha Nota da Proposta Técnica</td></tr><tr><td>Metodologia e Programa de Trabalho - Organização e Gestão</td><td>NMP1</td><td>10,0</td><td>10%</td><td>15 páginas</td><td>Qualitativa</td><td>TR, item 23.2; quadro AVQ p. 87</td></tr><tr><td>Metodologia e Programa de Trabalho - Inovação tecnológica e certificação</td><td>NMP2</td><td>20,0</td><td>20%</td><td>15 páginas*</td><td>Qualitativa</td><td>TR, item 23.2; quadro AVQ p. 87</td></tr><tr><td>Demonstração de conhecimento do objeto</td><td>NCO</td><td>36,0</td><td>36%</td><td>15 páginas**</td><td>Qualitativa</td><td>TR, item 24.1; quadro AVQ p. 88</td></tr><tr><td>Descrição dos produtos que serão entregues</td><td>NDP</td><td>14,0</td><td>14%</td><td>15 páginas</td><td>Qualitativa</td><td>TR, item 25.2; quadro AVQ p. 89; TR, item 26.2</td></tr></tbody></table></div>
+<div class="formula-card"><strong>Fórmula da NFPT</strong><code>NFPT = (15,0 × QTP1 / 52,0) + (5,0 × QTP2 / 18,0) + NMP1 + NMP2 + NCO + NDP</code></div>
+<div class="formula-card"><strong>Fórmula da Nota Final</strong><code>NF = 0,70 × NFPT + 0,30 × NPF</code></div>
+<div class="alert"><strong>Observação Técnica:</strong> o item 25.2 do TR menciona pontuação máxima de 15 pontos para NDP, mas o quadro da avaliação qualitativa e a consolidação da NFPT utilizam NDP = 14 pontos. O relatório adotou a matriz consolidada de 100 pontos: 20 + 10 + 20 + 36 + 14.</div>
+
+  </div>
+</section>
+<section id="pont-equipe" class="accordion-card">
+  <button class="accordion-trigger" aria-expanded="false" aria-controls="panel-pont-equipe">
+    <span>Pontuação da Equipe Técnica</span><span class="pill">QTP</span><span class="chev">▾</span>
+  </button>
+  <div class="accordion-panel" id="panel-pont-equipe" hidden>
+    
+<p>A pontuação da equipe técnica possui pontuação preliminar QTP1 e pontuação complementar QTP2, convertidas em componente de 20 pontos na NFPT.</p>
+<div class="table-responsive"><table class=""><thead><tr><th>Profissional / função</th><th>QTP1 - atestados básicos</th><th>QTP2 - extras ou certificação</th><th>Pontuação bruta máxima</th><th>Critério essencial</th></tr></thead><tbody><tr><td>Coordenador Geral - Produto 01</td><td>QTP1: 12,0</td><td>QTP2: 3,0</td><td>15,0</td><td>Atestados básicos: 10 anos = 10 pontos + 1 ponto por ano adicional a partir do 10º, limitado a 2 pontos. Extras/certificação limitados a 3 pontos.</td></tr><tr><td>Engenheiro Sênior Coord. Técnico de Terraplenagem e Pavimentação - Produto 01</td><td>QTP1: 10,0</td><td>QTP2: 3,0</td><td>13,0</td><td>1 ponto por ano de atuação na área, limitado a 10 pontos; extras/certificação limitados a 3 pontos.</td></tr><tr><td>Engenheiro Pleno Coord. Técnico de OAE - Produto 01</td><td>QTP1: 9,0</td><td>QTP2: 3,0</td><td>12,0</td><td>1,8 ponto por ano de atuação em OAE, limitado a 9 pontos; extras/certificação limitados a 3 pontos.</td></tr><tr><td>Engenheiro Pleno - Produto 02</td><td>QTP1: 9,0</td><td>QTP2: 3,0</td><td>12,0</td><td>Pontuação do perfil profissional a ser mobilizado, com comprovação prévia à mobilização.</td></tr><tr><td>Engenheiro Júnior - Produto 02</td><td>QTP1: 6,0</td><td>QTP2: 3,0</td><td>9,0</td><td>Pontuação do perfil profissional a ser mobilizado, com comprovação prévia à mobilização.</td></tr><tr><td>Engenheiro Júnior - Produto 04</td><td>QTP1: 6,0</td><td>QTP2: 3,0</td><td>9,0</td><td>Pontuação do perfil profissional a ser mobilizado, com comprovação prévia à mobilização.</td></tr></tbody></table></div>
+<div class="grid-2"><div class="info-card"><span class="kicker">Subtotal QTP1</span><strong>52,0 pontos brutos</strong><p>Convertidos para até 15 pontos na fórmula da NFPT.</p></div><div class="info-card"><span class="kicker">Subtotal QTP2</span><strong>18,0 pontos brutos</strong><p>Convertidos para até 5 pontos na fórmula da NFPT.</p></div></div>
+<div class="alert"><strong>Observação Técnica:</strong> os atestados/certidões devem estar vinculados às funções e áreas de atuação descritas no TR. Certificações profissionais aceitas: pós-graduação lato sensu, MBA, mestrado ou doutorado em áreas de infraestrutura rodoviária, engenharia de transportes, engenharia rodoviária, pavimentação, obras de infraestrutura ou gestão de projetos aplicada a obras e serviços de engenharia.</div>
+
+  </div>
+</section>
+<section id="pont-metodologia" class="accordion-card">
+  <button class="accordion-trigger" aria-expanded="false" aria-controls="panel-pont-metodologia">
+    <span>Pontuação da Metodologia e Programa de Trabalho</span><span class="pill">NMP1 + NMP2</span><span class="chev">▾</span>
+  </button>
+  <div class="accordion-panel" id="panel-pont-metodologia" hidden>
+    
+<div class="table-responsive"><table class=""><thead><tr><th>Item pontuável</th><th>Pontuação</th><th>Descrição objetiva do que deve ser abordado</th></tr></thead><tbody><tr><td>NMP1 - Atribuições e qualificações da equipe alocada</td><td>5,0</td><td>Descrever organização funcional, atribuições, qualificações, cronograma de permanência da equipe mensal/sob demanda e equipamentos, incluindo estratégia de mobilização/compartilhamento.</td></tr><tr><td>NMP1 - Indicadores de desempenho (IN 39/21)</td><td>2,5</td><td>Descrever indicadores, critérios de estabelecimento e medidas em caso de não conformidade.</td></tr><tr><td>NMP1 - Abordagem metodológica conforme Resolução nº 8/2023</td><td>2,5</td><td>Planejamento do PATO, medição e monitoramento dos resultados, prorrogação/ajustes contratuais, conformidade e papel da equipe.</td></tr><tr><td>NMP2 - Levantamento IRI sem ônus adicional</td><td>1,0</td><td>Inovação tecnológica em levantamento de irregularidade longitudinal.</td></tr><tr><td>NMP2 - Controle topográfico sem ônus adicional</td><td>1,0</td><td>Inovação tecnológica no controle topográfico.</td></tr><tr><td>NMP2 - Controle tecnológico / ensaios laboratoriais sem ônus adicional</td><td>1,0</td><td>Inovação tecnológica no controle tecnológico.</td></tr><tr><td>NMP2 - Verificação estrutural sem ônus adicional</td><td>1,0</td><td>Verificação de condições estruturais além dos padrões mínimos.</td></tr><tr><td>NMP2 - Verificação funcional sem ônus adicional</td><td>1,0</td><td>Verificação das condições funcionais além dos padrões mínimos.</td></tr><tr><td>NMP2 - BIM</td><td>1,0</td><td>Discorrer sobre BIM, premissas, legislação e compromisso de cumprir a segunda fase do BIM nos produtos por demanda aplicáveis.</td></tr><tr><td>NMP2 - Integração GIS/BIM</td><td>1,0</td><td>Aplicação de SIG/GIS, metadados, GISWeb, OpenGIS e vantagens práticas da integração GIS/BIM.</td></tr><tr><td>NMP2 - Softwares de modelagem técnica</td><td>1,0</td><td>Softwares para OAE, hidráulica, terraplenagem, contenções e circulação de veículos/pontos críticos.</td></tr><tr><td>NMP2 - Entrega de arquivos finais modelados</td><td>1,0</td><td>Arquivos finais de saída de softwares de análise de estabilidade global/local e demais modelagens.</td></tr><tr><td>NMP2 - POC 01: Curva ABC Insumos PATO</td><td>10,0</td><td>Prova de Conceito baseada na Curva ABC de insumos, identificando itens de maior relevância econômica e análise crítica.</td></tr><tr><td>NMP2 - Certificações da licitante</td><td>1,0</td><td>Certificações válidas nas áreas ambiental, qualidade, laboratórios de ensaio/calibração, gestão de riscos, segurança do trabalho ou segurança rodoviária.</td></tr></tbody></table></div>
+<div class="alert"><strong>Observação Técnica:</strong> o item POC 01 - Curva ABC Insumos PATO possui peso relevante dentro do NMP2, com 10 dos 20 pontos. O TR alerta que modelos genéricos, copiados ou não aderentes ao objeto podem prejudicar a avaliação.</div>
+
+  </div>
+</section>
+<section id="pont-conhecimento" class="accordion-card">
+  <button class="accordion-trigger" aria-expanded="false" aria-controls="panel-pont-conhecimento">
+    <span>Pontuação do Conhecimento do Objeto</span><span class="pill">NCO</span><span class="chev">▾</span>
+  </button>
+  <div class="accordion-panel" id="panel-pont-conhecimento" hidden>
+    
+<div class="table-responsive"><table class=""><thead><tr><th>Item pontuável</th><th>Pontuação</th><th>Descrição objetiva</th></tr></thead><tbody><tr><td>Conhecimento sobre a abrangência do objeto - programas DNIT</td><td>1,0</td><td>Discorrer sobre programas do DNIT de manutenção rodoviária sujeitos à supervisão e nomenclaturas correspondentes.</td></tr><tr><td>Conhecimento sobre a abrangência do objeto - processos de contratação</td><td>1,0</td><td>Discorrer sobre licitações em andamento não homologadas e serviços de manutenção/recuperação em curso para a área de abrangência.</td></tr><tr><td>Conhecimento sobre a malha - ações em andamento</td><td>1,0</td><td>Informações de indicadores gerenciais, atas da manutenção rodoviária e mapas dos relatórios gerenciais.</td></tr><tr><td>Conhecimento sobre a malha - condições atuais</td><td>1,0</td><td>Informações do Mapa de Condição da Manutenção - ICM ou diagnóstico atualizado.</td></tr><tr><td>Conhecimento in loco - inspeção das OAEs indicadas</td><td>30,0</td><td>Modelo de inspeção conforme Norma DNIT 010-PRO/2024 para as quatro OAEs indicadas, com fotos datadas/georreferenciadas e análise consistente.</td></tr><tr><td>Procedimentos de acompanhamento - normativos</td><td>1,0</td><td>Normativos vigentes do DNIT de supervisão de obras, critérios de avaliação e relatório de acompanhamento.</td></tr><tr><td>Procedimentos de acompanhamento - ferramenta DNIT</td><td>1,0</td><td>Ferramenta do DNIT de acompanhamento da supervisão, aplicabilidades e recursos existentes.</td></tr></tbody></table></div>
+<div class="table-responsive"><table class=""><thead><tr><th>Código</th><th>Rodovia</th><th>Km</th><th>OAE indicada para conhecimento in loco</th><th>Coordenadas</th></tr></thead><tbody><tr><td>30012</td><td>BR-020</td><td>140,41</td><td>Ponte sobre o Rio Bom Jesus</td><td>Lat. -5.556983333; Long. -40.074900000</td></tr><tr><td>30116</td><td>BR-116</td><td>485,79</td><td>Ponte sobre o Riacho dos Porcos</td><td>Lat. -7.324766667; Long. -38.937733333</td></tr><tr><td>30276</td><td>BR-122</td><td>52,43</td><td>Ponte sobre o Rio Pirangi</td><td>Lat. -4.696150000; Long. -38.699500000</td></tr><tr><td>30171</td><td>BR-403</td><td>145,44</td><td>Ponte sobre o Riacho Seco</td><td>Lat. -3.910083333; Long. -40.484883333</td></tr></tbody></table></div>
+<div class="alert"><strong>Observação Técnica:</strong> a visita não é obrigatória, mas sua ausência pode reduzir a pontuação técnica. O edital permite anexos complementares, equipamentos como drones/scanners/GPS e exige leitura crítica dos dados coletados.</div>
+
+  </div>
+</section>
+<section id="pont-produtos" class="accordion-card">
+  <button class="accordion-trigger" aria-expanded="false" aria-controls="panel-pont-produtos">
+    <span>Pontuação da Descrição dos Produtos</span><span class="pill">NDP</span><span class="chev">▾</span>
+  </button>
+  <div class="accordion-panel" id="panel-pont-produtos" hidden>
+    
+<div class="table-responsive"><table class=""><thead><tr><th>Item pontuável</th><th>Pontuação</th><th>Descrição objetiva</th></tr></thead><tbody><tr><td>Composição de cada produto</td><td>2,0</td><td>Discorrer sobre todos os produtos a serem entregues, composição, recursos humanos/materiais e principais atividades.</td></tr><tr><td>Curva ABC dos insumos dos produtos</td><td>6,0</td><td>Apresentar Curva ABC dos insumos vinculados aos produtos que compõem o orçamento referencial dos serviços de supervisão.</td></tr><tr><td>Requisitos para medição e pagamento</td><td>4,0</td><td>Critérios e metodologias para medição, avaliação, aceitação e liberação dos pagamentos.</td></tr><tr><td>Interrelação das atividades e frequência com os produtos</td><td>2,0</td><td>Interrelação entre produtos e atividades e periodicidade de cada produto, preferencialmente com apresentação gráfica.</td></tr></tbody></table></div>
+<div class="alert"><strong>Observação Técnica:</strong> a mera repetição da descrição do Termo de Referência não atende ao escopo mínimo esperado. A proposta deve demonstrar composição, recursos, medição, pagamento e interrelação entre produtos e atividades.</div>
+
+  </div>
+</section>
+<section id="pont-certificacoes" class="accordion-card">
+  <button class="accordion-trigger" aria-expanded="false" aria-controls="panel-pont-certificacoes">
+    <span>Pontuação de Certificações e Inovação</span><span class="pill">QTP2 / NMP2</span><span class="chev">▾</span>
+  </button>
+  <div class="accordion-panel" id="panel-pont-certificacoes" hidden>
+    
+<div class="grid-2">
+  <div class="info-card"><span class="kicker">Certificações profissionais</span><strong>QTP2</strong><p>Doutorado ou mestrado: 2,5 pontos por certificação; especialização/MBA: 1,0 ponto por certificação, respeitado limite por profissional.</p></div>
+  <div class="info-card"><span class="kicker">Certificações da licitante</span><strong>NMP2 - 1,0 ponto</strong><p>Certificações válidas nas áreas ambiental, qualidade, laboratórios de ensaio/calibração, gestão de riscos, segurança do trabalho ou segurança rodoviária.</p></div>
+</div>
+<div class="table-responsive"><table class=""><thead><tr><th>Tipo</th><th>Natureza</th><th>Pontuação / efeito</th><th>Forma de comprovação</th><th>Referência</th></tr></thead><tbody><tr><td>Pós-graduação lato sensu / MBA</td><td>Pontuável para profissionais</td><td>1,0 ponto por certificação, conforme limite do QTP2</td><td>Diploma/certificado em área aderente</td><td>TR, item 22.2; planilha Qualificação Técnico-Profissional</td></tr><tr><td>Mestrado ou doutorado</td><td>Pontuável para profissionais</td><td>2,5 pontos por certificação, conforme limite do QTP2</td><td>Diploma/certificado em área aderente</td><td>TR, item 22.2; planilha Qualificação Técnico-Profissional</td></tr><tr><td>Certificações da empresa</td><td>Pontuável no NMP2</td><td>1,0 ponto</td><td>Certificações válidas nas áreas indicadas</td><td>TR, quadro AVQ, p. 87</td></tr></tbody></table></div>
+<div class="alert"><strong>Observação Técnica:</strong> não foi localizada certificação empresarial como requisito eliminatório de habilitação. As certificações aparecem como elementos pontuáveis ou como conteúdo técnico dentro do NMP2/QTP2.</div>
+
+  </div>
+</section>
+<section id="preco" class="accordion-card">
+  <button class="accordion-trigger" aria-expanded="false" aria-controls="panel-preco">
+    <span>Regras de Preço, Fórmula de Julgamento e Nota de Preço</span><span class="pill">NPF / NF</span><span class="chev">▾</span>
+  </button>
+  <div class="accordion-panel" id="panel-preco" hidden>
+    
+<div class="table-responsive"><table class=""><thead><tr><th>Tema</th><th>Regra objetiva localizada</th><th>Referência</th></tr></thead><tbody><tr><td>Planilha de preços</td><td>Deve ser apresentada em formato aberto, preservando a estrutura original do Orçamento Referencial; não podem ser alterados quantitativos, produtividades, profissionais, equipamentos e demais itens das composições.</td><td>TR, itens 29.1 a 29.3, 30.5.1 e 30.20</td></tr><tr><td>Preço máximo</td><td>Não serão aceitos valores globais ou preços unitários de produtos superiores aos estimados pelo DNIT; insumos também não podem superar os valores de referência.</td><td>TR, itens 29.6 e 30.18</td></tr><tr><td>Pisos salariais</td><td>Mão de obra não pode ficar abaixo de pisos salariais legais, de conselhos de classe ou de CCT aplicável ao Estado do Ceará; deve observar senioridade e metodologia da Tabela de Consultoria DNIT.</td><td>TR, itens 29.5, 30.7 a 30.13 e 30.24</td></tr><tr><td>Produto 20</td><td>Desconto permitido desde que preservada a metodologia da CPU: percentual sobre a soma dos produtos-base; descontos nos produtos-base devem repercutir no Produto 20.</td><td>TR, itens 29.9 a 29.12 e 30.5.2</td></tr><tr><td>Inexequibilidade</td><td>Propostas inferiores a 75% do orçamento são presumidamente inexequíveis, sujeitas à diligência/demonstração; proposta não comprovada pode ser desclassificada.</td><td>Edital, item 5.17.3; TR, item 29.13</td></tr><tr><td>Garantia adicional</td><td>Proposta inferior a 85% do valor orçado exige garantia adicional equivalente à diferença entre 85% do orçamento e o valor proposto.</td><td>Edital, item 5.17.4; TR, item 4.4</td></tr><tr><td>BDI</td><td>BDI não pode ser superior ao referencial; PIS mínimo 0,65%, COFINS mínimo 3,00% e ISSQN conforme município. O orçamento está baseado em folha onerada e não inclui CPRB no BDI.</td><td>TR, itens 1.14.1.2, 30.21 a 30.23</td></tr><tr><td>Paridade de insumos</td><td>Com exceção do BDI, não pode haver variação de preço de um mesmo item entre produtos; é obrigatória paridade dos insumos.</td><td>TR, item 30.17</td></tr><tr><td>Validade da proposta</td><td>60 dias contados da apresentação.</td><td>Edital, item 4.8.1; TR, item 30.3</td></tr></tbody></table></div>
+<div class="formula-card"><strong>Fórmula da Nota de Preço</strong><code>NPF = 100 × (Média das Propostas / Preço do Licitante) × (1 - α + α × (Média das Propostas / Preço do Licitante))</code><p>α = 0,5; valor limite superior: 100,0 pontos. A média das propostas é apurada uma única vez, com propostas formalmente admitidas.</p></div>
+<div class="formula-card"><strong>Fórmula da Nota Final</strong><code>NF = 0,70 × NFPT + 0,30 × NPF</code></div>
+<div class="alert"><strong>Observação Técnica:</strong> a análise de preços pode ocorrer antes da análise técnica, conforme justificativa do TR, para excluir propostas inexequíveis e otimizar a análise das propostas tecnicamente viáveis.</div>
+
+  </div>
+</section>
+<footer class="footer">
+  <p><strong>Referências documentais consultadas:</strong> Edital Concorrência Eletrônica 0226/2026 (25123925) - SEI 50603.002506/2025-07; Termo de Referência Superv. Manutenção SRE/CE REV01 (24937785) - SEI 50603.002506/2025-07; Planilha outros_edital0226_26-03_0 (1).xlsx. Este relatório não substitui a leitura integral dos documentos do certame.</p>
+</footer>
+</main>
+</div>
+<script>
+const triggers=[...document.querySelectorAll('.accordion-trigger')];
+function setAccordion(btn, open){
+  const panel=document.getElementById(btn.getAttribute('aria-controls'));
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  panel.hidden = !open;
+}
+triggers.forEach(btn=>btn.addEventListener('click',()=>setAccordion(btn, btn.getAttribute('aria-expanded') !== 'true')));
+document.getElementById('expandAll').addEventListener('click',()=>triggers.forEach(b=>setAccordion(b,true)));
+document.getElementById('collapseAll').addEventListener('click',()=>triggers.forEach(b=>setAccordion(b,false)));
+const sidebar=document.getElementById('sidebar');
+document.getElementById('menuBtn').addEventListener('click',()=>sidebar.classList.toggle('open'));
+document.querySelectorAll('.nav-link').forEach(a=>a.addEventListener('click',()=>sidebar.classList.remove('open')));
+const navLinks=[...document.querySelectorAll('.nav-link')];
+const targets=navLinks.map(a=>document.querySelector(a.getAttribute('href'))).filter(Boolean);
+const obs=new IntersectionObserver(entries=>{
+  entries.forEach(entry=>{
+    if(entry.isIntersecting){
+      navLinks.forEach(a=>a.classList.toggle('active', a.getAttribute('href')==='#'+entry.target.id));
+    }
+  })
+},{rootMargin:'-40% 0px -55% 0px',threshold:0});
+targets.forEach(t=>obs.observe(t));
+</script>
+</body>
+</html>
