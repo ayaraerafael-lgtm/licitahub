@@ -93,6 +93,19 @@
       const isHidden = (item) => item[3] === true;
       const firstScreenFor = (role) => modules.find((m) => m.roles.includes(role))?.items.find((i) => canSee(i, role) && !isHidden(i))?.[0] || "company-dashboard";
       const NavigationContext = React.createContext({ canGoBack: false, goBack: () => {} });
+      const API_BASE_URL = window.location.protocol === "file:" ? "http://127.0.0.1:8080" : window.location.origin;
+      const newsCategoryOptions = [
+        { label: "LicitaÃ§Ãµes", slug: "licitacoes" },
+        { label: "Mercado", slug: "mercado" },
+        { label: "LegislaÃ§Ã£o", slug: "legislacao" },
+        { label: "Eventos", slug: "eventos" },
+        { label: "Comunicados", slug: "comunicados" }
+      ];
+      const newsStatusOptions = [
+        { label: "Rascunho", value: "draft" },
+        { label: "Publicado", value: "published" },
+        { label: "Destaque principal", value: "featured" }
+      ];
       const tenders = [
         { id: "cp-004-2026", agency: "Prefeitura Municipal", number: "CP 004/2026", modality: "Concorrência", object: "Projetos de saneamento e drenagem", location: "MG", opening: "18/08/2026", value: "R$ 2.400.000,00", criterion: "Técnica e preço", status: "Publicado" },
         { id: "tp-012-2026", agency: "Departamento de Estradas", number: "TP 012/2026", modality: "Tomada de preços", object: "Supervisão de obras rodoviárias", location: "PR", opening: "02/09/2026", value: "R$ 5.800.000,00", criterion: "Menor preço", status: "Em avaliação" }
@@ -304,8 +317,8 @@
         return help[title] || "Tela da LicitaHub para apoiar decisões empresariais com clareza e contexto.";
       }
 
-      function Button({ children, variant = "primary", onClick }) {
-        return <button className={`btn ${variant}`} onClick={onClick}>{children}</button>;
+      function Button({ children, variant = "primary", onClick, type = "button", disabled = false }) {
+        return <button type={type} className={`btn ${variant}`} onClick={onClick} disabled={disabled}>{children}</button>;
       }
 
       function Card({ children, className = "", onClick, id }) {
@@ -379,9 +392,9 @@
           "company-public-profile": <CompanyPublicProfile navigate={navigate} openPublicationManager={openPublicationManager} />,
           "publication-new": <PublicationNew />,
           "publication-list": <PublicationList selectedPublicationId={selectedPublicationId} />,
-          "radar-home": <RadarHome navigate={navigate} />,
+          "radar-home": <RadarHomeConnected navigate={navigate} />,
           "radar-detail": <RadarDetail />,
-          "radar-new": <RadarNew />,
+          "radar-new": <RadarNewConnected />,
           "tender-admin": <TenderAdmin />,
           "tender-new": <TenderNew />,
           "tender-list": <TenderList navigate={navigate} openTenderInterestCompanies={openTenderInterestCompanies} />,
@@ -780,6 +793,80 @@ function PostCard({ id, category, company, region = "BR", title, text = "Texto d
         );
       }
 
+      function RadarHomeConnected({ navigate }) {
+        const [news, setNews] = React.useState([]);
+        const [loading, setLoading] = React.useState(true);
+        const [error, setError] = React.useState("");
+
+        React.useEffect(() => {
+          let active = true;
+
+          fetch(`${API_BASE_URL}/api/news`)
+            .then((response) => {
+              if (!response.ok) throw new Error("Falha ao carregar noticias");
+              return response.json();
+            })
+            .then((data) => {
+              if (!active) return;
+              setNews(Array.isArray(data) ? data : []);
+              setError("");
+            })
+            .catch(() => {
+              if (!active) return;
+              setError("Nao foi possivel carregar as noticias do banco. Confirme se o backend esta ligado.");
+            })
+            .finally(() => {
+              if (active) setLoading(false);
+            });
+
+          return () => {
+            active = false;
+          };
+        }, []);
+
+        const featured = news.find((item) => item.status === "featured" || item.status === "published") || news[0];
+        const remainingNews = featured ? news.filter((item) => item.id !== featured.id) : news;
+
+        return (
+          <Page label="Radar LicitaHub" title="NotÃ­cias e inteligÃªncia de mercado">
+            {loading && <Card className="formFeedback"><p>Carregando notÃ­cias do banco...</p></Card>}
+            {error && <Card className="formFeedback dangerNotice"><p>{error}</p></Card>}
+            {featured && (
+              <div className="newsHero">
+                <div className="newsHeroImage">{featured.mainImageUrl ? <img src={featured.mainImageUrl} alt={featured.title} /> : "Radar"}</div>
+                <div className="newsHeroText">
+                  <span className="badge">{featured.categoryName || "Radar"}</span>
+                  <h3>{featured.title}</h3>
+                  <p>{featured.summary || "NotÃ­cia publicada pela LicitaHub para orientar a comunidade."}</p>
+                  <Button onClick={() => navigate("radar-detail")}>Ler notÃ­cia</Button>
+                </div>
+              </div>
+            )}
+
+            <div className="categoryTabs">
+              {["Todos", "LicitaÃ§Ãµes", "Mercado", "LegislaÃ§Ã£o", "Eventos", "Comunicados"].map((item) => <button key={item}>{item}</button>)}
+            </div>
+
+            <div className="newsGrid">
+              {!loading && !error && news.length === 0 && <Card className="formFeedback"><p>Nenhuma notÃ­cia cadastrada ainda.</p></Card>}
+              {remainingNews.map((item) => <NewsCardConnected key={item.id} news={item} navigate={navigate} />)}
+            </div>
+          </Page>
+        );
+      }
+
+      function NewsCardConnected({ news, navigate }) {
+        return (
+          <Card className="newsCard">
+            <div className="newsThumb">{news.mainImageUrl ? <img src={news.mainImageUrl} alt={news.title} /> : news.categoryName}</div>
+            <span className="badge">{news.categoryName || "Radar"}</span>
+            <h3>{news.title}</h3>
+            <p>{news.summary || "NotÃ­cia publicada pela LicitaHub para orientar empresas associadas e usuÃ¡rios vinculados."}</p>
+            <button className="textLink" onClick={() => navigate("radar-detail")}>Ler notÃ­cia</button>
+          </Card>
+        );
+      }
+
       function RadarHome({ navigate }) {
         return (
           <Page label="Radar LicitaHub" title="Notícias e inteligência de mercado">
@@ -854,6 +941,113 @@ function PostCard({ id, category, company, region = "BR", title, text = "Texto d
             <ImageUploadField label="Imagem" />
             <Field label="Resumo"><textarea placeholder="Resumo que aparece nos cards" /></Field>
             <Field label="Texto completo"><textarea placeholder="Texto completo da notícia" /></Field>
+          </Page>
+        );
+      }
+
+      function RadarNewConnected() {
+        const [form, setForm] = React.useState({
+          title: "",
+          categorySlug: "licitacoes",
+          status: "draft",
+          summary: "",
+          content: "",
+          mainImageUrl: "",
+          mainImageDataUrl: "",
+          mainImageFileName: "",
+          mainImageMimeType: ""
+        });
+        const [saving, setSaving] = React.useState(false);
+        const [message, setMessage] = React.useState(null);
+        const [imagePreview, setImagePreview] = React.useState("");
+
+        const updateField = (field, value) => {
+          setForm((current) => ({ ...current, [field]: value }));
+        };
+
+        const handleImageChange = (event) => {
+          const file = event.target.files?.[0];
+          if (!file) {
+            setImagePreview("");
+            setForm((current) => ({ ...current, mainImageDataUrl: "", mainImageFileName: "", mainImageMimeType: "" }));
+            return;
+          }
+
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = String(reader.result || "");
+            setImagePreview(dataUrl);
+            setForm((current) => ({
+              ...current,
+              mainImageDataUrl: dataUrl,
+              mainImageFileName: file.name,
+              mainImageMimeType: file.type
+            }));
+          };
+          reader.readAsDataURL(file);
+        };
+
+        const handleSubmit = async () => {
+          setMessage(null);
+
+          if (!form.title.trim()) {
+            setMessage({ type: "error", text: "Informe o titulo da noticia antes de publicar." });
+            return;
+          }
+
+          setSaving(true);
+          try {
+            const response = await fetch(`${API_BASE_URL}/api/news`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(form)
+            });
+
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(result.error || "Nao foi possivel cadastrar a noticia.");
+            }
+
+            setMessage({ type: "success", text: "Noticia cadastrada no banco com sucesso." });
+            setForm({
+              title: "",
+              categorySlug: "licitacoes",
+              status: "draft",
+              summary: "",
+              content: "",
+              mainImageUrl: "",
+              mainImageDataUrl: "",
+              mainImageFileName: "",
+              mainImageMimeType: ""
+            });
+            setImagePreview("");
+          } catch (error) {
+            setMessage({ type: "error", text: "Nao foi possivel gravar agora. Confirme se o backend esta ligado." });
+          } finally {
+            setSaving(false);
+          }
+        };
+
+        return (
+          <Page label="Radar LicitaHub" title="Cadastrar notÃ­cia" actions={<Button onClick={handleSubmit} disabled={saving}>{saving ? "Publicando..." : "Publicar notÃ­cia"}</Button>}>
+            {message && <Card className={`formFeedback ${message.type === "success" ? "success" : "dangerNotice"}`}><p>{message.text}</p></Card>}
+            <FormGrid>
+              <Field label="TÃ­tulo"><input value={form.title} onChange={(event) => updateField("title", event.target.value)} placeholder="TÃ­tulo da notÃ­cia" /></Field>
+              <Field label="Categoria"><select value={form.categorySlug} onChange={(event) => updateField("categorySlug", event.target.value)}>{newsCategoryOptions.map((option) => <option value={option.slug} key={option.slug}>{option.label}</option>)}</select></Field>
+              <Field label="Status"><select value={form.status} onChange={(event) => updateField("status", event.target.value)}>{newsStatusOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></Field>
+            </FormGrid>
+            <Field label="Imagem">
+              <div className="imageUploadField">
+                <div className="imageMiniPreview">{imagePreview ? <img src={imagePreview} alt="Previa da imagem selecionada" /> : <span>IMG</span>}</div>
+                <div>
+                  <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={handleImageChange} />
+                  <small>{form.mainImageFileName || "Nenhuma imagem selecionada"}</small>
+                </div>
+              </div>
+            </Field>
+            <Field label="Link da imagem" hint="Opcional. Use apenas se a imagem ja estiver publicada na internet."><input value={form.mainImageUrl} onChange={(event) => updateField("mainImageUrl", event.target.value)} placeholder="https://..." /></Field>
+            <Field label="Resumo"><textarea value={form.summary} onChange={(event) => updateField("summary", event.target.value)} placeholder="Resumo que aparece nos cards" /></Field>
+            <Field label="Texto completo"><textarea value={form.content} onChange={(event) => updateField("content", event.target.value)} placeholder="Texto completo da notÃ­cia" /></Field>
           </Page>
         );
       }
