@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -10,9 +10,9 @@ const NavigationContext = React.createContext({
 const API_BASE_URL = window.location.protocol === "file:" ? "http://127.0.0.1:8080" : window.location.origin;
 
 const newsCategoryOptions = [
-  { label: "LicitaÃ§Ãµes", slug: "licitacoes" },
+  { label: "LicitaÃƒÂ§ÃƒÂµes", slug: "licitacoes" },
   { label: "Mercado", slug: "mercado" },
-  { label: "LegislaÃ§Ã£o", slug: "legislacao" },
+  { label: "LegislaÃƒÂ§ÃƒÂ£o", slug: "legislacao" },
   { label: "Eventos", slug: "eventos" },
   { label: "Comunicados", slug: "comunicados" }
 ];
@@ -27,20 +27,21 @@ const roles = {
   platformAdmin: "Administrador da plataforma",
   companyAdmin: "Administrador da empresa",
   commercial: "Comercial / Relacionamento",
-  technical: "Técnico",
+  technical: "TÃ©cnico",
   reader: "Leitor"
 };
 
 const modules = [
   {
     id: "access",
-    label: "Acesso e administração",
+    label: "Acesso e administraÃ§Ã£o",
     roles: ["platformAdmin"],
     items: [
       { id: "admin-dashboard", label: "Painel administrativo" },
       { id: "invite-new", label: "Novo convite" },
       { id: "invite-list", label: "Lista de convites" },
-      { id: "company-review", label: "Análise de empresas" }
+      { id: "invite-accept", label: "Aceite do convite", hidden: true },
+      { id: "company-review", label: "AnÃ¡lise de empresas" }
     ]
   },
   {
@@ -50,11 +51,11 @@ const modules = [
     items: [
       { id: "company-dashboard", label: "Dashboard" },
       { id: "company-profile-edit", label: "Editar perfil" },
-      { id: "company-users", label: "Usuários vinculados", roles: ["companyAdmin"] },
-      { id: "company-user-profile", label: "Cadastro de usuário", roles: ["companyAdmin"] },
+      { id: "company-users", label: "UsuÃ¡rios vinculados", roles: ["companyAdmin"] },
+      { id: "company-user-profile", label: "Cadastro de usuÃ¡rio", roles: ["companyAdmin"] },
       { id: "company-user-block", label: "Confirmar bloqueio", roles: ["companyAdmin"], hidden: true },
       { id: "company-user-unblock", label: "Confirmar desbloqueio", roles: ["companyAdmin"], hidden: true },
-      { id: "company-user-delete", label: "Confirmar remoção", roles: ["companyAdmin"], hidden: true }
+      { id: "company-user-delete", label: "Confirmar remoÃ§Ã£o", roles: ["companyAdmin"], hidden: true }
     ]
   },
   {
@@ -63,9 +64,9 @@ const modules = [
     roles: ["companyAdmin", "commercial", "technical", "reader"],
     items: [
       { id: "community-home", label: "Comunidade" },
-      { id: "company-public-profile", label: "Perfil público" },
-      { id: "publication-new", label: "Criar publicação", roles: ["companyAdmin", "commercial"] },
-      { id: "publication-list", label: "Minhas publicações", roles: ["companyAdmin", "commercial"] }
+      { id: "company-public-profile", label: "Perfil pÃºblico" },
+      { id: "publication-new", label: "Criar publicaÃ§Ã£o", roles: ["companyAdmin", "commercial"] },
+      { id: "publication-list", label: "Minhas publicaÃ§Ãµes", roles: ["companyAdmin", "commercial"] }
     ]
   },
   {
@@ -86,29 +87,29 @@ const modules = [
     label: "Radar LicitaHub",
     roles: ["platformAdmin", "companyAdmin", "commercial", "technical", "reader"],
     items: [
-      { id: "radar-home", label: "Notícias" },
-      { id: "radar-detail", label: "Detalhe da notícia" },
-      { id: "radar-new", label: "Cadastrar notícia", roles: ["platformAdmin"] }
+      { id: "radar-home", label: "NotÃ­cias" },
+      { id: "radar-detail", label: "Detalhe da notÃ­cia" },
+      { id: "radar-new", label: "Cadastrar notÃ­cia", roles: ["platformAdmin"] }
     ]
   },
   {
     id: "match",
-    label: "Match e consórcios",
+    label: "Match e consÃ³rcios",
     roles: ["companyAdmin", "commercial"],
     items: [
       { id: "match-partners", label: "Vitrine de parceiros" },
       { id: "match-tinder", label: "Avaliar candidata" },
-      { id: "match-profile", label: "Detalhe do anúncio" },
+      { id: "match-profile", label: "Detalhe do anÃºncio" },
       { id: "match-success", label: "Match realizado" }
     ]
   }
 ];
 
 const stats = [
-  ["Editais compatíveis", "9"],
+  ["Editais compatÃ­veis", "9"],
   ["Interesses ativos", "3"],
   ["Matches abertos", "2"],
-  ["Publicações", "14"]
+  ["PublicaÃ§Ãµes", "14"]
 ];
 
 const tenders = [
@@ -116,25 +117,25 @@ const tenders = [
     id: "cp-004-2026",
     agency: "Prefeitura Municipal",
     number: "CP 004/2026",
-    modality: "Concorrência",
+    modality: "ConcorrÃªncia",
     object: "Projetos de saneamento e drenagem urbana",
     location: "MG",
     opening: "18/08/2026",
     value: "R$ 2.400.000,00",
-    criterion: "Técnica e preço",
+    criterion: "TÃ©cnica e preÃ§o",
     status: "Publicado"
   },
   {
     id: "tp-012-2026",
     agency: "Departamento de Estradas",
     number: "TP 012/2026",
-    modality: "Tomada de preços",
-    object: "Supervisão de obras rodoviárias",
+    modality: "Tomada de preÃ§os",
+    object: "SupervisÃ£o de obras rodoviÃ¡rias",
     location: "PR",
     opening: "02/09/2026",
     value: "R$ 5.800.000,00",
-    criterion: "Menor preço",
-    status: "Em avaliação"
+    criterion: "Menor preÃ§o",
+    status: "Em avaliaÃ§Ã£o"
   }
 ];
 
@@ -143,13 +144,13 @@ const partners = [
     name: "GeoArq Projetos",
     location: "Belo Horizonte - MG",
     offers: "Arqueologia, estudos socioambientais e equipe de campo.",
-    seeks: "Coordenação técnica em saneamento e proposta técnica."
+    seeks: "CoordenaÃ§Ã£o tÃ©cnica em saneamento e proposta tÃ©cnica."
   },
   {
     name: "SocialTec Consultoria",
     location: "Salvador - BA",
-    offers: "Projetos sociais, comunicação comunitária e reassentamento.",
-    seeks: "Empresa líder com experiência em infraestrutura urbana."
+    offers: "Projetos sociais, comunicaÃ§Ã£o comunitÃ¡ria e reassentamento.",
+    seeks: "Empresa lÃ­der com experiÃªncia em infraestrutura urbana."
   }
 ];
 
@@ -163,11 +164,24 @@ function firstScreenFor(role) {
   return item?.id || "company-dashboard";
 }
 
+function normalizeScreenFromHash(hash, role) {
+  const raw = String(hash || "").replace("#", "");
+  const [screenId] = raw.split("?");
+  if (screenId === "aceite-convite") return "invite-accept";
+  return screenId || firstScreenFor(role);
+}
+
+function currentHashParams() {
+  const raw = String(window.location.hash || "").replace("#", "");
+  const query = raw.includes("?") ? raw.slice(raw.indexOf("?") + 1) : "";
+  return new URLSearchParams(query);
+}
+
 function useHashScreen(role) {
-  const [screen, setScreen] = useState(() => window.location.hash.replace("#", "") || firstScreenFor(role));
+  const [screen, setScreen] = useState(() => normalizeScreenFromHash(window.location.hash, role));
 
   useEffect(() => {
-    const onHashChange = () => setScreen(window.location.hash.replace("#", "") || firstScreenFor(role));
+    const onHashChange = () => setScreen(normalizeScreenFromHash(window.location.hash, role));
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, [role]);
@@ -176,7 +190,7 @@ function useHashScreen(role) {
     const allowed = modules.some((group) =>
       group.roles.includes(role) && group.items.some((item) => item.id === screen && canSee(item, role))
     );
-    if (!allowed) {
+    if (!allowed && screen !== "invite-accept") {
       const next = firstScreenFor(role);
       window.location.hash = next;
       setScreen(next);
@@ -195,6 +209,7 @@ function App() {
   const [selectedUserProfile, setSelectedUserProfile] = useState({ mode: "create", user: null });
   const [selectedPublicationId, setSelectedPublicationId] = useState(null);
   const [selectedTenderId, setSelectedTenderId] = useState("cp-004-2026");
+  const [selectedNews, setSelectedNews] = useState(null);
   const [navigationStack, setNavigationStack] = useState([]);
   const screen = useHashScreen(role);
   const visibleModules = useMemo(() => modules.filter((group) => group.roles.includes(role)), [role]);
@@ -252,6 +267,11 @@ function App() {
     navigateTo("tender-interest-list");
   };
 
+  const openNewsDetail = (news) => {
+    setSelectedNews(news);
+    navigateTo("radar-detail");
+  };
+
   return (
     <div className={`app ${menuCollapsed ? "menuCollapsed" : ""}`}>
       <aside className="sidebar" ref={sidebarRef}>
@@ -293,7 +313,7 @@ function App() {
       <main className="main">
         <NavigationContext.Provider value={{ canGoBack: navigationStack.length > 0, goBack }}>
           <Topbar navigate={navigateTo} openPublicationManager={openPublicationManager} openTenderInterestCompanies={openTenderInterestCompanies} />
-          <Screen screen={screen} navigate={navigateTo} userStatuses={userStatuses} openUserAction={openUserAction} selectedUserAction={selectedUserAction} updateUserStatus={updateUserStatus} selectedUserProfile={selectedUserProfile} openUserProfile={openUserProfile} selectedPublicationId={selectedPublicationId} openPublicationManager={openPublicationManager} selectedTenderId={selectedTenderId} openTenderInterestCompanies={openTenderInterestCompanies} />
+          <Screen screen={screen} navigate={navigateTo} userStatuses={userStatuses} openUserAction={openUserAction} selectedUserAction={selectedUserAction} updateUserStatus={updateUserStatus} selectedUserProfile={selectedUserProfile} openUserProfile={openUserProfile} selectedPublicationId={selectedPublicationId} openPublicationManager={openPublicationManager} selectedTenderId={selectedTenderId} openTenderInterestCompanies={openTenderInterestCompanies} selectedNews={selectedNews} openNewsDetail={openNewsDetail} />
           <ScrollControls />
         </NavigationContext.Provider>
       </main>
@@ -305,23 +325,23 @@ function Topbar({ navigate, openPublicationManager, openTenderInterestCompanies 
   const [alertsOpen, setAlertsOpen] = useState(false);
   const alerts = [
     {
-      title: "Novo comentário",
+      title: "Novo comentÃ¡rio",
       text: "GeoArq comentou em Nova equipe de saneamento.",
       action: () => openPublicationManager("pub-saneamento")
     },
     {
       title: "Nova curtida",
-      text: "Plano Sul curtiu sua publicação técnica.",
+      text: "Plano Sul curtiu sua publicaÃ§Ã£o tÃ©cnica.",
       action: () => openPublicationManager("pub-seminario")
     },
     {
       title: "Match realizado",
-      text: "GeoArq Projetos também demonstrou interesse.",
+      text: "GeoArq Projetos tambÃ©m demonstrou interesse.",
       action: () => navigate("match-success")
     },
     {
       title: "Empresa interessada",
-      text: "Há empresas avaliando a CP 004/2026.",
+      text: "HÃ¡ empresas avaliando a CP 004/2026.",
       action: () => openTenderInterestCompanies("cp-004-2026")
     }
   ];
@@ -369,7 +389,7 @@ function ScrollControls() {
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
   const scrollToBottom = () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
   return (
-    <div className="scrollControls" aria-label="Navegação rápida da página">
+    <div className="scrollControls" aria-label="NavegaÃ§Ã£o rÃ¡pida da pÃ¡gina">
       <button type="button" title="Subir para o topo" aria-label="Subir para o topo" onClick={scrollToTop}>{"\u2191"}</button>
       <button type="button" title="Voltar para tela anterior" aria-label="Voltar para tela anterior" disabled={!canGoBack} onClick={goBack}>{"\u2190"}</button>
       <button type="button" title="Descer para o final" aria-label="Descer para o final" onClick={scrollToBottom}>{"\u2193"}</button>
@@ -377,11 +397,12 @@ function ScrollControls() {
   );
 }
 
-function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAction, updateUserStatus, selectedUserProfile, openUserProfile, selectedPublicationId, openPublicationManager, selectedTenderId, openTenderInterestCompanies }) {
+function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAction, updateUserStatus, selectedUserProfile, openUserProfile, selectedPublicationId, openPublicationManager, selectedTenderId, openTenderInterestCompanies, selectedNews, openNewsDetail }) {
   const screens = {
-    "admin-dashboard": <AdminDashboard />,
+    "admin-dashboard": <AdminDashboard navigate={navigate} />,
     "invite-new": <InviteNew />,
-    "invite-list": <InviteList />,
+    "invite-list": <InviteList navigate={navigate} />,
+    "invite-accept": <InviteAccept navigate={navigate} />,
     "company-review": <CompanyReview />,
     "company-dashboard": <CompanyDashboard navigate={navigate} />,
     "company-profile-edit": <CompanyProfileEdit />,
@@ -394,9 +415,9 @@ function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAc
     "company-public-profile": <CompanyPublicProfile navigate={navigate} openPublicationManager={openPublicationManager} />,
     "publication-new": <PublicationNew />,
     "publication-list": <PublicationList selectedPublicationId={selectedPublicationId} />,
-    "radar-home": <RadarHomeConnected navigate={navigate} />,
-    "radar-detail": <RadarDetail />,
-    "radar-new": <RadarNewConnected />,
+    "radar-home": <RadarHomeConnected navigate={navigate} openNewsDetail={openNewsDetail} />,
+    "radar-detail": <RadarDetailConnected selectedNews={selectedNews} navigate={navigate} />,
+    "radar-new": <RadarNewConnected navigate={navigate} />,
     "tender-admin": <TenderAdmin />,
     "tender-new": <TenderNew />,
     "tender-list": <TenderList navigate={navigate} openTenderInterestCompanies={openTenderInterestCompanies} />,
@@ -430,38 +451,38 @@ function Page({ label, title, children, actions }) {
 
 function getPageHelp(title) {
   const help = {
-    "Painel administrativo": "Acompanhe convites, empresas pendentes, editais e pontos que exigem ação da plataforma.",
-    "Novo convite de empresa": "Cadastre a empresa que será convidada. CNPJ e nome fantasia identificam a empresa de forma única.",
-    "Lista de convites": "Veja o andamento dos convites enviados, identifique pendências e acompanhe quem já iniciou cadastro.",
-    "Análise e aprovação da empresa": "Revise os dados enviados pela empresa e decida se ela entra, ajusta informações ou será recusada.",
-    "Dashboard da empresa": "Resumo operacional da empresa: oportunidades, matches, comunidade e próximos passos em um só lugar.",
-    "Editar perfil da empresa": "Mantenha a vitrine institucional atualizada. Essas informações aparecem na comunidade e no match.",
-    "Usuários vinculados": "Gerencie quem opera pela empresa. O perfil de acesso define as permissões de cada pessoa.",
-    "Cadastro do usuário vinculado": "Inclua ou edite uma pessoa da empresa, escolhendo o perfil adequado para sua função.",
-    "Cadastrar usuário vinculado": "Inclua uma nova pessoa da empresa e envie o convite de acesso.",
-    "Editar usuário vinculado": "Atualize os dados, cargo e perfil de acesso de uma pessoa já vinculada à empresa.",
-    "Confirmar bloqueio de usuário": "Suspenda temporariamente o acesso da pessoa sem remover seu vínculo ou histórico.",
-    "Confirmar desbloqueio de usuário": "Reative o acesso de uma pessoa bloqueada para que ela volte a operar pela empresa.",
-    "Confirmar remoção de usuário": "Confirme a desativação do acesso sem apagar histórico, auditoria ou registros anteriores.",
-    "Rede de empresas": "Acompanhe publicações, encontre empresas por tema e fortaleça a presença institucional da sua empresa.",
-    "Perfil público da empresa": "Veja como a empresa aparece para a comunidade: identidade, destaques, categorias e publicações.",
-    "Criar publicação": "Publique fotos, notícias, eventos, conquistas ou conteúdo técnico no perfil e na comunidade.",
-    "Minhas publicações": "Gerencie o conteúdo publicado pela empresa e acompanhe o que está em rascunho ou visível.",
-    "Notícias e inteligência de mercado": "Conteúdo publicado pela LicitaHub para orientar empresas sobre mercado, editais e tendências.",
-    "Detalhe da notícia": "Leitura completa da notícia, com contexto e orientações úteis para a comunidade.",
-    "Cadastrar notícia": "Área do administrador para publicar comunicados, notícias e análises da plataforma.",
-    "Painel administrativo de editais": "Controle os editais cadastrados, seus status e oportunidades que já geraram interesse.",
+    "Painel administrativo": "Acompanhe convites, empresas pendentes, editais e pontos que exigem aÃ§Ã£o da plataforma.",
+    "Novo convite de empresa": "Cadastre a empresa que serÃ¡ convidada. CNPJ e nome fantasia identificam a empresa de forma Ãºnica.",
+    "Lista de convites": "Veja o andamento dos convites enviados, identifique pendÃªncias e acompanhe quem jÃ¡ iniciou cadastro.",
+    "AnÃ¡lise e aprovaÃ§Ã£o da empresa": "Revise os dados enviados pela empresa e decida se ela entra, ajusta informaÃ§Ãµes ou serÃ¡ recusada.",
+    "Dashboard da empresa": "Resumo operacional da empresa: oportunidades, matches, comunidade e prÃ³ximos passos em um sÃ³ lugar.",
+    "Editar perfil da empresa": "Mantenha a vitrine institucional atualizada. Essas informaÃ§Ãµes aparecem na comunidade e no match.",
+    "UsuÃ¡rios vinculados": "Gerencie quem opera pela empresa. O perfil de acesso define as permissÃµes de cada pessoa.",
+    "Cadastro do usuÃ¡rio vinculado": "Inclua ou edite uma pessoa da empresa, escolhendo o perfil adequado para sua funÃ§Ã£o.",
+    "Cadastrar usuÃ¡rio vinculado": "Inclua uma nova pessoa da empresa e envie o convite de acesso.",
+    "Editar usuÃ¡rio vinculado": "Atualize os dados, cargo e perfil de acesso de uma pessoa jÃ¡ vinculada Ã  empresa.",
+    "Confirmar bloqueio de usuÃ¡rio": "Suspenda temporariamente o acesso da pessoa sem remover seu vÃ­nculo ou histÃ³rico.",
+    "Confirmar desbloqueio de usuÃ¡rio": "Reative o acesso de uma pessoa bloqueada para que ela volte a operar pela empresa.",
+    "Confirmar remoÃ§Ã£o de usuÃ¡rio": "Confirme a desativaÃ§Ã£o do acesso sem apagar histÃ³rico, auditoria ou registros anteriores.",
+    "Rede de empresas": "Acompanhe publicaÃ§Ãµes, encontre empresas por tema e fortaleÃ§a a presenÃ§a institucional da sua empresa.",
+    "Perfil pÃºblico da empresa": "Veja como a empresa aparece para a comunidade: identidade, destaques, categorias e publicaÃ§Ãµes.",
+    "Criar publicaÃ§Ã£o": "Publique fotos, notÃ­cias, eventos, conquistas ou conteÃºdo tÃ©cnico no perfil e na comunidade.",
+    "Minhas publicaÃ§Ãµes": "Gerencie o conteÃºdo publicado pela empresa e acompanhe o que estÃ¡ em rascunho ou visÃ­vel.",
+    "NotÃ­cias e inteligÃªncia de mercado": "ConteÃºdo publicado pela LicitaHub para orientar empresas sobre mercado, editais e tendÃªncias.",
+    "Detalhe da notÃ­cia": "Leitura completa da notÃ­cia, com contexto e orientaÃ§Ãµes Ãºteis para a comunidade.",
+    "Cadastrar notÃ­cia": "Ãrea do administrador para publicar comunicados, notÃ­cias e anÃ¡lises da plataforma.",
+    "Painel administrativo de editais": "Controle os editais cadastrados, seus status e oportunidades que jÃ¡ geraram interesse.",
     "Cadastro de edital": "Registre a oportunidade e organize os dados principais para que empresas possam avaliar com clareza.",
     "Lista de editais": "Encontre oportunidades, marque interesse e abra o detalhe completo de cada edital.",
-    "Detalhe do edital": "Entenda a oportunidade, veja exigências e acesse a ficha técnica antes de decidir participar.",
-    "Manifestação de interesse": "Registre a posição da empresa e indique se deseja buscar parceiros para esta licitação.",
-    "Empresas interessadas no edital": "Veja empresas que também demonstraram interesse e escolha quais avaliar como possíveis parceiras.",
-    "Vitrine de parceiros": "Veja anúncios de empresas interessadas na licitação e abra os detalhes para avaliar complementaridade.",
-    "Avaliar candidata da licitação": "Avalie uma empresa por vez: veja o que ela oferece, o que falta e decida recusar ou dar match.",
-    "Detalhe do anúncio": "Visão detalhada da empresa dentro da licitação, com oferta, necessidades e aderência.",
-    "Match realizado": "Confirmação de interesse recíproco entre empresas na mesma licitação, com contato direto pelo WhatsApp."
+    "Detalhe do edital": "Entenda a oportunidade, veja exigÃªncias e acesse a ficha tÃ©cnica antes de decidir participar.",
+    "ManifestaÃ§Ã£o de interesse": "Registre a posiÃ§Ã£o da empresa e indique se deseja buscar parceiros para esta licitaÃ§Ã£o.",
+    "Empresas interessadas no edital": "Veja empresas que tambÃ©m demonstraram interesse e escolha quais avaliar como possÃ­veis parceiras.",
+    "Vitrine de parceiros": "Veja anÃºncios de empresas interessadas na licitaÃ§Ã£o e abra os detalhes para avaliar complementaridade.",
+    "Avaliar candidata da licitaÃ§Ã£o": "Avalie uma empresa por vez: veja o que ela oferece, o que falta e decida recusar ou dar match.",
+    "Detalhe do anÃºncio": "VisÃ£o detalhada da empresa dentro da licitaÃ§Ã£o, com oferta, necessidades e aderÃªncia.",
+    "Match realizado": "ConfirmaÃ§Ã£o de interesse recÃ­proco entre empresas na mesma licitaÃ§Ã£o, com contato direto pelo WhatsApp."
   };
-  return help[title] || "Tela da LicitaHub para apoiar decisões empresariais com clareza e contexto.";
+  return help[title] || "Tela da LicitaHub para apoiar decisÃµes empresariais com clareza e contexto.";
 }
 
 function Button({ children, variant = "primary", onClick, type = "button", disabled = false }) {
@@ -504,7 +525,7 @@ function ImageUploadField({ label, hint, accept = "image/*", initials = "IMG", v
     <Field label={label} hint={hint}>
       <div className={`imageUploadField ${variant === "hero" ? "imageUploadHero" : ""}`}>
         <div className={variant === "hero" ? "imageHeroPreview" : "imageMiniPreview"}>
-          {preview ? <img src={preview} alt="Prévia da imagem selecionada" /> : <span>{initials}</span>}
+          {preview ? <img src={preview} alt="PrÃ©via da imagem selecionada" /> : <span>{initials}</span>}
           {variant === "hero" && <small>{previewLabel || "Identidade visual"}</small>}
         </div>
         <div>
@@ -520,55 +541,371 @@ function Card({ children, className = "", onClick, id }) {
   return <div className={`card ${className}`} onClick={onClick} id={id}>{children}</div>;
 }
 
-function AdminDashboard() {
+function AdminDashboard({ navigate }) {
   return (
-    <Page label="Administração" title="Painel administrativo">
+    <Page label="AdministraÃ§Ã£o" title="Painel administrativo">
       <Stats items={[["Convites enviados", "12"], ["Empresas pendentes", "4"], ["Empresas ativas", "28"], ["Editais abertos", "9"]]} />
       <div className="grid two">
-        <Card><h3>Entrada de empresas</h3><p>Convites, aprovações e bloqueios ficam concentrados aqui.</p><Button>Novo convite</Button></Card>
-        <Card><h3>Editais</h3><p>Cadastre oportunidades e acompanhe manifestações de interesse.</p><Button variant="secondary">Cadastrar edital</Button></Card>
+        <Card><h3>Entrada de empresas</h3><p>Convites, aprovaÃ§Ãµes e bloqueios ficam concentrados aqui.</p><Button onClick={() => navigate("invite-new")}>Novo convite</Button></Card>
+        <Card><h3>Editais</h3><p>Cadastre oportunidades e acompanhe manifestaÃ§Ãµes de interesse.</p><Button variant="secondary">Cadastrar edital</Button></Card>
       </div>
     </Page>
   );
 }
 
+function buildInvitationLink(invitation) {
+  const token = invitation?.token || invitation?.invitation_token || "";
+  const id = invitation?.id || "";
+  const value = token ? `token=${encodeURIComponent(token)}` : id ? `id=${encodeURIComponent(id)}` : "";
+  return `${window.location.origin}${window.location.pathname}#invite-accept${value ? `?${value}` : ""}`;
+}
+
+function parseAPIResponseText(text) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) return null;
+  const jsonStart = trimmed.search(/[\[{]/);
+  if (jsonStart === -1) return { error: trimmed };
+  try {
+    return JSON.parse(trimmed.slice(jsonStart));
+  } catch {
+    return { error: trimmed };
+  }
+}
+
 function InviteNew() {
+  const [form, setForm] = useState({
+    tradeName: "",
+    cnpj: "",
+    contactName: "",
+    email: "",
+    phone: "",
+    state: "",
+    internalNote: ""
+  });
+  const [message, setMessage] = useState(null);
+  const [createdInvitation, setCreatedInvitation] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const updateField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const invitationLink = createdInvitation ? buildInvitationLink(createdInvitation) : "";
+
+  const copyInvitationLink = async () => {
+    if (!invitationLink) return;
+    try {
+      await navigator.clipboard.writeText(invitationLink);
+      setMessage({ type: "success", text: "Link do convite copiado. Agora voce pode enviar ao convidado." });
+    } catch {
+      setMessage({ type: "success", text: `Copie o link manualmente: ${invitationLink}` });
+    }
+  };
+
+  const submitInvitation = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setMessage(null);
+    setCreatedInvitation(null);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/company-invitations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form)
+      });
+
+      const text = await response.text();
+      const data = parseAPIResponseText(text);
+
+      if (!response.ok || data?.error) {
+        throw new Error(data?.error || "Nao foi possivel enviar o convite.");
+      }
+
+      setCreatedInvitation(data);
+      setMessage({ type: "success", text: "Convite gravado com sucesso. Copie o link abaixo e envie ao convidado." });
+      setForm({
+        tradeName: "",
+        cnpj: "",
+        contactName: "",
+        email: "",
+        phone: "",
+        state: "",
+        internalNote: ""
+      });
+    } catch (error) {
+      setMessage({ type: "error", text: error.message || "Nao foi possivel gravar o convite. Confirme se o backend esta ligado." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <Page label="Convites" title="Novo convite de empresa" actions={<Button>Enviar convite</Button>}>
-      <FormGrid>
-        <Field label="Nome fantasia" hint="Obrigatório. Único."><input placeholder="Engenvale Consultoria" /></Field>
-        <Field label="CNPJ" hint="Obrigatório. Único."><input placeholder="00.000.000/0000-00" /></Field>
-        <Field label="Contato principal" hint="Obrigatório. Pode repetir."><input placeholder="Nome completo" /></Field>
-        <Field label="E-mail" hint="Obrigatório. Pode repetir."><input type="email" placeholder="contato@empresa.com.br" /></Field>
-        <Field label="Telefone" hint="Obrigatório. Pode repetir."><input placeholder="(00) 00000-0000" /></Field>
-        <Field label="Estado"><select><option>Selecione</option><option>SP</option><option>MG</option></select></Field>
-      </FormGrid>
-      <Field label="Observação interna"><textarea placeholder="Visível apenas para administradores" /></Field>
+    <Page label="Convites" title="Novo convite de empresa">
+      {message && <Card className={`formFeedback ${message.type === "success" ? "success" : "dangerNotice"}`}><p>{message.text}</p></Card>}
+      {createdInvitation && (
+        <Card className="inviteLinkBox">
+          <h3>Link do convite</h3>
+          <p>Envie este link para a empresa convidada completar o cadastro no sistema.</p>
+          <div className="copyLine">
+            <input readOnly value={invitationLink} />
+            <Button type="button" onClick={copyInvitationLink}>Copiar link</Button>
+          </div>
+        </Card>
+      )}
+      <form onSubmit={submitInvitation}>
+        <FormGrid>
+          <Field label="Nome fantasia" hint="Obrigatorio. Unico."><input value={form.tradeName} onChange={(event) => updateField("tradeName", event.target.value)} placeholder="Engenvale Consultoria" required /></Field>
+          <Field label="CNPJ" hint="Obrigatorio. Unico."><input value={form.cnpj} onChange={(event) => updateField("cnpj", event.target.value)} placeholder="00.000.000/0000-00" required /></Field>
+          <Field label="Contato principal" hint="Obrigatorio. Pode repetir."><input value={form.contactName} onChange={(event) => updateField("contactName", event.target.value)} placeholder="Nome completo" required /></Field>
+          <Field label="E-mail" hint="Obrigatorio. Pode repetir."><input type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} placeholder="contato@empresa.com.br" required /></Field>
+          <Field label="Telefone" hint="Obrigatorio. Pode repetir."><input value={form.phone} onChange={(event) => updateField("phone", event.target.value)} placeholder="(00) 00000-0000" required /></Field>
+          <Field label="Estado"><select value={form.state} onChange={(event) => updateField("state", event.target.value)}><option value="">Selecione</option><option>SP</option><option>MG</option><option>RJ</option><option>BA</option><option>PR</option><option>SC</option><option>RS</option><option>GO</option><option>DF</option><option>PE</option><option>CE</option><option>PA</option></select></Field>
+        </FormGrid>
+        <Field label="Observacao interna"><textarea value={form.internalNote} onChange={(event) => updateField("internalNote", event.target.value)} placeholder="Visivel apenas para administradores" /></Field>
+        <div className="formActionBar">
+          <Button type="submit" disabled={saving}>{saving ? "Enviando..." : "Enviar convite"}</Button>
+        </div>
+      </form>
     </Page>
   );
 }
 
-function InviteList() {
+function InviteList({ navigate }) {
+  const [invitations, setInvitations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState(null);
+  const [filters, setFilters] = useState({ search: "", status: "" });
+
+  const loadInvitations = () => {
+    setLoading(true);
+    fetch(`${API_BASE_URL}/api/company-invitations`)
+      .then((response) => {
+        if (!response.ok) throw new Error("Nao foi possivel carregar os convites.");
+        return response.json();
+      })
+      .then((data) => {
+        setInvitations(Array.isArray(data) ? data : []);
+        setMessage(null);
+      })
+      .catch((error) => setMessage({ type: "error", text: error.message || "Nao foi possivel carregar os convites. Confirme se o backend esta ligado." }))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadInvitations();
+  }, []);
+
+  const copyInvitationLink = async (invitation) => {
+    const link = buildInvitationLink(invitation);
+    try {
+      await navigator.clipboard.writeText(link);
+      setMessage({ type: "success", text: "Link do convite copiado." });
+    } catch {
+      setMessage({ type: "success", text: `Copie o link manualmente: ${link}` });
+    }
+  };
+
+  const statusLabel = (status) => ({
+    sent: "Enviado",
+    pending_review: "Aguardando analise",
+    accepted: "Aceito",
+    expired: "Expirado",
+    cancelled: "Cancelado",
+    rejected: "Recusado"
+  }[status] || status || "-");
+
+  const filteredInvitations = invitations.filter((invitation) => {
+    const search = filters.search.trim().toLowerCase();
+    const status = filters.status;
+    const matchesSearch = !search || [
+      invitation.tradeName,
+      invitation.cnpj,
+      invitation.contactName,
+      invitation.email,
+      invitation.phone
+    ].some((value) => String(value || "").toLowerCase().includes(search));
+    const matchesStatus = !status || invitation.status === status;
+    return matchesSearch && matchesStatus;
+  });
+
   return (
-    <Page label="Convites" title="Lista de convites" actions={<Button>Novo convite</Button>}>
-      <Table columns={["Empresa", "CNPJ", "Contato", "E-mail", "Telefone", "Status"]} rows={[
-        ["Engenvale Consultoria", "12.345.678/0001-90", "Marina Costa", "marina@engenvale.com.br", "(11) 98888-1000", "Enviado"],
-        ["Plano Sul Engenharia", "22.222.222/0001-22", "Carlos Lima", "contato@planosul.com.br", "(41) 3333-2020", "Aguardando aprovação"]
-      ]} />
+    <Page label="Convites" title="Lista de convites" actions={<Button onClick={() => navigate("invite-new")}>Novo convite</Button>}>
+      {message && <Card className={`formFeedback ${message.type === "success" ? "success" : "dangerNotice"}`}><p>{message.text}</p></Card>}
+      <Card className="formFeedback">
+        <FormGrid>
+          <Field label="Buscar convite"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Empresa, CNPJ, e-mail ou telefone" /></Field>
+          <Field label="Status"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos</option><option value="sent">Enviado</option><option value="pending_review">Aguardando analise</option><option value="accepted">Aceito</option><option value="cancelled">Cancelado</option><option value="rejected">Recusado</option><option value="expired">Expirado</option></select></Field>
+        </FormGrid>
+      </Card>
+      {loading && <Card className="formFeedback"><p>Carregando convites do banco...</p></Card>}
+      {!loading && invitations.length === 0 && <Card className="formFeedback"><p>Nenhum convite gravado ainda.</p></Card>}
+      {!loading && invitations.length > 0 && filteredInvitations.length === 0 && <Card className="formFeedback"><p>Nenhum convite encontrado com esses filtros.</p></Card>}
+      {!loading && filteredInvitations.length > 0 && (
+        <Table columns={["Empresa", "CNPJ", "Contato", "E-mail", "Telefone", "Status", "Link"]} rows={filteredInvitations.map((invitation) => [
+          invitation.tradeName,
+          invitation.cnpj,
+          invitation.contactName,
+          invitation.email,
+          invitation.phone,
+          statusLabel(invitation.status),
+          <button className="iconButton secondaryIcon" key={`${invitation.id}-copy`} title="Copiar link do convite" aria-label="Copiar link do convite" onClick={() => copyInvitationLink(invitation)}>🔗</button>
+        ])} />
+      )}
+    </Page>
+  );
+}
+
+function InviteAccept({ navigate }) {
+  const params = currentHashParams();
+  const token = params.get("token") || "";
+  const invitationId = params.get("id") || "";
+  const [invitation, setInvitation] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [form, setForm] = useState({
+    website: "",
+    institutionalDescription: "",
+    city: "",
+    state: "",
+    adminFullName: "",
+    adminEmail: "",
+    adminPhone: "",
+    adminJobTitle: "",
+    password: "",
+    confirmPassword: ""
+  });
+
+  const updateField = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+
+  useEffect(() => {
+    const endpoint = token
+      ? `${API_BASE_URL}/api/company-invitations/by-token?token=${encodeURIComponent(token)}`
+      : invitationId
+        ? `${API_BASE_URL}/api/company-invitations/${encodeURIComponent(invitationId)}`
+        : "";
+
+    if (!endpoint) {
+      setLoading(false);
+      setMessage({ type: "error", text: "Link do convite invalido. Solicite um novo link ao administrador." });
+      return;
+    }
+
+    fetch(endpoint)
+      .then((response) => {
+        if (!response.ok) throw new Error("Nao foi possivel carregar o convite.");
+        return response.text();
+      })
+      .then((text) => {
+        const data = parseAPIResponseText(text);
+        if (!data || data.error) throw new Error(data?.error || "Convite nao encontrado.");
+        setInvitation(data);
+        setForm((current) => ({
+          ...current,
+          state: data.state || "",
+          adminFullName: data.contactName || "",
+          adminEmail: data.email || "",
+          adminPhone: data.phone || ""
+        }));
+      })
+      .catch((error) => setMessage({ type: "error", text: error.message || "Nao foi possivel carregar o convite." }))
+      .finally(() => setLoading(false));
+  }, [token, invitationId]);
+
+  const submitAccept = async (event) => {
+    event.preventDefault();
+    setMessage(null);
+
+    if (form.password.length < 8) {
+      setMessage({ type: "error", text: "A senha deve ter pelo menos 8 caracteres." });
+      return;
+    }
+    if (form.password !== form.confirmPassword) {
+      setMessage({ type: "error", text: "A confirmacao da senha nao confere." });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const endpoint = token
+        ? `${API_BASE_URL}/api/company-invitations/by-token/accept`
+        : `${API_BASE_URL}/api/company-invitations/${encodeURIComponent(invitationId || invitation?.id)}/accept`;
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token,
+          invitationId: invitationId || invitation?.id || "",
+          website: form.website,
+          institutionalDescription: form.institutionalDescription,
+          city: form.city,
+          state: form.state,
+          adminFullName: form.adminFullName,
+          adminEmail: form.adminEmail,
+          adminPhone: form.adminPhone,
+          adminJobTitle: form.adminJobTitle,
+          password: form.password
+        })
+      });
+
+      const data = parseAPIResponseText(await response.text());
+      if (!response.ok || data?.error) {
+        throw new Error(data?.error || "Nao foi possivel aceitar o convite.");
+      }
+
+      setMessage({ type: "success", text: "Cadastro enviado com sucesso. A empresa agora ficou aguardando analise da LicitaHub." });
+    } catch (error) {
+      setMessage({ type: "error", text: error.message || "Nao foi possivel concluir o aceite do convite." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Page label="Convite" title="Aceite do convite">
+      {message && <Card className={`formFeedback ${message.type === "success" ? "success" : "dangerNotice"}`}><p>{message.text}</p></Card>}
+      {loading && <Card className="formFeedback"><p>Carregando convite...</p></Card>}
+      {invitation && (
+        <form onSubmit={submitAccept}>
+          <Card className="inviteLinkBox">
+            <h3>{invitation.tradeName}</h3>
+            <p>CNPJ {invitation.cnpj} | convite para {invitation.email}</p>
+          </Card>
+          <FormGrid>
+            <Field label="Nome fantasia"><input value={invitation.tradeName || ""} readOnly /></Field>
+            <Field label="CNPJ"><input value={invitation.cnpj || ""} readOnly /></Field>
+            <Field label="Site da empresa"><input value={form.website} onChange={(event) => updateField("website", event.target.value)} placeholder="https://www.empresa.com.br" /></Field>
+            <Field label="Cidade"><input value={form.city} onChange={(event) => updateField("city", event.target.value)} placeholder="Cidade sede" /></Field>
+            <Field label="Estado"><input value={form.state} onChange={(event) => updateField("state", event.target.value.toUpperCase())} placeholder="UF" maxLength="2" /></Field>
+            <Field label="Nome do administrador"><input value={form.adminFullName} onChange={(event) => updateField("adminFullName", event.target.value)} required /></Field>
+            <Field label="E-mail do administrador"><input type="email" value={form.adminEmail} onChange={(event) => updateField("adminEmail", event.target.value)} required /></Field>
+            <Field label="Telefone do administrador"><input value={form.adminPhone} onChange={(event) => updateField("adminPhone", event.target.value)} required /></Field>
+            <Field label="Cargo ou funcao"><input value={form.adminJobTitle} onChange={(event) => updateField("adminJobTitle", event.target.value)} placeholder="Ex.: Diretor comercial" /></Field>
+            <Field label="Senha de acesso" hint="Minimo de 8 caracteres."><input type="password" value={form.password} onChange={(event) => updateField("password", event.target.value)} required /></Field>
+            <Field label="Confirmar senha"><input type="password" value={form.confirmPassword} onChange={(event) => updateField("confirmPassword", event.target.value)} required /></Field>
+          </FormGrid>
+          <Field label="Descricao institucional"><textarea value={form.institutionalDescription} onChange={(event) => updateField("institutionalDescription", event.target.value)} placeholder="Resumo da atuacao da empresa" /></Field>
+          <div className="formActionBar">
+            <Button type="submit" disabled={saving}>{saving ? "Enviando..." : "Enviar cadastro para analise"}</Button>
+          </div>
+        </form>
+      )}
     </Page>
   );
 }
 
 function CompanyReview() {
   return (
-    <Page label="Administração" title="Análise e aprovação da empresa">
+    <Page label="AdministraÃ§Ã£o" title="AnÃ¡lise e aprovaÃ§Ã£o da empresa">
       <FormGrid>
         <Field label="Empresa"><input value="Plano Sul Engenharia" readOnly /></Field>
         <Field label="CNPJ"><input value="22.222.222/0001-22" readOnly /></Field>
         <Field label="Contato"><input value="Carlos Lima" readOnly /></Field>
-        <Field label="Status"><input value="Aguardando aprovação" readOnly /></Field>
+        <Field label="Status"><input value="Aguardando aprovaÃ§Ã£o" readOnly /></Field>
       </FormGrid>
-      <Field label="Solicitação de ajuste"><textarea placeholder="Informe o que precisa ser corrigido" /></Field>
+      <Field label="SolicitaÃ§Ã£o de ajuste"><textarea placeholder="Informe o que precisa ser corrigido" /></Field>
       <div className="actions"><Button>Aprovar</Button><Button variant="secondary">Solicitar ajuste</Button><Button variant="danger">Recusar</Button></div>
     </Page>
   );
@@ -579,9 +916,9 @@ function CompanyDashboard({ navigate }) {
     <Page label="Empresa" title="Dashboard da empresa" actions={<Button onClick={() => navigate("company-profile-edit")}>Atualizar perfil</Button>}>
       <Stats items={stats} />
       <div className="grid three">
-        <Card><h3>Próximos editais</h3><p>3 oportunidades têm aderência alta com o perfil da empresa.</p></Card>
-        <Card><h3>Comunidade</h3><p>Novas publicações de empresas de saneamento e supervisão ambiental.</p></Card>
-        <Card><h3>Matches</h3><p>2 conversas aguardam atualização de status.</p></Card>
+        <Card><h3>PrÃ³ximos editais</h3><p>3 oportunidades tÃªm aderÃªncia alta com o perfil da empresa.</p></Card>
+        <Card><h3>Comunidade</h3><p>Novas publicaÃ§Ãµes de empresas de saneamento e supervisÃ£o ambiental.</p></Card>
+        <Card><h3>Matches</h3><p>2 conversas aguardam atualizaÃ§Ã£o de status.</p></Card>
       </div>
     </Page>
   );
@@ -593,16 +930,16 @@ function CompanyProfileEdit() {
       <div className="profileEditGrid">
         <Card>
           <h3>Identidade visual</h3>
-          <ImageUploadField label="Logomarca da empresa" hint="PNG, JPG ou SVG. Recomenda-se imagem quadrada. Usada no perfil público, comunidade e avaliação candidata." accept="image/png,image/jpeg,image/svg+xml" initials="EC" variant="hero" previewLabel="Identidade visual" />
+          <ImageUploadField label="Logomarca da empresa" hint="PNG, JPG ou SVG. Recomenda-se imagem quadrada. Usada no perfil pÃºblico, comunidade e avaliaÃ§Ã£o candidata." accept="image/png,image/jpeg,image/svg+xml" initials="EC" variant="hero" previewLabel="Identidade visual" />
         </Card>
         <div>
           <FormGrid>
-            <Field label="Nome fantasia" hint="Único."><input value="Engenvale Consultoria" readOnly /></Field>
-            <Field label="CNPJ" hint="Único."><input value="12.345.678/0001-90" readOnly /></Field>
+            <Field label="Nome fantasia" hint="Ãšnico."><input value="Engenvale Consultoria" readOnly /></Field>
+            <Field label="CNPJ" hint="Ãšnico."><input value="12.345.678/0001-90" readOnly /></Field>
             <Field label="Site"><input placeholder="https://www.empresa.com.br" /></Field>
-            <Field label="Porte"><select><option>Média</option><option>Pequena</option><option>Grande</option></select></Field>
+            <Field label="Porte"><select><option>MÃ©dia</option><option>Pequena</option><option>Grande</option></select></Field>
           </FormGrid>
-          <Field label="Descrição institucional"><textarea placeholder="Resumo profissional da atuação da empresa" /></Field>
+          <Field label="DescriÃ§Ã£o institucional"><textarea placeholder="Resumo profissional da atuaÃ§Ã£o da empresa" /></Field>
         </div>
       </div>
     </Page>
@@ -611,18 +948,18 @@ function CompanyProfileEdit() {
 
 function CompanyUsers({ navigate, userStatuses, openUserAction, openUserProfile }) {
   const users = [
-    { id: "marina", name: "Marina Costa", email: "marina@engenvale.com.br", phone: "(11) 98888-1000", job: "Diretora comercial", role: "Administrador da empresa", permissions: "Gerencia perfil, usuários, publicações, editais e match" },
-    { id: "renato", name: "Renato Alves", email: "renato@engenvale.com.br", phone: "(31) 97777-2020", job: "Coordenador técnico", role: "Técnico", permissions: "Visualiza editais e apoia análise técnica" },
+    { id: "marina", name: "Marina Costa", email: "marina@engenvale.com.br", phone: "(11) 98888-1000", job: "Diretora comercial", role: "Administrador da empresa", permissions: "Gerencia perfil, usuÃ¡rios, publicaÃ§Ãµes, editais e match" },
+    { id: "renato", name: "Renato Alves", email: "renato@engenvale.com.br", phone: "(31) 97777-2020", job: "Coordenador tÃ©cnico", role: "TÃ©cnico", permissions: "Visualiza editais e apoia anÃ¡lise tÃ©cnica" },
     { id: "paula", name: "Paula Martins", email: "paula@engenvale.com.br", phone: "(41) 96666-3030", job: "Relacionamento institucional", role: "Comercial / Relacionamento", permissions: "Publica, manifesta interesse e participa do match" }
   ];
 
   return (
-    <Page label="Empresa" title="Usuários vinculados" actions={<Button onClick={() => openUserProfile(null, "create")}>Adicionar usuário</Button>}>
+    <Page label="Empresa" title="UsuÃ¡rios vinculados" actions={<Button onClick={() => openUserProfile(null, "create")}>Adicionar usuÃ¡rio</Button>}>
       <Card className="notice">
-        <strong>Permissões por perfil</strong>
-        <p>As permissões não são marcadas individualmente. Cada usuário recebe um perfil de acesso, e o perfil define o que ele pode fazer.</p>
+        <strong>PermissÃµes por perfil</strong>
+        <p>As permissÃµes nÃ£o sÃ£o marcadas individualmente. Cada usuÃ¡rio recebe um perfil de acesso, e o perfil define o que ele pode fazer.</p>
       </Card>
-      <Table columns={["Nome", "E-mail", "Perfil", "Permissões do perfil", "Status", "Ações"]} rows={users.map((user) => [
+      <Table columns={["Nome", "E-mail", "Perfil", "PermissÃµes do perfil", "Status", "AÃ§Ãµes"]} rows={users.map((user) => [
         user.name,
         user.email,
         user.role,
@@ -643,9 +980,9 @@ function UserRowActions({ navigate, user, status, openUserAction, openUserProfil
   const blocked = status === "Bloqueado";
   return (
     <div className="rowActions compactActions">
-      <button className="iconButton secondaryIcon" title="Editar usuário" aria-label="Editar usuário" onClick={() => openUserProfile(user, "edit")}>✎</button>
-      <button className={blocked ? "iconButton successIcon" : "iconButton warningIcon"} title={blocked ? "Desbloquear usuário" : "Bloquear usuário"} aria-label={blocked ? "Desbloquear usuário" : "Bloquear usuário"} onClick={() => openUserAction(user.id, user.name, blocked ? "unblock" : "block")}>{blocked ? "✓" : "!"}</button>
-      <button className="iconButton dangerIcon" title="Remover acesso" aria-label="Remover acesso" onClick={() => openUserAction(user.id, user.name, "remove")}>×</button>
+      <button className="iconButton secondaryIcon" title="Editar usuÃ¡rio" aria-label="Editar usuÃ¡rio" onClick={() => openUserProfile(user, "edit")}>âœŽ</button>
+      <button className={blocked ? "iconButton successIcon" : "iconButton warningIcon"} title={blocked ? "Desbloquear usuÃ¡rio" : "Bloquear usuÃ¡rio"} aria-label={blocked ? "Desbloquear usuÃ¡rio" : "Bloquear usuÃ¡rio"} onClick={() => openUserAction(user.id, user.name, blocked ? "unblock" : "block")}>{blocked ? "âœ“" : "!"}</button>
+      <button className="iconButton dangerIcon" title="Remover acesso" aria-label="Remover acesso" onClick={() => openUserAction(user.id, user.name, "remove")}>Ã—</button>
     </div>
   );
 }
@@ -654,49 +991,49 @@ function CompanyUserProfile({ selectedUserProfile }) {
   const isEdit = selectedUserProfile?.mode === "edit";
   const user = selectedUserProfile?.user || {};
   return (
-    <Page label="Empresa" title={isEdit ? "Editar usuário vinculado" : "Cadastrar usuário vinculado"} actions={<Button>{isEdit ? "Salvar alterações" : "Enviar convite"}</Button>}>
+    <Page label="Empresa" title={isEdit ? "Editar usuÃ¡rio vinculado" : "Cadastrar usuÃ¡rio vinculado"} actions={<Button>{isEdit ? "Salvar alteraÃ§Ãµes" : "Enviar convite"}</Button>}>
       <FormGrid>
-        <Field label="Nome completo"><input defaultValue={user.name || ""} placeholder="Nome do usuário" /></Field>
+        <Field label="Nome completo"><input defaultValue={user.name || ""} placeholder="Nome do usuÃ¡rio" /></Field>
         <Field label="E-mail"><input type="email" defaultValue={user.email || ""} placeholder="usuario@empresa.com.br" /></Field>
         <Field label="Telefone"><input defaultValue={user.phone || ""} placeholder="(00) 00000-0000" /></Field>
-        <Field label="Cargo ou função"><input defaultValue={user.job || ""} placeholder="Ex.: Coordenador técnico" /></Field>
+        <Field label="Cargo ou funÃ§Ã£o"><input defaultValue={user.job || ""} placeholder="Ex.: Coordenador tÃ©cnico" /></Field>
         <ImageUploadField label="Foto do profissional" hint="Usada no perfil interno e no rascunho de boas-vindas." initials="M" />
-        <Field label="Perfil de acesso"><select defaultValue={user.role || "Comercial / Relacionamento"}><option>Administrador da empresa</option><option>Comercial / Relacionamento</option><option>Técnico</option><option>Leitor</option></select></Field>
+        <Field label="Perfil de acesso"><select defaultValue={user.role || "Comercial / Relacionamento"}><option>Administrador da empresa</option><option>Comercial / Relacionamento</option><option>TÃ©cnico</option><option>Leitor</option></select></Field>
         <Field label="Status"><select><option>Convite pendente</option><option>Ativo</option><option>Bloqueado</option><option>Inativo</option></select></Field>
       </FormGrid>
       {!isEdit && (
         <Card className="notice userWelcomePost">
           <div>
-            <h3>Publicação automática de novo profissional</h3>
+            <h3>PublicaÃ§Ã£o automÃ¡tica de novo profissional</h3>
             <p>Ao enviar o convite, a LicitaHub pode criar um rascunho na categoria Equipe comercial para anunciar o novo membro com foto, nome e cargo.</p>
           </div>
           <label className="inlineCheck"><input type="checkbox" defaultChecked /> Criar rascunho de boas-vindas</label>
           <div className="welcomePostPreview">
             <span className="avatar">M</span>
             <div>
-              <strong>Prévia do rascunho</strong>
-              <p>Marina Costa passa a integrar a equipe comercial da Engenvale Consultoria como Coordenadora Comercial, fortalecendo nosso relacionamento com parceiros e oportunidades públicas.</p>
+              <strong>PrÃ©via do rascunho</strong>
+              <p>Marina Costa passa a integrar a equipe comercial da Engenvale Consultoria como Coordenadora Comercial, fortalecendo nosso relacionamento com parceiros e oportunidades pÃºblicas.</p>
             </div>
           </div>
         </Card>
       )}
-      <Field label="Observação interna"><textarea placeholder="Anotação visível apenas para administradores da empresa" /></Field>
+      <Field label="ObservaÃ§Ã£o interna"><textarea placeholder="AnotaÃ§Ã£o visÃ­vel apenas para administradores da empresa" /></Field>
     </Page>
   );
 }
 
 function CompanyUserAccessConfirm({ navigate, selectedUserAction, updateUserStatus, mode }) {
   const isUnlock = mode === "unblock";
-  const userName = selectedUserAction?.name || "usuário selecionado";
+  const userName = selectedUserAction?.name || "usuÃ¡rio selecionado";
   return (
-    <Page label="Empresa" title={isUnlock ? "Confirmar desbloqueio de usuário" : "Confirmar bloqueio de usuário"} actions={<Button variant={isUnlock ? "primary" : "danger"} onClick={() => updateUserStatus(selectedUserAction.id, isUnlock ? "Ativo" : "Bloqueado")}>{isUnlock ? "Confirmar desbloqueio" : "Confirmar bloqueio"}</Button>}>
+    <Page label="Empresa" title={isUnlock ? "Confirmar desbloqueio de usuÃ¡rio" : "Confirmar bloqueio de usuÃ¡rio"} actions={<Button variant={isUnlock ? "primary" : "danger"} onClick={() => updateUserStatus(selectedUserAction.id, isUnlock ? "Ativo" : "Bloqueado")}>{isUnlock ? "Confirmar desbloqueio" : "Confirmar bloqueio"}</Button>}>
       <Card className={isUnlock ? "notice" : "dangerCard"}>
         <h3>{isUnlock ? `Desbloquear acesso de ${userName}?` : `Bloquear acesso de ${userName}?`}</h3>
-        <p>{isUnlock ? "Ao confirmar, a pessoa volta a acessar a conta da empresa conforme seu perfil de acesso." : "Ao confirmar, a pessoa deixa de acessar a conta da empresa até que um administrador faça o desbloqueio."}</p>
+        <p>{isUnlock ? "Ao confirmar, a pessoa volta a acessar a conta da empresa conforme seu perfil de acesso." : "Ao confirmar, a pessoa deixa de acessar a conta da empresa atÃ© que um administrador faÃ§a o desbloqueio."}</p>
         <div className="impactList">
-          <span>{isUnlock ? "O usuário volta a entrar na plataforma." : "O usuário não conseguirá entrar na área da empresa."}</span>
-          <span>Histórico, publicações e registros anteriores continuam preservados.</span>
-          <span>{isUnlock ? "O botão voltará a aparecer como Bloquear na lista." : "O botão passará a aparecer como Desbloquear na lista."}</span>
+          <span>{isUnlock ? "O usuÃ¡rio volta a entrar na plataforma." : "O usuÃ¡rio nÃ£o conseguirÃ¡ entrar na Ã¡rea da empresa."}</span>
+          <span>HistÃ³rico, publicaÃ§Ãµes e registros anteriores continuam preservados.</span>
+          <span>{isUnlock ? "O botÃ£o voltarÃ¡ a aparecer como Bloquear na lista." : "O botÃ£o passarÃ¡ a aparecer como Desbloquear na lista."}</span>
         </div>
         <div className="actions"><Button variant={isUnlock ? "primary" : "danger"} onClick={() => updateUserStatus(selectedUserAction.id, isUnlock ? "Ativo" : "Bloqueado")}>{isUnlock ? "Confirmar desbloqueio" : "Confirmar bloqueio"}</Button><Button variant="secondary" onClick={() => navigate("company-users")}>Cancelar</Button></div>
       </Card>
@@ -705,18 +1042,18 @@ function CompanyUserAccessConfirm({ navigate, selectedUserAction, updateUserStat
 }
 
 function CompanyUserDelete({ navigate, selectedUserAction }) {
-  const userName = selectedUserAction?.name || "usuário selecionado";
+  const userName = selectedUserAction?.name || "usuÃ¡rio selecionado";
   return (
-    <Page label="Empresa" title="Confirmar remoção de usuário" actions={<Button variant="danger">Confirmar remoção</Button>}>
+    <Page label="Empresa" title="Confirmar remoÃ§Ã£o de usuÃ¡rio" actions={<Button variant="danger">Confirmar remoÃ§Ã£o</Button>}>
       <Card className="dangerCard">
         <h3>Remover acesso de {userName}?</h3>
-        <p>Esta ação desativa o acesso da pessoa à conta da empresa, mas preserva histórico, auditoria e registros já realizados.</p>
+        <p>Esta aÃ§Ã£o desativa o acesso da pessoa Ã  conta da empresa, mas preserva histÃ³rico, auditoria e registros jÃ¡ realizados.</p>
         <div className="impactList">
-          <span>Ela não poderá mais acessar a empresa.</span>
-          <span>Publicações, interesses e ações antigas continuam registrados.</span>
-          <span>Você poderá reativar o acesso depois, se necessário.</span>
+          <span>Ela nÃ£o poderÃ¡ mais acessar a empresa.</span>
+          <span>PublicaÃ§Ãµes, interesses e aÃ§Ãµes antigas continuam registrados.</span>
+          <span>VocÃª poderÃ¡ reativar o acesso depois, se necessÃ¡rio.</span>
         </div>
-        <div className="actions"><Button variant="danger">Confirmar remoção</Button><Button variant="secondary" onClick={() => navigate("company-users")}>Cancelar</Button></div>
+        <div className="actions"><Button variant="danger">Confirmar remoÃ§Ã£o</Button><Button variant="secondary" onClick={() => navigate("company-users")}>Cancelar</Button></div>
       </Card>
     </Page>
   );
@@ -725,11 +1062,11 @@ function CompanyUserDelete({ navigate, selectedUserAction }) {
 function CommunityHome() {
   const posts = [
     {
-      category: "Notícias",
+      category: "NotÃ­cias",
       company: "GeoArq Projetos",
       region: "MG",
-      title: "Estudos arqueológicos preventivos em nova frente de infraestrutura",
-      text: "Compartilhamos bastidores de campo e integração com equipes ambientais em contrato público de infraestrutura.",
+      title: "Estudos arqueolÃ³gicos preventivos em nova frente de infraestrutura",
+      text: "Compartilhamos bastidores de campo e integraÃ§Ã£o com equipes ambientais em contrato pÃºblico de infraestrutura.",
       likes: ["Engenvale Consultoria", "Plano Sul Engenharia", "SocialTec Consultoria"],
       comments: [
         { company: "Engenvale Consultoria", text: "Tema muito relevante para editais com interface socioambiental." },
@@ -740,23 +1077,23 @@ function CommunityHome() {
       category: "Conquistas",
       company: "Plano Sul Engenharia",
       region: "PR",
-      title: "Certificação técnica da equipe de supervisão ambiental",
-      text: "Nossa equipe concluiu nova etapa de qualificação para contratos de supervisão de obras e programas ambientais.",
+      title: "CertificaÃ§Ã£o tÃ©cnica da equipe de supervisÃ£o ambiental",
+      text: "Nossa equipe concluiu nova etapa de qualificaÃ§Ã£o para contratos de supervisÃ£o de obras e programas ambientais.",
       likes: ["GeoArq Projetos", "Engenvale Consultoria"],
       comments: [
-        { company: "GeoArq Projetos", text: "Parabéns pela conquista da equipe." }
+        { company: "GeoArq Projetos", text: "ParabÃ©ns pela conquista da equipe." }
       ]
     },
     {
       category: "Equipe comercial",
       company: "Engenvale Consultoria",
       region: "SP",
-      title: "Equipe comercial reunida para planejamento de oportunidades públicas",
-      text: "Semana dedicada à leitura de mercado, qualificação de editais e aproximação com possíveis parceiros técnicos.",
+      title: "Equipe comercial reunida para planejamento de oportunidades pÃºblicas",
+      text: "Semana dedicada Ã  leitura de mercado, qualificaÃ§Ã£o de editais e aproximaÃ§Ã£o com possÃ­veis parceiros tÃ©cnicos.",
       likes: ["SocialTec Consultoria", "GeoArq Projetos", "Plano Sul Engenharia", "Ambiental Norte"],
       comments: [
-        { company: "SocialTec Consultoria", text: "Ótima iniciativa para aproximação entre empresas." },
-        { company: "Ambiental Norte", text: "Acompanhando as oportunidades também." }
+        { company: "SocialTec Consultoria", text: "Ã“tima iniciativa para aproximaÃ§Ã£o entre empresas." },
+        { company: "Ambiental Norte", text: "Acompanhando as oportunidades tambÃ©m." }
       ]
     }
   ];
@@ -771,9 +1108,9 @@ function CommunityHome() {
               <div>
                 <textarea placeholder="O que sua empresa quer publicar na comunidade?" />
                 <div className="composerFields">
-                  <select><option>Tipo de publicação</option><option>Equipe comercial</option><option>Notícias</option><option>Atividades</option><option>Eventos</option><option>Conquistas</option><option>Conteúdo técnico</option></select>
+                  <select><option>Tipo de publicaÃ§Ã£o</option><option>Equipe comercial</option><option>NotÃ­cias</option><option>Atividades</option><option>Eventos</option><option>Conquistas</option><option>ConteÃºdo tÃ©cnico</option></select>
                   <ImageUploadField label="Imagem" />
-                  <button className="iconButton publishIcon" title="Publicar" aria-label="Publicar">↑</button>
+                  <button className="iconButton publishIcon" title="Publicar" aria-label="Publicar">â†‘</button>
                 </div>
               </div>
             </Card>
@@ -784,7 +1121,7 @@ function CommunityHome() {
               <span>Empresa</span>
               <input placeholder="Buscar pelo nome da empresa" />
             </div>
-            <select><option>Todos os tipos</option><option>Equipe comercial</option><option>Notícias</option><option>Atividades</option><option>Eventos</option><option>Conquistas</option><option>Conteúdo técnico</option><option>Destaques</option></select>
+            <select><option>Todos os tipos</option><option>Equipe comercial</option><option>NotÃ­cias</option><option>Atividades</option><option>Eventos</option><option>Conquistas</option><option>ConteÃºdo tÃ©cnico</option><option>Destaques</option></select>
             <select><option>Brasil inteiro</option><option>SP</option><option>MG</option><option>PR</option></select>
           </div>
         </div>
@@ -800,7 +1137,7 @@ function CommunityHome() {
   );
 }
 
-function PostCard({ id, category, company, region = "BR", title, text = "Texto de exemplo da publicação com contexto empresarial, técnico e institucional.", likes = [], comments = [], imageLabel, onOpenPublication }) {
+function PostCard({ id, category, company, region = "BR", title, text = "Texto de exemplo da publicaÃ§Ã£o com contexto empresarial, tÃ©cnico e institucional.", likes = [], comments = [], imageLabel, onOpenPublication }) {
   const [showLikes, setShowLikes] = useState(false);
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -818,27 +1155,27 @@ function PostCard({ id, category, company, region = "BR", title, text = "Texto d
       </div>
       <div className="postImage">
         <span>{imageLabel || category}</span>
-        <small>Imagem da publicação</small>
+        <small>Imagem da publicaÃ§Ã£o</small>
       </div>
       <h3>{title}</h3>
       <p>{text}</p>
       <div className="engagementSummary">
         <button onClick={(event) => { stopPostClick(event); setShowLikes(!showLikes); }}>{likeList.length} curtidas</button>
-        <button type="button" onClick={(event) => { stopPostClick(event); setShowComments((open) => !open); }}>{comments.length} comentários</button>
+        <button type="button" onClick={(event) => { stopPostClick(event); setShowComments((open) => !open); }}>{comments.length} comentÃ¡rios</button>
       </div>
       {showLikes && <div className="likedBy">{likeList.map((name) => <span key={name}>{name}</span>)}</div>}
       {showComments && (
         <div className="commentPanel">
           <div className="commentPanelHeader">
-            <strong>Comentários</strong>
-            <button type="button" className="commentCloseButton" title="Recolher comentários" aria-label="Recolher comentários" onClick={(event) => { stopPostClick(event); setShowComments(false); }}>×</button>
+            <strong>ComentÃ¡rios</strong>
+            <button type="button" className="commentCloseButton" title="Recolher comentÃ¡rios" aria-label="Recolher comentÃ¡rios" onClick={(event) => { stopPostClick(event); setShowComments(false); }}>Ã—</button>
           </div>
           <div className="commentComposer">
-            <input placeholder="Escreva um comentário..." onClick={stopPostClick} />
-            <button type="button" className="iconButton publishIcon" title="Enviar comentário" aria-label="Enviar comentário" onClick={stopPostClick}>↑</button>
+            <input placeholder="Escreva um comentÃ¡rio..." onClick={stopPostClick} />
+            <button type="button" className="iconButton publishIcon" title="Enviar comentÃ¡rio" aria-label="Enviar comentÃ¡rio" onClick={stopPostClick}>â†‘</button>
           </div>
           <div className="commentList">
-            {comments.length === 0 && <p className="emptyComments">Nenhum comentário ainda.</p>}
+            {comments.length === 0 && <p className="emptyComments">Nenhum comentÃ¡rio ainda.</p>}
             {comments.map((comment) => (
               <div className="commentItem" key={`${comment.company}-${comment.text}`}>
                 <strong>{comment.company}</strong>
@@ -849,9 +1186,9 @@ function PostCard({ id, category, company, region = "BR", title, text = "Texto d
         </div>
       )}
       <div className="postActions compactPostActions">
-        <button className={`iconButton likeIcon ${liked ? "active" : ""}`} title={liked ? "Descurtir publicação" : "Curtir publicação"} aria-label={liked ? "Descurtir publicação" : "Curtir publicação"} onClick={(event) => { stopPostClick(event); setLiked(!liked); }}>{liked ? "♥" : "♡"}</button>
-        <button type="button" className={`iconButton commentIcon ${showComments ? "active" : ""}`} title={showComments ? "Ocultar comentários" : "Comentar publicação"} aria-label={showComments ? "Ocultar comentários" : "Comentar publicação"} onClick={(event) => { stopPostClick(event); setShowComments((open) => !open); }}>↵</button>
-        <button className={`iconButton saveIcon ${saved ? "active" : ""}`} title={saved ? "Remover dos favoritos" : "Favoritar publicação"} aria-label={saved ? "Remover dos favoritos" : "Favoritar publicação"} onClick={(event) => { stopPostClick(event); setSaved(!saved); }}>{saved ? "★" : "☆"}</button>
+        <button className={`iconButton likeIcon ${liked ? "active" : ""}`} title={liked ? "Descurtir publicaÃ§Ã£o" : "Curtir publicaÃ§Ã£o"} aria-label={liked ? "Descurtir publicaÃ§Ã£o" : "Curtir publicaÃ§Ã£o"} onClick={(event) => { stopPostClick(event); setLiked(!liked); }}>{liked ? "â™¥" : "â™¡"}</button>
+        <button type="button" className={`iconButton commentIcon ${showComments ? "active" : ""}`} title={showComments ? "Ocultar comentÃ¡rios" : "Comentar publicaÃ§Ã£o"} aria-label={showComments ? "Ocultar comentÃ¡rios" : "Comentar publicaÃ§Ã£o"} onClick={(event) => { stopPostClick(event); setShowComments((open) => !open); }}>â†µ</button>
+        <button className={`iconButton saveIcon ${saved ? "active" : ""}`} title={saved ? "Remover dos favoritos" : "Favoritar publicaÃ§Ã£o"} aria-label={saved ? "Remover dos favoritos" : "Favoritar publicaÃ§Ã£o"} onClick={(event) => { stopPostClick(event); setSaved(!saved); }}>{saved ? "â˜…" : "â˜†"}</button>
       </div>
     </Card>
   );
@@ -869,19 +1206,19 @@ function CompanySuggestion({ name, area }) {
 
 function CompanyPublicProfile({ navigate, openPublicationManager }) {
   return (
-    <Page label="Comunidade" title="Perfil público da empresa" actions={<Button onClick={() => navigate("publication-new")}>Criar publicação</Button>}>
+    <Page label="Comunidade" title="Perfil pÃºblico da empresa" actions={<Button onClick={() => navigate("publication-new")}>Criar publicaÃ§Ã£o</Button>}>
       <div className="profileHero">
         <div>
           <LogoSlot initials="EC" size="lg" label="Logo da Engenvale Consultoria" />
           <h3>Engenvale Consultoria</h3>
-          <p>São Paulo - SP | Atuação nacional</p>
+          <p>SÃ£o Paulo - SP | AtuaÃ§Ã£o nacional</p>
         </div>
       </div>
-      <Card><h3>Áreas técnicas</h3><p>Saneamento, supervisão ambiental, projetos de engenharia e gerenciamento.</p></Card>
-      <Card><h3>Experiências públicas</h3><p>Projetos de saneamento e drenagem urbana para municípios de médio porte.</p></Card>
+      <Card><h3>Ãreas tÃ©cnicas</h3><p>Saneamento, supervisÃ£o ambiental, projetos de engenharia e gerenciamento.</p></Card>
+      <Card><h3>ExperiÃªncias pÃºblicas</h3><p>Projetos de saneamento e drenagem urbana para municÃ­pios de mÃ©dio porte.</p></Card>
       <div className="grid two">
         <PostCard id="pub-saneamento" category="Equipe comercial" company="Engenvale Consultoria" title="Nova equipe de saneamento" onOpenPublication={openPublicationManager} />
-        <PostCard id="pub-seminario" category="Evento" company="Engenvale Consultoria" title="Seminário técnico" onOpenPublication={openPublicationManager} />
+        <PostCard id="pub-seminario" category="Evento" company="Engenvale Consultoria" title="SeminÃ¡rio tÃ©cnico" onOpenPublication={openPublicationManager} />
       </div>
     </Page>
   );
@@ -889,15 +1226,15 @@ function CompanyPublicProfile({ navigate, openPublicationManager }) {
 
 function PublicationNew() {
   return (
-    <Page label="Comunidade" title="Criar publicação" actions={<Button>Publicar</Button>}>
+    <Page label="Comunidade" title="Criar publicaÃ§Ã£o" actions={<Button>Publicar</Button>}>
       <FormGrid>
-        <Field label="Tipo"><select><option>Notícia institucional</option><option>Atividade recente</option><option>Conteúdo técnico</option></select></Field>
+        <Field label="Tipo"><select><option>NotÃ­cia institucional</option><option>Atividade recente</option><option>ConteÃºdo tÃ©cnico</option></select></Field>
         <Field label="Visibilidade"><select><option>Publicado na comunidade</option><option>Apenas no perfil</option><option>Rascunho</option></select></Field>
-        <Field label="Título"><input placeholder="Título da publicação" /></Field>
-        <Field label="Área relacionada"><select><option>Saneamento</option><option>Supervisão ambiental</option></select></Field>
+        <Field label="TÃ­tulo"><input placeholder="TÃ­tulo da publicaÃ§Ã£o" /></Field>
+        <Field label="Ãrea relacionada"><select><option>Saneamento</option><option>SupervisÃ£o ambiental</option></select></Field>
       </FormGrid>
-      <ImageUploadField label="Imagem da publicação" hint="Essa imagem aparece no feed da comunidade, no perfil público e em minhas publicações." />
-      <Field label="Texto"><textarea placeholder="Escreva a atualização institucional" /></Field>
+      <ImageUploadField label="Imagem da publicaÃ§Ã£o" hint="Essa imagem aparece no feed da comunidade, no perfil pÃºblico e em minhas publicaÃ§Ãµes." />
+      <Field label="Texto"><textarea placeholder="Escreva a atualizaÃ§Ã£o institucional" /></Field>
     </Page>
   );
 }
@@ -907,25 +1244,25 @@ function PublicationList({ selectedPublicationId }) {
     {
       id: "pub-saneamento",
       title: "Nova equipe de saneamento",
-      type: "Notícia",
+      type: "NotÃ­cia",
       imageLabel: "Equipe de saneamento",
       visibility: "Comunidade",
       status: "Publicado",
       publishedAt: "05/07/2026",
       likes: ["GeoArq Projetos", "Plano Sul Engenharia", "SocialTec Consultoria"],
       comments: [
-        { company: "GeoArq Projetos", text: "Excelente reforço técnico para projetos públicos." },
-        { company: "Plano Sul Engenharia", text: "Parabéns pela nova equipe." }
+        { company: "GeoArq Projetos", text: "Excelente reforÃ§o tÃ©cnico para projetos pÃºblicos." },
+        { company: "Plano Sul Engenharia", text: "ParabÃ©ns pela nova equipe." }
       ]
     },
     {
       id: "pub-seminario",
-      title: "Seminário técnico",
+      title: "SeminÃ¡rio tÃ©cnico",
       type: "Evento",
-      imageLabel: "Seminário técnico",
+      imageLabel: "SeminÃ¡rio tÃ©cnico",
       visibility: "Perfil",
       status: "Rascunho",
-      publishedAt: "Ainda não publicado",
+      publishedAt: "Ainda nÃ£o publicado",
       likes: [],
       comments: []
     },
@@ -936,14 +1273,14 @@ function PublicationList({ selectedPublicationId }) {
       imageLabel: "Novo profissional",
       visibility: "Comunidade",
       status: "Rascunho",
-      publishedAt: "Gerado automaticamente ao cadastrar usuário",
+      publishedAt: "Gerado automaticamente ao cadastrar usuÃ¡rio",
       likes: [],
       comments: []
     }
   ];
 
   return (
-    <Page label="Comunidade" title="Minhas publicações">
+    <Page label="Comunidade" title="Minhas publicaÃ§Ãµes">
       <div className="publicationManager">
         {publications.map((publication) => <PublicationManagerCard key={publication.id} publication={publication} initiallyOpen={publication.id === selectedPublicationId} highlighted={publication.id === selectedPublicationId} />)}
       </div>
@@ -972,32 +1309,32 @@ function PublicationManagerCard({ publication, initiallyOpen = false, highlighte
           <span>{publication.type} | {publication.visibility}</span>
         </div>
         <span className={`statusPill ${publication.status === "Publicado" ? "open" : "review"}`}>{publication.status}</span>
-        <button className="iconButton secondaryIcon" title={open ? "Recolher detalhes" : "Ver detalhes"} aria-label={open ? "Recolher detalhes" : "Ver detalhes"} onClick={() => setOpen((current) => !current)}>{open ? "−" : "+"}</button>
+        <button className="iconButton secondaryIcon" title={open ? "Recolher detalhes" : "Ver detalhes"} aria-label={open ? "Recolher detalhes" : "Ver detalhes"} onClick={() => setOpen((current) => !current)}>{open ? "âˆ’" : "+"}</button>
       </div>
 
       {open && (
         <div className="publicationDetails">
           <div className="publicationMediaPreview">
             <span>{publication.imageLabel || publication.type}</span>
-            <small>Imagem exibida na comunidade e no perfil público</small>
+            <small>Imagem exibida na comunidade e no perfil pÃºblico</small>
           </div>
           <div className="publicationMetrics">
             <div><strong>{publication.likes.length}</strong><span>curtidas</span></div>
-            <div><strong>{publication.comments.length}</strong><span>comentários</span></div>
-            <div><strong>{publication.publishedAt}</strong><span>publicação</span></div>
+            <div><strong>{publication.comments.length}</strong><span>comentÃ¡rios</span></div>
+            <div><strong>{publication.publishedAt}</strong><span>publicaÃ§Ã£o</span></div>
           </div>
           <div className="likedBy">{publication.likes.length === 0 ? <span>Nenhuma curtida ainda</span> : publication.likes.map((name) => <span key={name}>{name}</span>)}</div>
           <div className="commentPanel">
-            <div className="commentPanelHeader"><strong>Comentários recebidos</strong><button type="button" className="commentCloseButton" title="Recolher detalhes" aria-label="Recolher detalhes" onClick={() => setOpen(false)}>×</button></div>
+            <div className="commentPanelHeader"><strong>ComentÃ¡rios recebidos</strong><button type="button" className="commentCloseButton" title="Recolher detalhes" aria-label="Recolher detalhes" onClick={() => setOpen(false)}>Ã—</button></div>
             <div className="commentList">
-              {publication.comments.length === 0 && <p className="emptyComments">Nenhum comentário ainda.</p>}
+              {publication.comments.length === 0 && <p className="emptyComments">Nenhum comentÃ¡rio ainda.</p>}
               {publication.comments.map((comment) => <div className="commentItem" key={`${comment.company}-${comment.text}`}><strong>{comment.company}</strong><p>{comment.text}</p></div>)}
             </div>
           </div>
           <div className="postActions compactPostActions">
-            <button className="iconButton secondaryIcon" title="Editar publicação" aria-label="Editar publicação">✎</button>
-            <button className="iconButton warningIcon" title="Arquivar publicação" aria-label="Arquivar publicação">!</button>
-            <button className="iconButton dangerIcon" title="Excluir publicação" aria-label="Excluir publicação">×</button>
+            <button className="iconButton secondaryIcon" title="Editar publicaÃ§Ã£o" aria-label="Editar publicaÃ§Ã£o">âœŽ</button>
+            <button className="iconButton warningIcon" title="Arquivar publicaÃ§Ã£o" aria-label="Arquivar publicaÃ§Ã£o">!</button>
+            <button className="iconButton dangerIcon" title="Excluir publicaÃ§Ã£o" aria-label="Excluir publicaÃ§Ã£o">Ã—</button>
           </div>
         </div>
       )}
@@ -1005,7 +1342,7 @@ function PublicationManagerCard({ publication, initiallyOpen = false, highlighte
   );
 }
 
-function RadarHomeConnected({ navigate }) {
+function RadarHomeConnected({ navigate, openNewsDetail }) {
   const [news, setNews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1016,7 +1353,11 @@ function RadarHomeConnected({ navigate }) {
     fetch(`${API_BASE_URL}/api/news`)
       .then((response) => {
         if (!response.ok) throw new Error("Falha ao carregar noticias");
-        return response.json();
+        return response.text();
+      })
+      .then((text) => {
+        const jsonStart = text.search(/[\\[{]/);
+        return JSON.parse(jsonStart >= 0 ? text.slice(jsonStart) : text);
       })
       .then((data) => {
         if (!active) return;
@@ -1040,8 +1381,8 @@ function RadarHomeConnected({ navigate }) {
   const remainingNews = featured ? news.filter((item) => item.id !== featured.id) : news;
 
   return (
-    <Page label="Radar LicitaHub" title="NotÃ­cias e inteligÃªncia de mercado">
-      {loading && <Card className="formFeedback"><p>Carregando notÃ­cias do banco...</p></Card>}
+    <Page label="Radar LicitaHub" title="NotÃƒÂ­cias e inteligÃƒÂªncia de mercado">
+      {loading && <Card className="formFeedback"><p>Carregando notÃƒÂ­cias do banco...</p></Card>}
       {error && <Card className="formFeedback dangerNotice"><p>{error}</p></Card>}
       {featured && (
         <div className="newsHero">
@@ -1049,50 +1390,50 @@ function RadarHomeConnected({ navigate }) {
           <div className="newsHeroText">
             <span className="badge">{featured.categoryName || "Radar"}</span>
             <h3>{featured.title}</h3>
-            <p>{featured.summary || "NotÃ­cia publicada pela LicitaHub para orientar a comunidade."}</p>
-            <Button onClick={() => navigate("radar-detail")}>Ler notÃ­cia</Button>
+            <p>{featured.summary || "NotÃƒÂ­cia publicada pela LicitaHub para orientar a comunidade."}</p>
+            <Button onClick={() => openNewsDetail(featured)}>Ler notÃƒÂ­cia</Button>
           </div>
         </div>
       )}
-      <div className="categoryTabs">{["Todos", "LicitaÃ§Ãµes", "Mercado", "LegislaÃ§Ã£o", "Eventos", "Comunicados"].map((item) => <button key={item}>{item}</button>)}</div>
+      <div className="categoryTabs">{["Todos", "LicitaÃƒÂ§ÃƒÂµes", "Mercado", "LegislaÃƒÂ§ÃƒÂ£o", "Eventos", "Comunicados"].map((item) => <button key={item}>{item}</button>)}</div>
       <div className="newsGrid">
-        {!loading && !error && news.length === 0 && <Card className="formFeedback"><p>Nenhuma notÃ­cia cadastrada ainda.</p></Card>}
-        {remainingNews.map((item) => <NewsCardConnected key={item.id} news={item} navigate={navigate} />)}
+        {!loading && !error && news.length === 0 && <Card className="formFeedback"><p>Nenhuma notÃƒÂ­cia cadastrada ainda.</p></Card>}
+        {remainingNews.map((item) => <NewsCardConnected key={item.id} news={item} openNewsDetail={openNewsDetail} />)}
       </div>
     </Page>
   );
 }
 
-function NewsCardConnected({ news, navigate }) {
+function NewsCardConnected({ news, openNewsDetail }) {
   return (
     <Card className="newsCard">
       <div className="newsThumb">{news.mainImageUrl ? <img src={news.mainImageUrl} alt={news.title} /> : news.categoryName}</div>
       <span className="badge">{news.categoryName || "Radar"}</span>
       <h3>{news.title}</h3>
-      <p>{news.summary || "NotÃ­cia publicada pela LicitaHub para orientar empresas associadas e usuÃ¡rios vinculados."}</p>
-      <button className="textLink" onClick={() => navigate("radar-detail")}>Ler notÃ­cia</button>
+      <p>{news.summary || "NotÃƒÂ­cia publicada pela LicitaHub para orientar empresas associadas e usuÃƒÂ¡rios vinculados."}</p>
+      <button className="textLink" onClick={() => openNewsDetail(news)}>Ler notÃƒÂ­cia</button>
     </Card>
   );
 }
 
 function RadarHome({ navigate }) {
   return (
-    <Page label="Radar LicitaHub" title="Notícias e inteligência de mercado">
+    <Page label="Radar LicitaHub" title="NotÃ­cias e inteligÃªncia de mercado">
       <div className="newsHero">
         <div className="newsHeroImage">Radar</div>
         <div className="newsHeroText">
-          <span className="badge">Licitações</span>
-          <h3>Nova rodada de oportunidades em infraestrutura deve movimentar consórcios técnicos</h3>
-          <p>Levantamento da LicitaHub aponta aumento de editais com exigências multidisciplinares em saneamento, meio ambiente e supervisão.</p>
-          <Button onClick={() => navigate("radar-detail")}>Ler notícia</Button>
+          <span className="badge">LicitaÃ§Ãµes</span>
+          <h3>Nova rodada de oportunidades em infraestrutura deve movimentar consÃ³rcios tÃ©cnicos</h3>
+          <p>Levantamento da LicitaHub aponta aumento de editais com exigÃªncias multidisciplinares em saneamento, meio ambiente e supervisÃ£o.</p>
+          <Button onClick={() => navigate("radar-detail")}>Ler notÃ­cia</Button>
         </div>
       </div>
-      <div className="categoryTabs">{["Todos", "Licitações", "Mercado", "Legislação", "Eventos", "Comunicados"].map((item) => <button key={item}>{item}</button>)}</div>
+      <div className="categoryTabs">{["Todos", "LicitaÃ§Ãµes", "Mercado", "LegislaÃ§Ã£o", "Eventos", "Comunicados"].map((item) => <button key={item}>{item}</button>)}</div>
       <div className="newsGrid">
         <NewsCard category="Mercado" title="Empresas consultivas ampliam busca por parceiros regionais" navigate={navigate} />
-        <NewsCard category="Legislação" title="Mudanças em critérios técnicos exigem atenção na proposta" navigate={navigate} />
-        <NewsCard category="Eventos" title="Agenda de eventos técnicos para engenharia consultiva" navigate={navigate} />
-        <NewsCard category="Comunicados" title="LicitaHub prepara nova área de recomendações por perfil" navigate={navigate} />
+        <NewsCard category="LegislaÃ§Ã£o" title="MudanÃ§as em critÃ©rios tÃ©cnicos exigem atenÃ§Ã£o na proposta" navigate={navigate} />
+        <NewsCard category="Eventos" title="Agenda de eventos tÃ©cnicos para engenharia consultiva" navigate={navigate} />
+        <NewsCard category="Comunicados" title="LicitaHub prepara nova Ã¡rea de recomendaÃ§Ãµes por perfil" navigate={navigate} />
       </div>
     </Page>
   );
@@ -1104,35 +1445,79 @@ function NewsCard({ category, title, navigate }) {
       <div className="newsThumb">{category}</div>
       <span className="badge">{category}</span>
       <h3>{title}</h3>
-      <p>Resumo curto da notícia para orientar empresas associadas e usuários vinculados.</p>
-      <button className="textLink" onClick={() => navigate("radar-detail")}>Ler notícia</button>
+      <p>Resumo curto da notÃ­cia para orientar empresas associadas e usuÃ¡rios vinculados.</p>
+      <button className="textLink" onClick={() => navigate("radar-detail")}>Ler notÃ­cia</button>
     </Card>
+  );
+}
+
+function RadarDetailConnected({ selectedNews, navigate }) {
+  if (!selectedNews) {
+    return (
+      <Page label="Radar LicitaHub" title="Detalhe da notÃ­cia">
+        <Card className="formFeedback">
+          <p>Selecione uma notÃ­cia na tela Radar para abrir o detalhe.</p>
+          <button className="textLink" onClick={() => navigate("radar-home")}>Voltar para notÃ­cias</button>
+        </Card>
+      </Page>
+    );
+  }
+
+  const publishedAt = selectedNews.publishedAt || selectedNews.createdAt;
+  const formattedDate = publishedAt ? new Date(publishedAt).toLocaleDateString("pt-BR") : "";
+  const paragraphs = String(selectedNews.content || selectedNews.summary || "").split(/\n+/).filter(Boolean);
+
+  return (
+    <Page label="Radar LicitaHub" title="Detalhe da notÃ­cia">
+      <article className="article articleWide">
+        <div className="articleImage articleCover">{selectedNews.mainImageUrl ? <img src={selectedNews.mainImageUrl} alt={selectedNews.title} /> : "LicitaHub Radar"}</div>
+        <div className="articleLayout">
+          <div className="articleBody">
+            <span className="badge">{selectedNews.categoryName || "Radar"}</span>
+            <h3>{selectedNews.title}</h3>
+            {formattedDate && <p className="articleMeta">Publicado pela LicitaHub em {formattedDate}</p>}
+            {selectedNews.summary && <p className="articleLead">{selectedNews.summary}</p>}
+            {paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+          </div>
+          <aside className="articleAside">
+            <Card>
+              <h3>Resumo</h3>
+              <p>{selectedNews.summary || "NotÃ­cia publicada no Radar LicitaHub."}</p>
+            </Card>
+            <Card>
+              <h3>AÃ§Ã£o</h3>
+              <button className="textLink" onClick={() => navigate("radar-home")}>Voltar para notÃ­cias</button>
+            </Card>
+          </aside>
+        </div>
+      </article>
+    </Page>
   );
 }
 
 function RadarDetail() {
   return (
-    <Page label="Radar LicitaHub" title="Detalhe da notícia">
+    <Page label="Radar LicitaHub" title="Detalhe da notÃ­cia">
       <article className="article articleWide">
         <div className="articleImage articleCover">LicitaHub Radar</div>
         <div className="articleLayout">
           <div className="articleBody">
-            <span className="badge">Licitações</span>
-            <h3>Nova rodada de oportunidades em infraestrutura deve movimentar consórcios técnicos</h3>
+            <span className="badge">LicitaÃ§Ãµes</span>
+            <h3>Nova rodada de oportunidades em infraestrutura deve movimentar consÃ³rcios tÃ©cnicos</h3>
             <p className="articleMeta">Publicado pela LicitaHub em 04/07/2026</p>
-            <p>O mercado de engenharia consultiva segue observando editais com escopos mais amplos e exigências multidisciplinares.</p>
-            <p>Empresas que antes avaliavam oportunidades de forma isolada passam a buscar composição técnica mais cedo.</p>
+            <p>O mercado de engenharia consultiva segue observando editais com escopos mais amplos e exigÃªncias multidisciplinares.</p>
+            <p>Empresas que antes avaliavam oportunidades de forma isolada passam a buscar composiÃ§Ã£o tÃ©cnica mais cedo.</p>
             <p>A LicitaHub recomenda que empresas mantenham seus perfis atualizados e registrem com clareza o que podem oferecer.</p>
           </div>
           <aside className="articleAside">
             <Card>
               <h3>Resumo</h3>
-              <p>Editais com maior complexidade técnica aumentam a necessidade de parcerias bem estruturadas.</p>
+              <p>Editais com maior complexidade tÃ©cnica aumentam a necessidade de parcerias bem estruturadas.</p>
             </Card>
             <Card>
               <h3>Relacionadas</h3>
-              <button className="textLink">Critérios técnicos em propostas públicas</button>
-              <button className="textLink">Como preparar anúncios de parceria</button>
+              <button className="textLink">CritÃ©rios tÃ©cnicos em propostas pÃºblicas</button>
+              <button className="textLink">Como preparar anÃºncios de parceria</button>
             </Card>
           </aside>
         </div>
@@ -1143,20 +1528,20 @@ function RadarDetail() {
 
 function RadarNew() {
   return (
-    <Page label="Radar LicitaHub" title="Cadastrar notícia" actions={<Button>Publicar notícia</Button>}>
+    <Page label="Radar LicitaHub" title="Cadastrar notÃ­cia" actions={<Button>Publicar notÃ­cia</Button>}>
       <FormGrid>
-        <Field label="Título"><input placeholder="Título da notícia" /></Field>
-        <Field label="Categoria"><select><option>Licitações</option><option>Mercado</option><option>Legislação</option><option>Eventos</option><option>Comunicados</option></select></Field>
+        <Field label="TÃ­tulo"><input placeholder="TÃ­tulo da notÃ­cia" /></Field>
+        <Field label="Categoria"><select><option>LicitaÃ§Ãµes</option><option>Mercado</option><option>LegislaÃ§Ã£o</option><option>Eventos</option><option>Comunicados</option></select></Field>
         <Field label="Status"><select><option>Rascunho</option><option>Publicado</option><option>Destaque principal</option></select></Field>
       </FormGrid>
       <ImageUploadField label="Imagem" />
       <Field label="Resumo"><textarea placeholder="Resumo que aparece nos cards" /></Field>
-      <Field label="Texto completo"><textarea placeholder="Texto completo da notícia" /></Field>
+      <Field label="Texto completo"><textarea placeholder="Texto completo da notÃ­cia" /></Field>
     </Page>
   );
 }
 
-function RadarNewConnected() {
+function RadarNewConnected({ navigate }) {
   const [form, setForm] = useState({
     title: "",
     categorySlug: "licitacoes",
@@ -1181,6 +1566,19 @@ function RadarNewConnected() {
     if (!file) {
       setImagePreview("");
       setForm((current) => ({ ...current, mainImageDataUrl: "", mainImageFileName: "", mainImageMimeType: "" }));
+      return;
+    }
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      setMessage({ type: "error", text: "Use uma imagem PNG, JPG, GIF ou WebP." });
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage({ type: "error", text: "A imagem deve ter no maximo 5MB." });
+      event.target.value = "";
       return;
     }
 
@@ -1220,6 +1618,7 @@ function RadarNewConnected() {
       }
 
       setMessage({ type: "success", text: "Noticia cadastrada no banco com sucesso." });
+      navigate("radar-home");
       setForm({
         title: "",
         categorySlug: "licitacoes",
@@ -1233,17 +1632,17 @@ function RadarNewConnected() {
       });
       setImagePreview("");
     } catch (error) {
-      setMessage({ type: "error", text: "Nao foi possivel gravar agora. Confirme se o backend esta ligado." });
+      setMessage({ type: "error", text: error.message || "Nao foi possivel gravar agora. Confirme se o backend esta ligado." });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Page label="Radar LicitaHub" title="Cadastrar notÃ­cia" actions={<Button onClick={handleSubmit} disabled={saving}>{saving ? "Publicando..." : "Publicar notÃ­cia"}</Button>}>
+    <Page label="Radar LicitaHub" title="Cadastrar notÃƒÂ­cia">
       {message && <Card className={`formFeedback ${message.type === "success" ? "success" : "dangerNotice"}`}><p>{message.text}</p></Card>}
       <FormGrid>
-        <Field label="TÃ­tulo"><input value={form.title} onChange={(event) => updateField("title", event.target.value)} placeholder="TÃ­tulo da notÃ­cia" /></Field>
+        <Field label="TÃƒÂ­tulo"><input value={form.title} onChange={(event) => updateField("title", event.target.value)} placeholder="TÃƒÂ­tulo da notÃƒÂ­cia" /></Field>
         <Field label="Categoria"><select value={form.categorySlug} onChange={(event) => updateField("categorySlug", event.target.value)}>{newsCategoryOptions.map((option) => <option value={option.slug} key={option.slug}>{option.label}</option>)}</select></Field>
         <Field label="Status"><select value={form.status} onChange={(event) => updateField("status", event.target.value)}>{newsStatusOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></Field>
       </FormGrid>
@@ -1258,7 +1657,10 @@ function RadarNewConnected() {
       </Field>
       <Field label="Link da imagem" hint="Opcional. Use apenas se a imagem ja estiver publicada na internet."><input value={form.mainImageUrl} onChange={(event) => updateField("mainImageUrl", event.target.value)} placeholder="https://..." /></Field>
       <Field label="Resumo"><textarea value={form.summary} onChange={(event) => updateField("summary", event.target.value)} placeholder="Resumo que aparece nos cards" /></Field>
-      <Field label="Texto completo"><textarea value={form.content} onChange={(event) => updateField("content", event.target.value)} placeholder="Texto completo da notÃ­cia" /></Field>
+      <Field label="Texto completo"><textarea value={form.content} onChange={(event) => updateField("content", event.target.value)} placeholder="Texto completo da notÃƒÂ­cia" /></Field>
+      <div className="formActionBar">
+        <Button onClick={handleSubmit} disabled={saving}>{saving ? "Publicando..." : "Publicar notÃƒÂ­cia"}</Button>
+      </div>
     </Page>
   );
 }
@@ -1271,16 +1673,16 @@ function TenderNew() {
   return (
     <Page label="Editais" title="Cadastro de edital" actions={<Button>Publicar edital</Button>}>
       <FormGrid>
-        <Field label="Órgão público"><input placeholder="Prefeitura Municipal" /></Field>
-        <Field label="Número do edital"><input placeholder="CP 004/2026" /></Field>
-        <Field label="Modalidade"><select><option>Concorrência</option><option>Pregão</option></select></Field>
+        <Field label="Ã“rgÃ£o pÃºblico"><input placeholder="Prefeitura Municipal" /></Field>
+        <Field label="NÃºmero do edital"><input placeholder="CP 004/2026" /></Field>
+        <Field label="Modalidade"><select><option>ConcorrÃªncia</option><option>PregÃ£o</option></select></Field>
         <Field label="Valor estimado"><input placeholder="R$ 0,00" /></Field>
         <Field label="Estado"><select><option>MG</option><option>SP</option><option>PR</option></select></Field>
         <Field label="Data de abertura"><input type="date" /></Field>
       </FormGrid>
       <Field label="Objeto"><textarea placeholder="Descreva o objeto do edital" /></Field>
-      <Field label="Link do diretório em nuvem"><input placeholder="https://drive.google.com/..." /></Field>
-      <Field label="Análise do edital em HTML" hint="Arquivo .html que será exibido no detalhe do edital e poderá ser baixado."><input type="file" accept=".html,text/html" /></Field>
+      <Field label="Link do diretÃ³rio em nuvem"><input placeholder="https://drive.google.com/..." /></Field>
+      <Field label="AnÃ¡lise do edital em HTML" hint="Arquivo .html que serÃ¡ exibido no detalhe do edital e poderÃ¡ ser baixado."><input type="file" accept=".html,text/html" /></Field>
     </Page>
   );
 }
@@ -1291,20 +1693,20 @@ function TenderList({ navigate, openTenderInterestCompanies }) {
 
 function TenderDetail({ navigate }) {
   return (
-    <Page label="Editais" title="Detalhe do edital" actions={<><Button onClick={() => navigate("tender-interest")}>Registrar interesse</Button><a className="downloadButton" href="./ficha-tecnica-edital-dnit-0226-2026.html" download>Baixar ficha técnica</a></>}>
-      <Card><h3>CP 004/2026 - Projetos de saneamento e drenagem</h3><p>Contratação de empresa especializada para projetos de saneamento, drenagem urbana e apoio técnico municipal.</p></Card>
+    <Page label="Editais" title="Detalhe do edital" actions={<><Button onClick={() => navigate("tender-interest")}>Registrar interesse</Button><a className="downloadButton" href="./ficha-tecnica-edital-dnit-0226-2026.html" download>Baixar ficha tÃ©cnica</a></>}>
+      <Card><h3>CP 004/2026 - Projetos de saneamento e drenagem</h3><p>ContrataÃ§Ã£o de empresa especializada para projetos de saneamento, drenagem urbana e apoio tÃ©cnico municipal.</p></Card>
       <div className="grid three">
-        <Card><strong>Equipe técnica</strong><p>Coordenação, engenheiro sanitarista e especialista em drenagem.</p></Card>
-        <Card><strong>Experiência</strong><p>Atestados em saneamento, drenagem ou infraestrutura municipal.</p></Card>
-        <Card><strong>Proposta técnica</strong><p>Metodologia, cronograma, equipe e controle de qualidade.</p></Card>
+        <Card><strong>Equipe tÃ©cnica</strong><p>CoordenaÃ§Ã£o, engenheiro sanitarista e especialista em drenagem.</p></Card>
+        <Card><strong>ExperiÃªncia</strong><p>Atestados em saneamento, drenagem ou infraestrutura municipal.</p></Card>
+        <Card><strong>Proposta tÃ©cnica</strong><p>Metodologia, cronograma, equipe e controle de qualidade.</p></Card>
       </div>
       <Card>
-        <div className="cardHeader"><h3>Ficha técnica do edital</h3><a className="downloadButton" href="./ficha-tecnica-edital-dnit-0226-2026.html" download>Baixar ficha técnica</a></div>
-        <iframe className="technicalSheetFrame" src="./ficha-tecnica-edital-dnit-0226-2026.html" title="Ficha técnica do edital DNIT 0226/2026"></iframe>
+        <div className="cardHeader"><h3>Ficha tÃ©cnica do edital</h3><a className="downloadButton" href="./ficha-tecnica-edital-dnit-0226-2026.html" download>Baixar ficha tÃ©cnica</a></div>
+        <iframe className="technicalSheetFrame" src="./ficha-tecnica-edital-dnit-0226-2026.html" title="Ficha tÃ©cnica do edital DNIT 0226/2026"></iframe>
       </Card>
       <Card>
-        <div className="cardHeader"><h3>Análise do edital</h3><a className="downloadButton" href="./analise-edital-cp-004-2026.html" download>Baixar análise</a></div>
-        <iframe className="technicalSheetFrame" src="./analise-edital-cp-004-2026.html" title="Análise do edital CP 004/2026"></iframe>
+        <div className="cardHeader"><h3>AnÃ¡lise do edital</h3><a className="downloadButton" href="./analise-edital-cp-004-2026.html" download>Baixar anÃ¡lise</a></div>
+        <iframe className="technicalSheetFrame" src="./analise-edital-cp-004-2026.html" title="AnÃ¡lise do edital CP 004/2026"></iframe>
       </Card>
     </Page>
   );
@@ -1312,65 +1714,65 @@ function TenderDetail({ navigate }) {
 
 const interestRequirementBlocks = [
   {
-    title: "Habilitação operacional",
-    description: "Acervo, atestados e experiência da empresa exigidos pelo edital.",
-    options: ["Atendo integralmente", "Atendo parcialmente", "Não atendo", "Posso compor com parceiro", "Não se aplica", "Em análise"],
+    title: "HabilitaÃ§Ã£o operacional",
+    description: "Acervo, atestados e experiÃªncia da empresa exigidos pelo edital.",
+    options: ["Atendo integralmente", "Atendo parcialmente", "NÃ£o atendo", "Posso compor com parceiro", "NÃ£o se aplica", "Em anÃ¡lise"],
     offerPlaceholder: "Descreva o que sua empresa possui neste requisito",
     needPlaceholder: "Descreva o que sua empresa busca complementar"
   },
   {
-    title: "Habilitação profissional",
-    description: "Equipe, responsáveis técnicos, currículos, CATs e disponibilidade.",
-    options: ["Tenho equipe completa", "Tenho equipe parcial", "Não tenho equipe", "Posso montar equipe", "Não se aplica", "Em análise"],
-    offerPlaceholder: "Descreva a equipe e os profissionais disponíveis",
-    needPlaceholder: "Descreva quais profissionais ou experiências busca"
+    title: "HabilitaÃ§Ã£o profissional",
+    description: "Equipe, responsÃ¡veis tÃ©cnicos, currÃ­culos, CATs e disponibilidade.",
+    options: ["Tenho equipe completa", "Tenho equipe parcial", "NÃ£o tenho equipe", "Posso montar equipe", "NÃ£o se aplica", "Em anÃ¡lise"],
+    offerPlaceholder: "Descreva a equipe e os profissionais disponÃ­veis",
+    needPlaceholder: "Descreva quais profissionais ou experiÃªncias busca"
   },
   {
-    title: "Peça técnica qualitativa",
-    description: "Metodologia, plano de trabalho, abordagem técnica e proposta qualitativa.",
-    options: ["Tenho capacidade interna", "Tenho capacidade parcial", "Componho para contratação de apoio especializado", "Não possuo capacidade para essa peça", "Não se aplica", "Em análise"],
-    offerPlaceholder: "Descreva sua capacidade para elaborar a peça técnica",
-    needPlaceholder: "Descreva qual apoio técnico deseja contratar ou compor"
+    title: "PeÃ§a tÃ©cnica qualitativa",
+    description: "Metodologia, plano de trabalho, abordagem tÃ©cnica e proposta qualitativa.",
+    options: ["Tenho capacidade interna", "Tenho capacidade parcial", "Componho para contrataÃ§Ã£o de apoio especializado", "NÃ£o possuo capacidade para essa peÃ§a", "NÃ£o se aplica", "Em anÃ¡lise"],
+    offerPlaceholder: "Descreva sua capacidade para elaborar a peÃ§a tÃ©cnica",
+    needPlaceholder: "Descreva qual apoio tÃ©cnico deseja contratar ou compor"
   },
   {
-    title: "Certificações requeridas",
-    description: "Certificações, registros ou comprovações formais exigidas.",
-    options: ["Possuo todas", "Possuo parcialmente", "Não possuo", "Posso obter/regularizar", "Não se aplica", "Em análise"],
-    offerPlaceholder: "Descreva as certificações, registros ou comprovações que possui",
-    needPlaceholder: "Descreva certificações ou registros que precisa complementar"
+    title: "CertificaÃ§Ãµes requeridas",
+    description: "CertificaÃ§Ãµes, registros ou comprovaÃ§Ãµes formais exigidas.",
+    options: ["Possuo todas", "Possuo parcialmente", "NÃ£o possuo", "Posso obter/regularizar", "NÃ£o se aplica", "Em anÃ¡lise"],
+    offerPlaceholder: "Descreva as certificaÃ§Ãµes, registros ou comprovaÃ§Ãµes que possui",
+    needPlaceholder: "Descreva certificaÃ§Ãµes ou registros que precisa complementar"
   }
 ];
 
 function TenderInterest({ navigate }) {
   return (
-    <Page label="Editais" title="Manifestação de interesse" actions={<Button onClick={() => navigate("tender-interest-list")}>Salvar e ver empresas interessadas</Button>}>
+    <Page label="Editais" title="ManifestaÃ§Ã£o de interesse" actions={<Button onClick={() => navigate("tender-interest-list")}>Salvar e ver empresas interessadas</Button>}>
       <section className="interestHero">
         <div>
           <span className="badge">CP 004/2026</span>
-          <h3>Como sua empresa quer aparecer para possíveis parceiras?</h3>
-          <p>Monte uma ficha objetiva para mostrar o que possui, o que busca e onde precisa compor força técnica.</p>
+          <h3>Como sua empresa quer aparecer para possÃ­veis parceiras?</h3>
+          <p>Monte uma ficha objetiva para mostrar o que possui, o que busca e onde precisa compor forÃ§a tÃ©cnica.</p>
         </div>
         <div className="interestHeroPanel">
           <strong>Resultado desta tela</strong>
-          <span>Anúncio visível na vitrine da licitação</span>
+          <span>AnÃºncio visÃ­vel na vitrine da licitaÃ§Ã£o</span>
         </div>
       </section>
 
       <div className="interestQuickGrid">
-        <Field label="Posição geral">
+        <Field label="PosiÃ§Ã£o geral">
           <select>
             <option>Tenho interesse em participar</option>
-            <option>Estou avaliando participação</option>
+            <option>Estou avaliando participaÃ§Ã£o</option>
             <option>Quero apenas acompanhar por enquanto</option>
-            <option>Não tenho interesse nesta licitação</option>
+            <option>NÃ£o tenho interesse nesta licitaÃ§Ã£o</option>
           </select>
         </Field>
         <Field label="Papel desejado">
           <select>
             <option>Busco parceiro para complementar requisitos</option>
-            <option>Posso liderar consórcio</option>
+            <option>Posso liderar consÃ³rcio</option>
             <option>Quero participar como parceira complementar</option>
-            <option>Busco empresa líder de proposta</option>
+            <option>Busco empresa lÃ­der de proposta</option>
             <option>Ainda estou avaliando meu papel</option>
           </select>
         </Field>
@@ -1385,7 +1787,7 @@ function TenderInterest({ navigate }) {
                 <p>{block.description}</p>
               </div>
             </div>
-            <div className="interestChoiceRail" aria-label={`Minha situação em ${block.title}`}>
+            <div className="interestChoiceRail" aria-label={`Minha situaÃ§Ã£o em ${block.title}`}>
               {block.options.map((option, optionIndex) => (
                 <label className="interestChoice" key={option}>
                   <input name={`interest-${blockIndex}`} type="radio" defaultChecked={optionIndex === 0} />
@@ -1406,11 +1808,11 @@ function TenderInterest({ navigate }) {
       </div>
 
       <div className="interestSummaryGrid">
-        <Field label="Resumo do anúncio para possíveis parceiros">
-          <textarea placeholder="Escreva um resumo claro do anúncio que será visto por possíveis parceiros." />
+        <Field label="Resumo do anÃºncio para possÃ­veis parceiros">
+          <textarea placeholder="Escreva um resumo claro do anÃºncio que serÃ¡ visto por possÃ­veis parceiros." />
         </Field>
-        <Field label="Observação interna">
-          <textarea placeholder="Anotação privada da sua empresa, não exibida para outros participantes." />
+        <Field label="ObservaÃ§Ã£o interna">
+          <textarea placeholder="AnotaÃ§Ã£o privada da sua empresa, nÃ£o exibida para outros participantes." />
         </Field>
       </div>
     </Page>
@@ -1423,15 +1825,15 @@ function TenderInterestList({ navigate, selectedTenderId = "cp-004-2026" }) {
     <Page label="Editais" title="Empresas interessadas no edital" actions={<Button onClick={() => navigate("match-tinder")}>Avaliar empresas</Button>}>
       <Card className="notice">
         <strong>{selectedTender.number} - {selectedTender.object}</strong>
-        <p>Empresas abaixo também manifestaram interesse e aceitaram aparecer para avaliação de possíveis parceiros nesta licitação.</p>
+        <p>Empresas abaixo tambÃ©m manifestaram interesse e aceitaram aparecer para avaliaÃ§Ã£o de possÃ­veis parceiros nesta licitaÃ§Ã£o.</p>
       </Card>
-      <Table columns={["Edital selecionado", "Órgão", "Modalidade", "Local", "Abertura", "Critério", "Status"]} rows={[
+      <Table columns={["Edital selecionado", "Ã“rgÃ£o", "Modalidade", "Local", "Abertura", "CritÃ©rio", "Status"]} rows={[
         [selectedTender.number, selectedTender.agency, selectedTender.modality, selectedTender.location, selectedTender.opening, selectedTender.criterion, <span className={`statusPill ${selectedTender.status === "Publicado" ? "open" : "review"}`} key={`${selectedTender.id}-selected-status`}>{selectedTender.status}</span>]
       ]} />
-      <Table columns={["Empresa", "Operacional", "Profissional", "Peça técnica", "Certificações", "Busca", "Ações"]} rows={[
-        ["GeoArq Projetos", "Atende parcialmente", "Equipe completa", "Capacidade parcial", "Possui todas", "Acervo principal em saneamento", <div className="rowActions compactRowActions" key="geo-actions"><button className="iconButton secondaryIcon" title="Ver detalhe do anúncio" aria-label="Ver detalhe do anúncio" onClick={() => navigate("match-profile")}>👁</button><button className="iconButton successIcon" title="Avaliar candidata" aria-label="Avaliar candidata" onClick={() => navigate("match-tinder")}>✓</button></div>],
-        ["SocialTec Consultoria", "Não se aplica", "Equipe parcial", "Componho para apoio especializado", "Em análise", "Empresa líder de proposta", <div className="rowActions compactRowActions" key="social-actions"><button className="iconButton secondaryIcon" title="Ver detalhe do anúncio" aria-label="Ver detalhe do anúncio" onClick={() => navigate("match-profile")}>👁</button><button className="iconButton successIcon" title="Avaliar candidata" aria-label="Avaliar candidata" onClick={() => navigate("match-tinder")}>✓</button></div>],
-        ["Plano Sul Engenharia", "Atende integralmente", "Equipe parcial", "Componho para apoio especializado", "Possui parcialmente", "Complemento ambiental", <div className="rowActions compactRowActions" key="plano-actions"><button className="iconButton secondaryIcon" title="Ver detalhe do anúncio" aria-label="Ver detalhe do anúncio" onClick={() => navigate("match-profile")}>👁</button><button className="iconButton successIcon" title="Avaliar candidata" aria-label="Avaliar candidata" onClick={() => navigate("match-tinder")}>✓</button></div>]
+      <Table columns={["Empresa", "Operacional", "Profissional", "PeÃ§a tÃ©cnica", "CertificaÃ§Ãµes", "Busca", "AÃ§Ãµes"]} rows={[
+        ["GeoArq Projetos", "Atende parcialmente", "Equipe completa", "Capacidade parcial", "Possui todas", "Acervo principal em saneamento", <div className="rowActions compactRowActions" key="geo-actions"><button className="iconButton secondaryIcon" title="Ver detalhe do anÃºncio" aria-label="Ver detalhe do anÃºncio" onClick={() => navigate("match-profile")}>ðŸ‘</button><button className="iconButton successIcon" title="Avaliar candidata" aria-label="Avaliar candidata" onClick={() => navigate("match-tinder")}>âœ“</button></div>],
+        ["SocialTec Consultoria", "NÃ£o se aplica", "Equipe parcial", "Componho para apoio especializado", "Em anÃ¡lise", "Empresa lÃ­der de proposta", <div className="rowActions compactRowActions" key="social-actions"><button className="iconButton secondaryIcon" title="Ver detalhe do anÃºncio" aria-label="Ver detalhe do anÃºncio" onClick={() => navigate("match-profile")}>ðŸ‘</button><button className="iconButton successIcon" title="Avaliar candidata" aria-label="Avaliar candidata" onClick={() => navigate("match-tinder")}>âœ“</button></div>],
+        ["Plano Sul Engenharia", "Atende integralmente", "Equipe parcial", "Componho para apoio especializado", "Possui parcialmente", "Complemento ambiental", <div className="rowActions compactRowActions" key="plano-actions"><button className="iconButton secondaryIcon" title="Ver detalhe do anÃºncio" aria-label="Ver detalhe do anÃºncio" onClick={() => navigate("match-profile")}>ðŸ‘</button><button className="iconButton successIcon" title="Avaliar candidata" aria-label="Avaliar candidata" onClick={() => navigate("match-tinder")}>âœ“</button></div>]
       ]} />
     </Page>
   );
@@ -1442,33 +1844,33 @@ function MatchPartners({ navigate }) {
     {
       company: "GeoArq Projetos",
       location: "Belo Horizonte - MG",
-      offers: "Arqueologia, supervisão ambiental, estudos socioambientais e equipe de campo.",
-      seeks: "Empresa líder com acervo operacional em saneamento e coordenação da proposta.",
-      status: ["Operacional parcial", "Equipe completa", "Peça técnica parcial", "Certificações completas"]
+      offers: "Arqueologia, supervisÃ£o ambiental, estudos socioambientais e equipe de campo.",
+      seeks: "Empresa lÃ­der com acervo operacional em saneamento e coordenaÃ§Ã£o da proposta.",
+      status: ["Operacional parcial", "Equipe completa", "PeÃ§a tÃ©cnica parcial", "CertificaÃ§Ãµes completas"]
     },
     {
       company: "SocialTec Consultoria",
       location: "Salvador - BA",
-      offers: "Projetos sociais, comunicação comunitária e mobilização em obras públicas.",
-      seeks: "Liderança técnica e apoio na peça qualitativa.",
-      status: ["Operacional não se aplica", "Equipe parcial", "Busca apoio técnico", "Certificações em análise"]
+      offers: "Projetos sociais, comunicaÃ§Ã£o comunitÃ¡ria e mobilizaÃ§Ã£o em obras pÃºblicas.",
+      seeks: "LideranÃ§a tÃ©cnica e apoio na peÃ§a qualitativa.",
+      status: ["Operacional nÃ£o se aplica", "Equipe parcial", "Busca apoio tÃ©cnico", "CertificaÃ§Ãµes em anÃ¡lise"]
     },
     {
       company: "Plano Sul Engenharia",
       location: "Curitiba - PR",
-      offers: "Supervisão, gerenciamento e apoio operacional.",
-      seeks: "Complemento ambiental e especialistas para equipe mínima.",
-      status: ["Operacional integral", "Equipe parcial", "Compor apoio", "Certificação parcial"]
+      offers: "SupervisÃ£o, gerenciamento e apoio operacional.",
+      seeks: "Complemento ambiental e especialistas para equipe mÃ­nima.",
+      status: ["Operacional integral", "Equipe parcial", "Compor apoio", "CertificaÃ§Ã£o parcial"]
     }
   ];
 
   return (
-    <Page label="Match e consórcios" title="Vitrine de parceiros">
+    <Page label="Match e consÃ³rcios" title="Vitrine de parceiros">
       <section className="partnerShowcaseHero">
         <div>
           <span className="badge">CP 004/2026</span>
-          <h3>Anúncios de empresas interessadas nesta licitação</h3>
-          <p>Veja quem está disponível para compor parceria, o que cada empresa oferece e quais requisitos ainda busca complementar.</p>
+          <h3>AnÃºncios de empresas interessadas nesta licitaÃ§Ã£o</h3>
+          <p>Veja quem estÃ¡ disponÃ­vel para compor parceria, o que cada empresa oferece e quais requisitos ainda busca complementar.</p>
         </div>
       </section>
 
@@ -1490,7 +1892,7 @@ function MatchPartners({ navigate }) {
               {ad.status.map((item) => <span key={item}>{item}</span>)}
             </div>
             <div className="actions">
-              <Button onClick={() => navigate("match-profile")}>Ver anúncio</Button>
+              <Button onClick={() => navigate("match-profile")}>Ver anÃºncio</Button>
               <Button variant="secondary" onClick={() => navigate("match-tinder")}>Avaliar</Button>
             </div>
           </Card>
@@ -1502,7 +1904,7 @@ function MatchPartners({ navigate }) {
 
 function MatchTinder({ navigate }) {
   return (
-    <Page label="Match e consórcios" title="Avaliar candidata da licitação">
+    <Page label="Match e consÃ³rcios" title="Avaliar candidata da licitaÃ§Ã£o">
       <div className="tinderStage">
         <div className="tinderPhone">
           <div className="tinderPhoto">
@@ -1515,18 +1917,18 @@ function MatchTinder({ navigate }) {
           </div>
 
           <div className="tinderInfo">
-            <strong>Complemento socioambiental disponível para esta licitação</strong>
+            <strong>Complemento socioambiental disponÃ­vel para esta licitaÃ§Ã£o</strong>
             <div className="matchColumns">
-              <div><strong>Tem</strong><span>Arqueologia, supervisão ambiental, estudos socioambientais e equipe de campo.</span></div>
-              <div><strong>Falta</strong><span>Coordenação em saneamento, liderança da proposta e atestados principais.</span></div>
+              <div><strong>Tem</strong><span>Arqueologia, supervisÃ£o ambiental, estudos socioambientais e equipe de campo.</span></div>
+              <div><strong>Falta</strong><span>CoordenaÃ§Ã£o em saneamento, lideranÃ§a da proposta e atestados principais.</span></div>
             </div>
           </div>
 
           <div className="tinderBottomActions">
             <button className="circleButton info">i</button>
-            <button className="circleButton reject">×</button>
-            <button className="circleButton like" onClick={() => navigate("match-success")}>♥</button>
-            <button className="circleButton save">★</button>
+            <button className="circleButton reject">Ã—</button>
+            <button className="circleButton like" onClick={() => navigate("match-success")}>â™¥</button>
+            <button className="circleButton save">â˜…</button>
           </div>
         </div>
       </div>
@@ -1536,24 +1938,24 @@ function MatchTinder({ navigate }) {
 
 function MatchProfile({ navigate }) {
   const requirements = [
-    ["Habilitação operacional", "Atendo parcialmente", "Tenho atestados em saneamento e drenagem urbana. Busco acervo complementar em supervisão de obras rodoviárias."],
-    ["Habilitação profissional", "Tenho equipe completa", "Equipe de arqueologia, supervisão ambiental e estudos socioambientais disponível para mobilização."],
-    ["Peça técnica qualitativa", "Tenho capacidade parcial", "Tenho base técnica e relatórios. Busco apoio para estratégia de pontuação e metodologia integrada."],
-    ["Certificações requeridas", "Possuo todas", "Regularidade profissional, registros aplicáveis e documentação de habilitação organizada."]
+    ["HabilitaÃ§Ã£o operacional", "Atendo parcialmente", "Tenho atestados em saneamento e drenagem urbana. Busco acervo complementar em supervisÃ£o de obras rodoviÃ¡rias."],
+    ["HabilitaÃ§Ã£o profissional", "Tenho equipe completa", "Equipe de arqueologia, supervisÃ£o ambiental e estudos socioambientais disponÃ­vel para mobilizaÃ§Ã£o."],
+    ["PeÃ§a tÃ©cnica qualitativa", "Tenho capacidade parcial", "Tenho base tÃ©cnica e relatÃ³rios. Busco apoio para estratÃ©gia de pontuaÃ§Ã£o e metodologia integrada."],
+    ["CertificaÃ§Ãµes requeridas", "Possuo todas", "Regularidade profissional, registros aplicÃ¡veis e documentaÃ§Ã£o de habilitaÃ§Ã£o organizada."]
   ];
 
   return (
-    <Page label="Match e consórcios" title="Detalhe do anúncio" actions={<Button onClick={() => navigate("match-tinder")}>Ir para avaliar candidata</Button>}>
+    <Page label="Match e consÃ³rcios" title="Detalhe do anÃºncio" actions={<Button onClick={() => navigate("match-tinder")}>Ir para avaliar candidata</Button>}>
       <section className="partnerAdHero">
         <div>
           <span className="badge">CP 004/2026</span>
-          <h3>GeoArq Projetos disponível para composição socioambiental</h3>
-          <p>Anúncio completo da empresa para esta licitação, com oferta, necessidades e requisitos de habilitação.</p>
+          <h3>GeoArq Projetos disponÃ­vel para composiÃ§Ã£o socioambiental</h3>
+          <p>AnÃºncio completo da empresa para esta licitaÃ§Ã£o, com oferta, necessidades e requisitos de habilitaÃ§Ã£o.</p>
         </div>
         <div className="partnerAdCompany">
           <LogoSlot initials="GA" size="lg" label="Logo da GeoArq Projetos" />
           <strong>GeoArq Projetos</strong>
-          <small>Belo Horizonte - MG | Anúncio de parceria</small>
+          <small>Belo Horizonte - MG | AnÃºncio de parceria</small>
         </div>
       </section>
 
@@ -1561,19 +1963,19 @@ function MatchProfile({ navigate }) {
         <Card>
           <h3>O que oferece</h3>
           <ul className="cleanList">
-            <li>Arqueologia e supervisão ambiental.</li>
-            <li>Equipe de campo para diagnóstico e acompanhamento.</li>
-            <li>Estudos socioambientais e relatórios técnicos.</li>
-            <li>Experiência regional em Minas Gerais.</li>
+            <li>Arqueologia e supervisÃ£o ambiental.</li>
+            <li>Equipe de campo para diagnÃ³stico e acompanhamento.</li>
+            <li>Estudos socioambientais e relatÃ³rios tÃ©cnicos.</li>
+            <li>ExperiÃªncia regional em Minas Gerais.</li>
           </ul>
         </Card>
         <Card>
           <h3>O que busca</h3>
           <ul className="cleanList">
-            <li>Empresa líder com acervo operacional em saneamento.</li>
-            <li>Coordenação geral da proposta.</li>
-            <li>Apoio na composição final da equipe profissional.</li>
-            <li>Integração da peça técnica qualitativa.</li>
+            <li>Empresa lÃ­der com acervo operacional em saneamento.</li>
+            <li>CoordenaÃ§Ã£o geral da proposta.</li>
+            <li>Apoio na composiÃ§Ã£o final da equipe profissional.</li>
+            <li>IntegraÃ§Ã£o da peÃ§a tÃ©cnica qualitativa.</li>
           </ul>
         </Card>
       </div>
@@ -1593,17 +1995,17 @@ function MatchProfile({ navigate }) {
 
 function MatchSuccess() {
   return (
-    <Page label="Match e consórcios" title="Match realizado">
+    <Page label="Match e consÃ³rcios" title="Match realizado">
       <Card className="success matchSuccessCard">
         <h3>Engenvale Consultoria + GeoArq Projetos</h3>
-        <p>As duas empresas demonstraram interesse recíproco na licitação CP 004/2026. Agora o contato pode seguir pelo WhatsApp do responsável informado.</p>
+        <p>As duas empresas demonstraram interesse recÃ­proco na licitaÃ§Ã£o CP 004/2026. Agora o contato pode seguir pelo WhatsApp do responsÃ¡vel informado.</p>
         <div className="matchContactGrid">
           <div>
             <strong>Ana Ribeiro</strong>
             <span>GeoArq Projetos</span>
             <small>(31) 97777-3030</small>
           </div>
-          <a className="whatsappButton" href="https://wa.me/5531977773030?text=Olá%2C%20somos%20da%20Engenvale%20Consultoria.%20Demos%20match%20na%20LicitaHub%20para%20a%20licitação%20CP%20004%2F2026%20e%20gostaríamos%20de%20conversar%20sobre%20possível%20parceria." target="_blank">Abrir WhatsApp</a>
+          <a className="whatsappButton" href="https://wa.me/5531977773030?text=OlÃ¡%2C%20somos%20da%20Engenvale%20Consultoria.%20Demos%20match%20na%20LicitaHub%20para%20a%20licitaÃ§Ã£o%20CP%20004%2F2026%20e%20gostarÃ­amos%20de%20conversar%20sobre%20possÃ­vel%20parceria." target="_blank">Abrir WhatsApp</a>
         </div>
       </Card>
     </Page>
@@ -1611,7 +2013,7 @@ function MatchSuccess() {
 }
 
 function TenderTable({ navigate = () => {}, openTenderInterestCompanies = () => {} }) {
-  return <Table columns={["Órgão", "Número", "Objeto", "Local", "Abertura", "Valor", "Critério", "Status", "Ações"]} rows={tenders.map((tender) => [
+  return <Table columns={["Ã“rgÃ£o", "NÃºmero", "Objeto", "Local", "Abertura", "Valor", "CritÃ©rio", "Status", "AÃ§Ãµes"]} rows={tenders.map((tender) => [
     tender.agency,
     tender.number,
     tender.object,
@@ -1621,9 +2023,9 @@ function TenderTable({ navigate = () => {}, openTenderInterestCompanies = () => 
     tender.criterion,
     <span className={`statusPill ${tender.status === "Publicado" ? "open" : "review"}`} key={`${tender.number}-status`}>{tender.status}</span>,
     <div className="rowActions compactRowActions" key={`${tender.number}-actions`}>
-      <button className="iconButton secondaryIcon" title="Ver detalhe do edital" aria-label="Ver detalhe do edital" onClick={() => navigate("tender-detail")}>👁</button>
-      <button className="iconButton successIcon" title="Marcar interesse no edital" aria-label="Marcar interesse no edital" onClick={() => navigate("tender-interest")}>✓</button>
-      <button className="iconButton partnerIcon" title="Ver empresas interessadas neste edital" aria-label="Ver empresas interessadas neste edital" onClick={() => openTenderInterestCompanies(tender.id)}>👥</button>
+      <button className="iconButton secondaryIcon" title="Ver detalhe do edital" aria-label="Ver detalhe do edital" onClick={() => navigate("tender-detail")}>ðŸ‘</button>
+      <button className="iconButton successIcon" title="Marcar interesse no edital" aria-label="Marcar interesse no edital" onClick={() => navigate("tender-interest")}>âœ“</button>
+      <button className="iconButton partnerIcon" title="Ver empresas interessadas neste edital" aria-label="Ver empresas interessadas neste edital" onClick={() => openTenderInterestCompanies(tender.id)}>ðŸ‘¥</button>
     </div>
   ])} />;
 }
@@ -1635,7 +2037,7 @@ function PartnerCard({ partner }) {
       <p>{partner.location}</p>
       <p><strong>Oferece:</strong> {partner.offers}</p>
       <p><strong>Procura:</strong> {partner.seeks}</p>
-      <span className="badge">Anúncio de parceria</span>
+      <span className="badge">AnÃºncio de parceria</span>
       <div className="actions"><Button>Curtir</Button><Button variant="secondary">Avaliar depois</Button><Button variant="danger">Ignorar</Button></div>
     </Card>
   );
@@ -1663,9 +2065,10 @@ function Table({ columns, rows }) {
 function AreaChips() {
   return (
     <div className="chips">
-      {["Saneamento", "Projetos de engenharia", "Supervisão ambiental", "Geotecnia", "BIM"].map((area) => <span key={area}>{area}</span>)}
+      {["Saneamento", "Projetos de engenharia", "SupervisÃ£o ambiental", "Geotecnia", "BIM"].map((area) => <span key={area}>{area}</span>)}
     </div>
   );
 }
 
 createRoot(document.getElementById("root")).render(<App />);
+

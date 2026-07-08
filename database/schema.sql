@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS users (
   email varchar(255) NOT NULL,
   phone varchar(40),
   job_title varchar(160),
+  password_hash text,
   profile_photo_media_id uuid,
   status varchar(40) NOT NULL DEFAULT 'pending_invite',
   last_login_at timestamptz,
