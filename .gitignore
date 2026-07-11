@@ -3,10 +3,13 @@ dist/
 .vite/
 .npm-cache/
 .go-cache/
+.gocache/
 .go-mod-cache/
 backend/*.exe
+backend/*.exe~
 backend/uploads/
 *.log
+*~
 .env
 .env.local
 .DS_Store

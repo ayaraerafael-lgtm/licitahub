@@ -1,24 +1,113 @@
 # Banco de dados LicitaHub
 
-O schema principal do MVP esta em `schema.sql`.
+O schema principal esta em:
 
-## Criar banco local
-
-1. Instale o PostgreSQL.
-2. Garanta que `psql` esteja no PATH do Windows.
-3. Rode:
-
-```powershell
-.\database\create-dev-db.ps1
+```text
+database/schema.sql
 ```
 
-Por padrao, o script cria/aplica o schema no banco `licitahub_dev`.
+Banco local usado no desenvolvimento:
 
-Tambem pode informar parametros:
-
-```powershell
-.\database\create-dev-db.ps1 -DatabaseName licitahub_dev -User postgres -HostName localhost -Port 5432
+```text
+licitahub_dev
 ```
 
-O backend Go deve usar a variavel `DATABASE_URL`, conforme `.env.example`.
+## Stack
 
+- PostgreSQL 17 no ambiente local.
+- Extensao `pgcrypto`.
+- Migracoes seguras tambem sao aplicadas pelo backend ao iniciar.
+
+## Grupos de tabelas
+
+### Acesso e administracao
+
+- `companies`
+- `access_profiles`
+- `users`
+- `company_invitations`
+- `auth_sessions`
+- `password_reset_tokens`
+- `company_reviews`
+
+### Empresa
+
+- `company_profiles`
+- `technical_areas`
+- `company_technical_areas`
+- `media_files`
+
+### Radar LicitaHub
+
+- `news_categories`
+- `news`
+
+### Comunidade
+
+- `post_categories`
+- `posts`
+- `post_images`
+- `post_likes`
+- `post_comments`
+- `post_favorites`
+
+### Editais
+
+- `tenders`
+- `tender_files`
+- `tender_requirement_types`
+- `tender_requirements`
+- `tender_interests`
+- `tender_interest_requirements`
+
+### Match e consorcio
+
+- `partnership_ads`
+- `partner_evaluations`
+- `matches`
+- `match_contacts`
+- `consortium_intentions`
+- `consortium_members`
+
+### Notificacoes e auditoria
+
+- `notifications`
+- `audit_logs`
+
+A tabela `audit_logs` existe como base tecnica, mas a auditoria funcional completa fica para fase posterior.
+
+## Regras importantes
+
+- Nome fantasia da empresa e unico.
+- CNPJ da empresa e unico.
+- Email de usuario pode repetir conforme regra definida no MVP.
+- Usuarios removidos nao aparecem como ativos.
+- Noticias vencidas nao aparecem no Radar publico.
+- Anuncios consorciados podem ser fechados para sair da vitrine publica.
+- Notificacoes sao lidas por usuario/empresa e deixam de aparecer como novas apos leitura.
+
+## Indices recentes
+
+O schema inclui indices para melhorar:
+
+- feed da comunidade;
+- perfil publico da empresa;
+- comentarios ativos;
+- curtidas e favoritos;
+- noticias por status e vencimento;
+- interesses por edital;
+- vitrine de parceiros;
+- matches por empresa;
+- notificacoes por destinatario e entidade relacionada.
+
+## Criacao local
+
+O backend atual aplica migracoes seguras ao iniciar. Para recriar manualmente o banco, use `schema.sql` com o `psql` do PostgreSQL.
+
+Exemplo conceitual:
+
+```powershell
+psql -h localhost -p 5432 -U postgres -d licitahub_dev -f database/schema.sql
+```
+
+Use com cuidado em banco com dados reais.

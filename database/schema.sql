@@ -94,6 +94,24 @@ CREATE TABLE IF NOT EXISTS company_invitations (
   ))
 );
 
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash varchar(128) NOT NULL UNIQUE,
+  expires_at timestamptz NOT NULL,
+  revoked_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash varchar(128) NOT NULL UNIQUE,
+  expires_at timestamptz NOT NULL,
+  used_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS company_reviews (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id uuid NOT NULL REFERENCES companies(id),
@@ -103,7 +121,7 @@ CREATE TABLE IF NOT EXISTS company_reviews (
   review_note text,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT company_reviews_status_chk CHECK (status IN (
-    'approved', 'adjustment_requested', 'rejected'
+    'approved', 'adjustment_requested', 'resubmitted', 'rejected'
   ))
 );
 
@@ -208,10 +226,12 @@ CREATE TABLE IF NOT EXISTS news (
   content text,
   main_image_media_id uuid REFERENCES media_files(id),
   published_at timestamptz,
+  expires_at timestamptz,
+  archived_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
-  CONSTRAINT news_status_chk CHECK (status IN ('draft', 'published', 'featured'))
+  CONSTRAINT news_status_chk CHECK (status IN ('draft', 'published', 'featured', 'archived', 'expired'))
 );
 
 -- =========================================================
@@ -307,7 +327,7 @@ CREATE TABLE IF NOT EXISTS tenders (
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
   CONSTRAINT tenders_status_chk CHECK (status IN (
-    'draft', 'published', 'under_review', 'suspended', 'closed', 'cancelled'
+    'draft', 'published', 'under_review', 'suspended', 'challenged', 'occurred', 'closed', 'cancelled'
   ))
 );
 
@@ -635,21 +655,44 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE INDEX IF NOT EXISTS idx_users_company_id ON users(company_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_company_status ON users(company_id, status) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_companies_status_deleted_at ON companies(status, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_company_invitations_status_created_at ON company_invitations(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_company_profiles_public ON company_profiles(is_public, public_profile_slug);
 CREATE INDEX IF NOT EXISTS idx_media_files_company_id ON media_files(company_id);
+CREATE INDEX IF NOT EXISTS idx_media_files_uploaded_by ON media_files(uploaded_by_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_posts_company_id ON posts(company_id);
 CREATE INDEX IF NOT EXISTS idx_posts_published_at ON posts(published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_feed ON posts(status, visibility, published_at DESC, created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_posts_company_profile ON posts(company_id, status, visibility, published_at DESC, created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_post_comments_post_id ON post_comments(post_id);
-CREATE INDEX IF NOT EXISTS idx_news_status_published_at ON news(status, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_post_comments_active ON post_comments(post_id, created_at) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_post_likes_post_created_at ON post_likes(post_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_post_favorites_user_created_at ON post_favorites(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_news_status_expires_published_at ON news(status, expires_at, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_token ON auth_sessions(token_hash, expires_at) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens ON password_reset_tokens(token_hash, expires_at) WHERE used_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_tenders_status_opening_date ON tenders(status, opening_date);
 CREATE INDEX IF NOT EXISTS idx_tender_files_tender_id ON tender_files(tender_id);
 CREATE INDEX IF NOT EXISTS idx_tender_requirements_tender_id ON tender_requirements(tender_id);
 CREATE INDEX IF NOT EXISTS idx_tender_interests_tender_id ON tender_interests(tender_id);
 CREATE INDEX IF NOT EXISTS idx_tender_interests_company_id ON tender_interests(company_id);
+CREATE INDEX IF NOT EXISTS idx_tender_interests_tender_status ON tender_interests(tender_id, status, visibility) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_partnership_ads_tender_status ON partnership_ads(tender_id, status);
+CREATE INDEX IF NOT EXISTS idx_partnership_ads_showcase ON partnership_ads(status, published_at DESC) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS partnership_ads_active_interest_uk
+  ON partnership_ads(tender_interest_id)
+  WHERE tender_interest_id IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_partner_evaluations_tender_eval ON partner_evaluations(tender_id, evaluator_company_id);
 CREATE INDEX IF NOT EXISTS idx_matches_tender_id ON matches(tender_id);
+CREATE INDEX IF NOT EXISTS idx_matches_company_a_status ON matches(company_a_id, status, matched_at DESC);
+CREATE INDEX IF NOT EXISTS idx_matches_company_b_status ON matches(company_b_id, status, matched_at DESC);
+CREATE INDEX IF NOT EXISTS idx_match_contacts_match_company ON match_contacts(match_id, company_id);
+CREATE INDEX IF NOT EXISTS idx_consortium_intentions_match ON consortium_intentions(match_id);
+CREATE INDEX IF NOT EXISTS idx_consortium_intentions_tender ON consortium_intentions(tender_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_recipient_user ON notifications(recipient_user_id, is_read, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_recipient_company ON notifications(recipient_company_id, is_read, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_related ON notifications(related_entity_type, related_entity_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
 
@@ -688,8 +731,8 @@ ON CONFLICT (slug) DO NOTHING;
 
 INSERT INTO tender_requirement_types (key, name, description)
 VALUES
-  ('operational_qualification', 'Habilitacao operacional', 'Acervo, atestados e experiencia da empresa exigidos pelo edital.'),
-  ('professional_qualification', 'Habilitacao profissional', 'Equipe, responsaveis tecnicos, curriculos, CATs e disponibilidade.'),
+  ('operational_qualification', 'Requisito operacional', 'Acervo, atestados, experiencia da empresa e pontuacao operacional exigidos pelo edital.'),
+  ('professional_qualification', 'Requisitos profissionais', 'Equipe, responsaveis tecnicos, curriculos, CATs, disponibilidade e pontuacao profissional.'),
   ('technical_proposal', 'Peca tecnica qualitativa', 'Metodologia, plano de trabalho, abordagem tecnica e proposta qualitativa.'),
   ('certifications', 'Certificacoes requeridas', 'Certificacoes, registros ou comprovacoes formais exigidas.')
 ON CONFLICT (key) DO NOTHING;
