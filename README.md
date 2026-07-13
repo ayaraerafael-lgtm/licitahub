@@ -57,6 +57,7 @@ Nao publique senhas, tokens ou credenciais no GitHub.
 - Empresas interessadas.
 - Avaliacao de candidata.
 - Match/consorcio.
+- Chat de parceria em tempo real.
 - Notificacoes no sino.
 
 ## Ajustes recentes validados
@@ -69,6 +70,10 @@ Nao publique senhas, tokens ou credenciais no GitHub.
 - Editais com data de abertura passada tratados como ocorridos.
 - Lista de editais indica quando a empresa ja registrou interesse e remove o botao de registrar novamente.
 - Empresas interessadas e vitrine mostram o proprio anuncio como "Meu anuncio", sem permitir match consigo mesmo.
+- Vitrine separa meus anuncios dos anuncios de outras empresas, com edicao de resumo e encerramento seguro do anuncio proprio.
+- Consorcios permitem inclusao de terceira empresa pela lider, com candidatura, aceite e registro dos membros.
+- Desistencia de consorcio registra a retirada e exige sucessora quando a lider deixa uma composicao que permanece ativa.
+- Perfil publico permite abrir detalhes profissionais de usuarios ativos sem expor dados internos.
 - Registrar interesse usa linguagem de requisitos e pontuacao.
 - Radar com filtro fixo, paginacao e limite de titulo/resumo.
 - Usuarios vinculados e admin de editais com filtros fixos.

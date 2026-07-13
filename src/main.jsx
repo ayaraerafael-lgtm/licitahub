@@ -258,9 +258,10 @@ function findScreenConfig(screenId) {
 
 function canAccessScreen(screenId, role) {
   if (screenId === "invite-accept" || screenId === "reset-password") return true;
-  const match = findScreenConfig(screenId);
-  if (!match) return false;
-  return match.group.roles.includes(role) && canSee(match.item, role);
+  return modules.some((group) =>
+    group.roles.includes(role) &&
+    group.items.some((item) => item.id === screenId && canSee(item, role))
+  );
 }
 
 function firstScreenFor(role) {
@@ -325,6 +326,7 @@ function App() {
   const [selectedTenderId, setSelectedTenderId] = useState("cp-004-2026");
   const [selectedNews, setSelectedNews] = useState(null);
   const [navigationStack, setNavigationStack] = useState([]);
+  const [chatSeedAd, setChatSeedAd] = useState(null);
   const screen = useHashScreen(role);
   const visibleModules = useMemo(() => modules.filter((group) =>
     group.roles.includes(role) && group.items.some((item) => canSee(item, role) && !item.hidden)
@@ -408,6 +410,10 @@ function App() {
     navigateTo("radar-detail");
   };
 
+  const openChatForAd = (ad) => {
+    setChatSeedAd(ad);
+  };
+
   const handleLogin = (user) => {
     const nextRole = frontendRole(user.roleKey);
     setSessionUser(user);
@@ -459,7 +465,8 @@ function App() {
       <main className="main">
         <NavigationContext.Provider value={{ canGoBack: navigationStack.length > 0, goBack }}>
           <Topbar navigate={navigateTo} openPublicationManager={openPublicationManager} openTenderInterestCompanies={openTenderInterestCompanies} sessionUser={sessionUser} onLogout={handleLogout} />
-          <Screen screen={screen} navigate={navigateTo} userStatuses={userStatuses} openUserAction={openUserAction} selectedUserAction={selectedUserAction} updateUserStatus={updateUserStatus} selectedUserProfile={selectedUserProfile} openUserProfile={openUserProfile} selectedPublicationId={selectedPublicationId} openPublicationManager={openPublicationManager} selectedTenderId={selectedTenderId} openTenderInterestCompanies={openTenderInterestCompanies} selectedNews={selectedNews} openNewsDetail={openNewsDetail} refreshSession={refreshSession} sessionUser={sessionUser} />
+          <Screen screen={screen} navigate={navigateTo} userStatuses={userStatuses} openUserAction={openUserAction} selectedUserAction={selectedUserAction} updateUserStatus={updateUserStatus} selectedUserProfile={selectedUserProfile} openUserProfile={openUserProfile} selectedPublicationId={selectedPublicationId} openPublicationManager={openPublicationManager} selectedTenderId={selectedTenderId} openTenderInterestCompanies={openTenderInterestCompanies} selectedNews={selectedNews} openNewsDetail={openNewsDetail} refreshSession={refreshSession} sessionUser={sessionUser} openChatForAd={openChatForAd} />
+          <FloatingChat sessionUser={sessionUser} seedAd={chatSeedAd} onSeedConsumed={() => setChatSeedAd(null)} navigate={navigateTo} />
           <ScrollControls />
         </NavigationContext.Provider>
       </main>
@@ -712,7 +719,302 @@ function ScrollControls() {
   );
 }
 
-function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAction, updateUserStatus, selectedUserProfile, openUserProfile, selectedPublicationId, openPublicationManager, selectedTenderId, openTenderInterestCompanies, selectedNews, openNewsDetail, refreshSession, sessionUser }) {
+function FloatingChat({ sessionUser, seedAd, onSeedConsumed, navigate }) {
+  const canUseChat = ["company_admin", "commercial"].includes(sessionUser?.roleKey) && sessionUser?.companyId;
+  const [open, setOpen] = useState(false);
+  const [minimized, setMinimized] = useState(true);
+  const [threads, setThreads] = useState([]);
+  const [activeThreadId, setActiveThreadId] = useState("");
+  const [messages, setMessages] = useState([]);
+  const [draft, setDraft] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [soundEnabled, setSoundEnabled] = useState(() => window.localStorage.getItem("licitahubChatSound") !== "off");
+  const activeThreadRef = React.useRef("");
+  const lastSoundAtRef = React.useRef(0);
+  const audioContextRef = React.useRef(null);
+  const audioUnlockedRef = React.useRef(false);
+  const previousUnreadTotalRef = React.useRef(0);
+  const unreadInitializedRef = React.useRef(false);
+
+  useEffect(() => {
+    activeThreadRef.current = activeThreadId;
+  }, [activeThreadId]);
+
+  const unreadTotal = threads.reduce((total, thread) => total + Number(thread.unreadCount || 0), 0);
+  const activeThread = threads.find((thread) => thread.id === activeThreadId);
+  const canReply = !activeThread || activeThread.canReply !== false;
+
+  const unlockChatAudio = () => {
+    if (audioUnlockedRef.current) return;
+    const now = Date.now();
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const context = audioContextRef.current || new AudioContext();
+      audioContextRef.current = context;
+      if (context.state === "suspended") {
+        context.resume?.();
+      }
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      gain.gain.setValueAtTime(0.0001, context.currentTime);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.01);
+      audioUnlockedRef.current = true;
+    } catch (_err) {
+      audioUnlockedRef.current = false;
+    }
+  };
+
+  const playMessageSound = (force = false) => {
+    if (!soundEnabled && !force) return;
+    const now = Date.now();
+    if (now - lastSoundAtRef.current < 1200) return;
+    lastSoundAtRef.current = now;
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const context = audioContextRef.current || new AudioContext();
+      audioContextRef.current = context;
+      if (context.state === "suspended") {
+        context.resume?.();
+      }
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(740, context.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(520, context.currentTime + 0.16);
+      gain.gain.setValueAtTime(0.0001, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.2);
+    } catch (_err) {
+      // Browsers may block audio until the first user interaction.
+    }
+  };
+
+  const toggleSound = () => {
+    unlockChatAudio();
+    setSoundEnabled((current) => {
+      const next = !current;
+      window.localStorage.setItem("licitahubChatSound", next ? "on" : "off");
+      if (next) {
+        window.setTimeout(() => playMessageSound(true), 60);
+      }
+      return next;
+    });
+  };
+
+  const loadThreads = async () => {
+    if (!canUseChat) return;
+    const response = await fetch(`${API_BASE_URL}/api/chats`, { credentials: "include" });
+    const data = await response.json().catch(() => []);
+    if (!response.ok) throw new Error(data.error || "Não foi possível carregar conversas.");
+    const nextThreads = Array.isArray(data) ? data : [];
+    const nextUnreadTotal = nextThreads.reduce((total, thread) => total + Number(thread.unreadCount || 0), 0);
+    if (unreadInitializedRef.current && nextUnreadTotal > previousUnreadTotalRef.current) {
+      playMessageSound();
+    }
+    unreadInitializedRef.current = true;
+    previousUnreadTotalRef.current = nextUnreadTotal;
+    setThreads(nextThreads);
+  };
+
+  const loadMessages = async (threadId) => {
+    if (!threadId) return;
+    const response = await fetch(`${API_BASE_URL}/api/chats/${encodeURIComponent(threadId)}/messages`, { credentials: "include" });
+    const data = await response.json().catch(() => []);
+    if (!response.ok) throw new Error(data.error || "Não foi possível carregar mensagens.");
+    setMessages(Array.isArray(data) ? data : []);
+    setThreads((current) => current.map((thread) => thread.id === threadId ? { ...thread, unreadCount: 0 } : thread));
+  };
+
+  const openThread = async (threadId) => {
+    setActiveThreadId(threadId);
+    setError("");
+    setLoading(true);
+    try {
+      await loadMessages(threadId);
+      await loadThreads();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startChat = async (ad) => {
+    if (!ad?.id) return;
+    setOpen(true);
+    setMinimized(false);
+    setError("");
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ adId: ad.id })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível abrir a conversa.");
+      setActiveThreadId(data.id);
+      await loadThreads();
+      await loadMessages(data.id);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+      onSeedConsumed?.();
+    }
+  };
+
+  useEffect(() => {
+    if (canUseChat) {
+      loadThreads().catch(() => {});
+    }
+  }, [canUseChat]);
+
+  useEffect(() => {
+    const unlock = () => unlockChatAudio();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (canUseChat && seedAd?.id) {
+      startChat(seedAd);
+    }
+  }, [canUseChat, seedAd?.id]);
+
+  useEffect(() => {
+    if (!canUseChat) return undefined;
+    const source = new EventSource(`${API_BASE_URL}/api/chats/stream`, { withCredentials: true });
+    source.addEventListener("chat-message", (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.eventType === "chat-message") {
+          if (data.senderUserId !== sessionUser.userId) {
+            playMessageSound();
+          }
+          if (data.threadId === activeThreadRef.current) {
+            setMessages((current) => current.some((message) => message.id === data.id) ? current : [...current, { ...data, mine: data.senderUserId === sessionUser.userId }]);
+            loadMessages(data.threadId).catch(() => {});
+          }
+          loadThreads().catch(() => {});
+        }
+        if (data.eventType === "chat-thread") {
+          loadThreads().catch(() => {});
+        }
+      } catch (_err) {
+        loadThreads().catch(() => {});
+      }
+    });
+    return () => source.close();
+  }, [canUseChat, sessionUser?.userId, soundEnabled]);
+
+  const sendMessage = async (event) => {
+    event.preventDefault();
+    if (!activeThreadId || !draft.trim()) return;
+    const content = draft.trim();
+    setDraft("");
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chats/${encodeURIComponent(activeThreadId)}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ content })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível enviar mensagem.");
+      setMessages((current) => current.some((message) => message.id === data.id) ? current : [...current, { ...data, mine: true }]);
+      await loadThreads();
+    } catch (err) {
+      setDraft(content);
+      setError(err.message);
+    }
+  };
+
+  if (!canUseChat) return null;
+
+  if (!open || minimized) {
+    return (
+      <button type="button" className="chatLauncher" onClick={() => { unlockChatAudio(); setOpen(true); setMinimized(false); loadThreads().catch(() => {}); }} title="Abrir conversas de parceria">
+        <span>Chat</span>
+        {unreadTotal > 0 && <strong>{unreadTotal}</strong>}
+      </button>
+    );
+  }
+
+  return (
+    <section className="floatingChat" aria-label="Conversas de parceria" onPointerDown={unlockChatAudio}>
+      <header className="floatingChatHeader">
+        <div>
+          <strong>{activeThread ? activeThread.otherCompanyName : "Conversas de anúncios"}</strong>
+          <small>{activeThread ? `${activeThread.tenderNumber} | ${activeThread.agency}` : "Negociações antes do match"}</small>
+        </div>
+        <div className="floatingChatHeaderActions">
+          {activeThread?.evaluationAdId && activeThread.status === "open" && <button type="button" title="Avaliar candidata" onClick={() => navigate(`match-tinder?id=${activeThread.evaluationAdId}`)}>{"\u2713"}</button>}
+          <button type="button" title={soundEnabled ? "Desligar som" : "Ligar som"} onClick={toggleSound}>{soundEnabled ? "\u266B" : "\u266A"}</button>
+          {activeThreadId && <button type="button" title="Voltar para lista" onClick={() => { setActiveThreadId(""); setMessages([]); }}>{"\u2190"}</button>}
+          <button type="button" title="Minimizar chat" onClick={() => setMinimized(true)}>{"\u2212"}</button>
+        </div>
+      </header>
+      {error && <p className="chatError">{error}</p>}
+      {!activeThreadId ? (
+        <div className="chatThreadList">
+          {threads.length === 0 && <p className="emptyChat">Nenhuma conversa iniciada ainda.</p>}
+          {threads.map((thread) => (
+            <button type="button" className="chatThreadItem" key={thread.id} onClick={() => openThread(thread.id)}>
+              <LogoSlot initials={thread.otherCompanyName?.split(" ").map((word) => word[0]).join("").slice(0, 2) || "CH"} src={thread.otherCompanyLogoUrl} size="xs" label={`Logo da ${thread.otherCompanyName}`} />
+              <span>
+                <strong>{thread.otherCompanyName}</strong>
+                <small>{thread.tenderNumber} | {thread.lastMessage || thread.tenderObject}</small>
+                {thread.isClosed && <small className="closedChatLabel">Encerrada</small>}
+              </span>
+              {thread.unreadCount > 0 && <em>{thread.unreadCount}</em>}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <>
+          {activeThread?.closedReason && <div className={`chatNotice ${activeThread.isClosed ? "closed" : ""}`}>{activeThread.closedReason}</div>}
+          <div className="chatMessages">
+            {loading && <p className="emptyChat">Carregando conversa...</p>}
+            {!loading && messages.length === 0 && <p className="emptyChat">Conversa aberta. Envie a primeira mensagem.</p>}
+            {messages.map((message) => (
+              <div className={`chatBubble ${message.mine ? "mine" : ""}`} key={message.id}>
+                <div className="chatSender">
+                  {!message.mine && <LogoSlot initials={message.senderName?.split(" ").map((word) => word[0]).join("").slice(0, 2) || "US"} src={message.senderPhotoUrl} size="xs" label={`Foto de ${message.senderName}`} />}
+                  <small>{message.mine ? "Você" : `${message.senderName}${message.senderJobTitle ? ` | ${message.senderJobTitle}` : ""}`}</small>
+                </div>
+                <p>{message.content}</p>
+                <time>{message.createdAt ? new Date(message.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""}</time>
+              </div>
+            ))}
+          </div>
+          <form className="chatComposer" onSubmit={sendMessage}>
+            <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={canReply ? "Escreva uma mensagem" : "Conversa encerrada"} maxLength={2000} disabled={!canReply} />
+            <button type="submit" disabled={!draft.trim() || !canReply}>Enviar</button>
+          </form>
+        </>
+      )}
+    </section>
+  );
+}
+
+function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAction, updateUserStatus, selectedUserProfile, openUserProfile, selectedPublicationId, openPublicationManager, selectedTenderId, openTenderInterestCompanies, selectedNews, openNewsDetail, refreshSession, sessionUser, openChatForAd }) {
   const currentRole = frontendRole(sessionUser?.roleKey);
   if (!canAccessScreen(screen, currentRole)) {
     return <AccessDenied navigate={navigate} role={currentRole} />;
@@ -743,12 +1045,12 @@ function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAc
     "tender-admin": <TenderAdmin navigate={navigate} />,
     "tender-new": <TenderNew navigate={navigate} />,
     "tender-list": <TenderList navigate={navigate} openTenderInterestCompanies={openTenderInterestCompanies} />,
-    "tender-detail": <TenderDetail navigate={navigate} sessionUser={sessionUser} />,
+    "tender-detail": <TenderDetail navigate={navigate} sessionUser={sessionUser} openTenderInterestCompanies={openTenderInterestCompanies} />,
     "tender-interest": <TenderInterest navigate={navigate} />,
-    "tender-interest-list": <TenderInterestList navigate={navigate} selectedTenderId={selectedTenderId} sessionUser={sessionUser} />,
-    "match-partners": <MatchPartners navigate={navigate} sessionUser={sessionUser} />,
+    "tender-interest-list": <TenderInterestList navigate={navigate} selectedTenderId={selectedTenderId} sessionUser={sessionUser} openChatForAd={openChatForAd} />,
+    "match-partners": <MatchPartners navigate={navigate} sessionUser={sessionUser} openChatForAd={openChatForAd} />,
     "match-tinder": <MatchTinder navigate={navigate} sessionUser={sessionUser} />,
-    "match-profile": <MatchProfile navigate={navigate} sessionUser={sessionUser} />,
+    "match-profile": <MatchProfile navigate={navigate} sessionUser={sessionUser} openChatForAd={openChatForAd} />,
     "match-success": <MatchSuccess />,
     "match-list": <MatchList sessionUser={sessionUser} />
   };
@@ -1127,7 +1429,7 @@ function InviteList({ navigate }) {
   const [invitations, setInvitations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
-  const [filters, setFilters] = useState({ search: "", status: "" });
+  const [filters, setFilters] = useState({ search: "", status: "", sort: "created_desc" });
 
   const loadInvitations = () => {
     setLoading(true);
@@ -1179,6 +1481,11 @@ function InviteList({ navigate }) {
     ].some((value) => String(value || "").toLowerCase().includes(search));
     const matchesStatus = !status || invitation.status === status;
     return matchesSearch && matchesStatus;
+  }).sort((a, b) => {
+    if (filters.sort === "name_asc") return String(a.tradeName || "").localeCompare(String(b.tradeName || ""), "pt-BR");
+    if (filters.sort === "expires_asc") return new Date(a.expiresAt || "9999-12-31").getTime() - new Date(b.expiresAt || "9999-12-31").getTime();
+    if (filters.sort === "created_asc") return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
   });
   const pendingReviews = invitations.filter((invitation) => invitation.status === "pending_review");
   const pendingReviewCount = pendingReviews.length;
@@ -1187,10 +1494,11 @@ function InviteList({ navigate }) {
     <Page label="Convites" title="Lista de convites" actions={<Button onClick={() => navigate("invite-new")}>Novo convite</Button>}>
       {message && <Card className={`formFeedback ${message.type === "success" ? "success" : "dangerNotice"}`}><p>{message.text}</p></Card>}
       {pendingReviewCount > 0 && <Card className="notice"><h3>{pendingReviewCount} {pendingReviewCount === 1 ? "empresa aguarda" : "empresas aguardam"} análise</h3><p>O cadastro foi preenchido, mas o acesso somente será liberado após sua aprovação.</p><div className="reviewQueue">{pendingReviews.map((invitation) => <div className="reviewQueueItem" key={invitation.id}><div><strong>{invitation.tradeName}</strong><span>CNPJ {invitation.cnpj}</span></div><Button onClick={() => navigate(`company-review?id=${encodeURIComponent(invitation.id)}`)}>Analisar empresa</Button></div>)}</div></Card>}
-      <Card className="formFeedback">
+      <Card className="compactFilters inviteFiltersSticky">
         <FormGrid>
           <Field label="Buscar convite"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Empresa, CNPJ, e-mail ou telefone" /></Field>
           <Field label="Status"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos</option><option value="sent">Enviado</option><option value="pending_review">Aguardando analise</option><option value="accepted">Aceito</option><option value="cancelled">Cancelado</option><option value="rejected">Recusado</option><option value="expired">Expirado</option></select></Field>
+          <Field label="Ordenar por"><select value={filters.sort} onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value }))}><option value="created_desc">Mais recentes</option><option value="created_asc">Mais antigos</option><option value="expires_asc">Validade mais próxima</option><option value="name_asc">Empresa A-Z</option></select></Field>
         </FormGrid>
       </Card>
       {loading && <Card className="formFeedback"><p>Carregando convites do banco...</p></Card>}
@@ -2484,6 +2792,7 @@ function CompanyPublicProfile({ navigate, openPublicationManager }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [professionalsOpen, setProfessionalsOpen] = useState(false);
+  const [selectedProfessionalId, setSelectedProfessionalId] = useState("");
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/companies/me/public-profile`, { credentials: "include" })
@@ -2552,16 +2861,24 @@ function CompanyPublicProfile({ navigate, openPublicationManager }) {
               <div className="professionalsGrid">
                 {professionals.length === 0 && <p className="emptyComments">Nenhum profissional ativo para exibir.</p>}
                 {professionals.map((person) => (
-                  <div className="professionalCard" key={person.id}>
+                  <button type="button" className={`professionalCard professionalCardButton ${selectedProfessionalId === person.id ? "selected" : ""}`} key={person.id} onClick={() => setSelectedProfessionalId((current) => current === person.id ? "" : person.id)}>
                     <span className="userAvatar large">{person.profilePhotoUrl ? <img src={person.profilePhotoUrl} alt="" /> : initialsFromName(person.fullName)}</span>
                     <div>
                       <strong>{person.fullName}</strong>
                       <small>{person.jobTitle || "Cargo não informado"}</small>
-                      <span>{person.email}</span>
-                      <span>{person.phone}</span>
+                      <span>Ver informações profissionais</span>
                     </div>
-                  </div>
+                  </button>
                 ))}
+                {selectedProfessionalId && (() => {
+                  const person = professionals.find((item) => item.id === selectedProfessionalId);
+                  if (!person) return null;
+                  return <div className="professionalDetail" key={`detail-${person.id}`}>
+                    <span className="userAvatar large">{person.profilePhotoUrl ? <img src={person.profilePhotoUrl} alt="" /> : initialsFromName(person.fullName)}</span>
+                    <div className="professionalDetailContent"><span className="eyebrow">Profissional vinculado</span><h3>{person.fullName}</h3><p>{person.jobTitle || "Cargo não informado"}</p><div className="professionalContactLinks">{person.email ? <a href={`mailto:${person.email}`}>{person.email}</a> : <span>E-mail não informado</span>}{person.phone ? <a href={`tel:${String(person.phone).replace(/\D/g, "")}`}>{person.phone}</a> : <span>Telefone não informado</span>}</div></div>
+                    <button type="button" className="iconButton secondaryIcon" title="Fechar informações do profissional" aria-label="Fechar informações do profissional" onClick={() => setSelectedProfessionalId("")}>×</button>
+                  </div>;
+                })()}
               </div>
             )}
           </Card>
@@ -2670,6 +2987,7 @@ function PublicationList({ selectedPublicationId }) {
   const [publications, setPublications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
+  const [filters, setFilters] = useState({ search: "", category: "all", status: "all", sort: "published_desc" });
 
   const removePublication = (id) => setPublications((current) => current.filter((item) => item.id !== id));
   const updatePublication = (updated) => {
@@ -2688,13 +3006,27 @@ function PublicationList({ selectedPublicationId }) {
       .finally(() => setLoading(false));
   }, []);
 
+  const categories = Array.from(new Set(publications.map((publication) => publication.type || publication.category).filter(Boolean))).sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
+  const filteredPublications = publications.filter((publication) => {
+    const term = filters.search.trim().toLocaleLowerCase("pt-BR");
+    const category = publication.type || publication.category || "";
+    const matchesSearch = !term || [publication.title, publication.content, publication.text, category].some((value) => String(value || "").toLocaleLowerCase("pt-BR").includes(term));
+    return matchesSearch && (filters.category === "all" || category === filters.category) && (filters.status === "all" || publication.status === filters.status);
+  }).sort((a, b) => {
+    if (filters.sort === "likes_desc") return Number(b.likeCount || 0) - Number(a.likeCount || 0);
+    if (filters.sort === "comments_desc") return Number(b.commentCount || 0) - Number(a.commentCount || 0);
+    return new Date(b.publishedAt || b.createdAt || 0).getTime() - new Date(a.publishedAt || a.createdAt || 0).getTime();
+  });
+
   return (
     <Page label="Comunidade" title="Minhas publicações">
       {message && <Card className="formFeedback dangerNotice"><p>{message.text}</p></Card>}
+      <Card className="compactFilters publicationFiltersSticky"><FormGrid><Field label="Buscar publicação"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Título, texto ou categoria" /></Field><Field label="Categoria"><select value={filters.category} onChange={(event) => setFilters((current) => ({ ...current, category: event.target.value }))}><option value="all">Todas</option>{categories.map((category) => <option value={category} key={category}>{category}</option>)}</select></Field><Field label="Status"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="all">Todos</option><option value="published">Publicada</option><option value="archived">Arquivada</option><option value="draft">Rascunho</option></select></Field><Field label="Ordenar por"><select value={filters.sort} onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value }))}><option value="published_desc">Mais recentes</option><option value="likes_desc">Mais curtidas</option><option value="comments_desc">Mais comentários</option></select></Field></FormGrid></Card>
       {loading && <Card><p>Carregando suas publicações...</p></Card>}
       {!loading && publications.length === 0 && <Card><p>Sua empresa ainda não possui publicações.</p></Card>}
+      {!loading && publications.length > 0 && filteredPublications.length === 0 && <Card><p>Nenhuma publicação encontrada com esses filtros.</p></Card>}
       <div className="publicationManager">
-        {publications.map((publication) => <PublicationManagerCard key={publication.id} publication={publication} initiallyOpen={publication.id === selectedPublicationId} highlighted={publication.id === selectedPublicationId} onRemoved={removePublication} onUpdated={updatePublication} />)}
+        {filteredPublications.map((publication) => <PublicationManagerCard key={publication.id} publication={publication} initiallyOpen={publication.id === selectedPublicationId} highlighted={publication.id === selectedPublicationId} onRemoved={removePublication} onUpdated={updatePublication} />)}
       </div>
     </Page>
   );
@@ -3354,7 +3686,7 @@ function RadarManage() {
 
   return (
     <Page label="Radar LicitaHub" title="Gerenciar notícias">
-      <Card className="newsManageFilters">
+      <Card className="newsManageFilters newsManageFiltersSticky">
         <Field label="Buscar notícia">
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Digite parte do título" />
         </Field>
@@ -3408,7 +3740,7 @@ function TenderAdmin({ navigate }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filters, setFilters] = useState({ search: "", status: "", state: "", modality: "" });
+  const [filters, setFilters] = useState({ search: "", status: "", state: "", modality: "", interest: "" });
   const loadTenders = () => {
     setLoading(true);
     fetch(`${API_BASE_URL}/api/tenders`, { credentials: "include" })
@@ -3537,12 +3869,26 @@ function TenderList({ navigate, openTenderInterestCompanies }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sort, setSort] = useState("opening_asc");
+  const [filters, setFilters] = useState({ search: "", status: "", state: "", modality: "" });
   useEffect(() => { fetch(`${API_BASE_URL}/api/tenders`, { credentials: "include" }).then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error); return d; }).then(setItems).catch((e) => setError(e.message)).finally(() => setLoading(false)); }, []);
   const date = (value) => value ? new Date(value).toLocaleDateString("pt-BR") : "-";
-  return <Page label="Editais" title="Lista de editais">{loading && <Card><p>Carregando editais...</p></Card>}{error && <Card className="dangerNotice"><p>{error}</p></Card>}{!loading && !error && <Table columns={["Órgão", "Número", "Objeto", "Local", "Abertura", "Critério", "Status", "Ações"]} rows={items.map((item) => [item.agency, item.number, item.object, [item.city,item.state].filter(Boolean).join(" / ") || "-", date(item.openingDate), item.judgmentCriterion || "-", item.status, <div className="rowActions compactRowActions" key={item.id}><button className="iconButton secondaryIcon" title="Ver detalhe do edital" onClick={() => navigate(`tender-detail?id=${item.id}`)}>{"\u25C9"}</button>{item.hasMyInterest ? <span className="statusPill open" title="Você já registrou interesse neste edital">Interesse registrado</span> : <button className="iconButton successIcon" title="Registrar interesse" onClick={() => navigate(`tender-interest?id=${item.id}`)}>{"\u2713"}</button>}<button className="iconButton partnerIcon" title="Ver empresas interessadas" onClick={() => openTenderInterestCompanies(item.id)}>{"\u2637"}</button></div>])} />}</Page>;
+  const orderedItems = items.filter((item) => {
+    const term = filters.search.trim().toLocaleLowerCase("pt-BR");
+    const matchesSearch = !term || [item.agency, item.number, item.object, item.city, item.judgmentCriterion].some((value) => String(value || "").toLocaleLowerCase("pt-BR").includes(term));
+    const matchesInterest = !filters.interest || (filters.interest === "registered" ? item.hasMyInterest : !item.hasMyInterest);
+    return matchesSearch && (!filters.status || item.status === filters.status) && (!filters.state || item.state === filters.state) && (!filters.modality || item.modality === filters.modality) && matchesInterest;
+  }).sort((a, b) => {
+    if (sort === "value_desc") return Number(b.estimatedValue || 0) - Number(a.estimatedValue || 0);
+    if (sort === "value_asc") return Number(a.estimatedValue || 0) - Number(b.estimatedValue || 0);
+    if (sort === "agency_asc") return String(a.agency || "").localeCompare(String(b.agency || ""), "pt-BR");
+    if (sort === "opening_desc") return new Date(b.openingDate || 0).getTime() - new Date(a.openingDate || 0).getTime();
+    return new Date(a.openingDate || "9999-12-31").getTime() - new Date(b.openingDate || "9999-12-31").getTime();
+  });
+  return <Page label="Editais" title="Lista de editais"><Card className="compactFilters tenderListSortSticky"><FormGrid><Field label="Buscar edital"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Órgão, número, objeto ou cidade" /></Field><Field label="Status"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos</option><option value="published">Publicado</option><option value="under_review">Em análise</option><option value="suspended">Suspenso</option><option value="challenged">Impugnado</option><option value="occurred">Ocorrido</option><option value="closed">Encerrado</option><option value="cancelled">Cancelado</option></select></Field><Field label="Interesse"><select value={filters.interest} onChange={(event) => setFilters((current) => ({ ...current, interest: event.target.value }))}><option value="">Todos</option><option value="registered">Interesse registrado</option><option value="not_registered">Ainda não registrado</option></select></Field><Field label="Estado"><StateSelect value={filters.state} onChange={(event) => setFilters((current) => ({ ...current, state: event.target.value }))} /></Field><Field label="Modalidade"><select value={filters.modality} onChange={(event) => setFilters((current) => ({ ...current, modality: event.target.value }))}><option value="">Todas</option>{tenderModalityOptions.map((option) => <option value={option} key={option}>{option}</option>)}</select></Field><Field label="Ordenar por"><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="opening_asc">Abertura mais próxima</option><option value="opening_desc">Abertura mais distante</option><option value="value_desc">Maior valor estimado</option><option value="value_asc">Menor valor estimado</option><option value="agency_asc">Órgão A-Z</option></select></Field></FormGrid></Card>{loading && <Card><p>Carregando editais...</p></Card>}{error && <Card className="dangerNotice"><p>{error}</p></Card>}{!loading && !error && orderedItems.length === 0 && <Card><p>Nenhum edital encontrado com esses filtros.</p></Card>}{!loading && !error && orderedItems.length > 0 && <Table columns={["Órgão", "Número", "Objeto", "Local", "Abertura", "Critério", "Status", "Ações"]} rows={orderedItems.map((item) => [item.agency, item.number, item.object, [item.city,item.state].filter(Boolean).join(" / ") || "-", date(item.openingDate), item.judgmentCriterion || "-", item.status, <div className="rowActions compactRowActions" key={item.id}><button className="iconButton secondaryIcon" title="Ver detalhe do edital" onClick={() => navigate(`tender-detail?id=${item.id}`)}>{"\u25C9"}</button>{item.hasMyInterest ? <span className="statusPill open" title="Você já registrou interesse neste edital">Interesse registrado</span> : <button className="iconButton successIcon" title="Registrar interesse" onClick={() => navigate(`tender-interest?id=${item.id}`)}>{"\u2713"}</button>}<button className="iconButton partnerIcon" title="Ver empresas interessadas" onClick={() => openTenderInterestCompanies(item.id)}>{"\u2637"}</button></div>])} />}</Page>;
 }
 
-function TenderDetail({ navigate, sessionUser }) {
+function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
   const id = currentHashParams().get("id") || "";
   const isPlatformAdmin = sessionUser?.roleKey === "platform_admin";
   const [tender, setTender] = useState(null);
@@ -3596,8 +3942,11 @@ function TenderDetail({ navigate, sessionUser }) {
   };
   if (error) return <Page label="Editais" title="Detalhe do edital"><Card className="dangerNotice"><p>{error}</p></Card></Page>;
   if (!tender) return <Page label="Editais" title="Detalhe do edital"><Card><p>Carregando edital...</p></Card></Page>;
+  const detailAction = tender.hasMyInterest
+    ? <Button onClick={() => openTenderInterestCompanies(tender.id)}>Ver empresas interessadas</Button>
+    : <Button onClick={() => navigate(`tender-interest?id=${tender.id}`)}>Registrar interesse</Button>;
   return (
-    <Page label="Editais" title="Detalhe do edital" actions={<Button onClick={() => navigate(`tender-interest?id=${tender.id}`)}>Registrar interesse</Button>}>
+    <Page label="Editais" title="Detalhe do edital" actions={detailAction}>
       <Card><h3>{tender.number} - {tender.agency}</h3><p>{tender.object}</p></Card>
       <div className="grid three">
         <Card><strong>Local</strong><p>{[tender.city,tender.state].filter(Boolean).join(" / ") || "Não informado"}</p></Card>
@@ -3848,12 +4197,13 @@ function TenderInterest({ navigate }) {
   );
 }
 
-function TenderInterestList({ navigate, selectedTenderId = "cp-004-2026", sessionUser }) {
+function TenderInterestList({ navigate, selectedTenderId = "cp-004-2026", sessionUser, openChatForAd }) {
   const id = currentHashParams().get("id") || selectedTenderId;
   const [selectedTender, setSelectedTender] = useState(null);
   const [ads, setAds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sort, setSort] = useState("published_desc");
 
   useEffect(() => {
     if (!id) {
@@ -3884,6 +4234,10 @@ function TenderInterestList({ navigate, selectedTenderId = "cp-004-2026", sessio
 
   if (loading) return <Page label="Editais" title="Empresas interessadas no edital"><Card><p>Carregando empresas interessadas...</p></Card></Page>;
   if (error) return <Page label="Editais" title="Empresas interessadas no edital"><Card className="dangerNotice"><p>{error}</p></Card></Page>;
+  const sortedAds = [...ads].sort((a, b) => {
+    if (sort === "company_asc") return String(a.companyName || a.leaderCompanyName || "").localeCompare(String(b.companyName || b.leaderCompanyName || ""), "pt-BR");
+    return new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime();
+  });
 
   return (
     <Page label="Editais" title="Empresas interessadas no edital" actions={<Button onClick={() => navigate(`match-partners`)}>Ver vitrine geral</Button>}>
@@ -3894,14 +4248,27 @@ function TenderInterestList({ navigate, selectedTenderId = "cp-004-2026", sessio
       <Table columns={["Edital selecionado", "Órgão", "Modalidade", "Local", "Abertura", "Critério", "Status"]} rows={[
         [selectedTender.number, selectedTender.agency, selectedTender.modality || "-", [selectedTender.city, selectedTender.state].filter(Boolean).join(" / ") || "-", selectedTender.openingDate ? new Date(selectedTender.openingDate).toLocaleDateString("pt-BR") : "-", selectedTender.judgmentCriterion || "-", <span className={`statusPill ${selectedTender.status === "published" ? "open" : "review"}`} key={`${selectedTender.id}-selected-status`}>{selectedTender.status}</span>]
       ]} />
+      <Card className="compactFilters tenderInterestSortSticky"><FormGrid><Field label="Ordenar empresas por"><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="published_desc">Interesse mais recente</option><option value="company_asc">Empresa A-Z</option></select></Field></FormGrid></Card>
       {ads.length === 0 ? (
         <Card><p>Ainda não há anúncios publicados para este edital.</p></Card>
       ) : (
-        <Table columns={["Empresa", "Operacional", "Profissional", "Peça técnica", "Certificações", "Busca", "Ações"]} rows={ads.map((ad) => {
+        <Table columns={["Empresa", "Operacional", "Profissional", "Peça técnica", "Certificações", "Busca", "Ações"]} rows={sortedAds.map((ad) => {
           const requirement = (key) => ad.requirements?.find((item) => item.requirementKey === key);
-          const isOwnAd = ad.companyId && sessionUser?.companyId && ad.companyId === sessionUser.companyId;
+          const isConsortiumMember = (ad.consortiumMembers || []).some((company) => company.companyId === sessionUser?.companyId);
+          const isOwnAd = (ad.companyId && sessionUser?.companyId && ad.companyId === sessionUser.companyId) || isConsortiumMember;
+          const alreadyLiked = ad.currentEvaluationDecision === "liked";
           return [
-            <div className="companyNameStack" key={`${ad.id}-company`}><strong>{ad.companyName}</strong>{isOwnAd && <span className="badge">Meu anúncio</span>}</div>,
+            <div className="companyNameStack" key={`${ad.id}-company`}>
+              <strong>{ad.adType === "consortium" ? "Consórcio em formação" : ad.companyName}</strong>
+              {ad.adType === "consortium" && <span className="badge">Busca consorciada</span>}
+              {isOwnAd && <span className="badge">Meu anúncio</span>}
+              {ad.adType === "consortium" && (ad.consortiumMembers || []).length > 0 && (
+                <div className="consortiumMembersInline">
+                  <small>Empresas já consorciadas</small>
+                  <span>{ad.consortiumMembers.map((company) => company.companyName).join(" • ")}</span>
+                </div>
+              )}
+            </div>,
             interestStatusLabels[requirement("operational_qualification")?.statusKey] || "-",
             interestStatusLabels[requirement("professional_qualification")?.statusKey] || "-",
             interestStatusLabels[requirement("technical_proposal")?.statusKey] || "-",
@@ -3909,7 +4276,11 @@ function TenderInterestList({ navigate, selectedTenderId = "cp-004-2026", sessio
             ad.seekSummary || "-",
             <div className="rowActions compactRowActions" key={ad.id}>
               <button className="iconButton secondaryIcon" title="Ver detalhe do anúncio" aria-label="Ver detalhe do anúncio" onClick={() => navigate(`match-profile?id=${ad.id}`)}>{"\u25C9"}</button>
-              {!isOwnAd && <button className="iconButton successIcon" title="Avaliar candidata" aria-label="Avaliar candidata" onClick={() => navigate(`match-tinder?id=${ad.id}`)}>{"\u2713"}</button>}
+              {!isOwnAd && <button className="iconButton chatIcon" title="Conversar com a empresa" aria-label="Conversar com a empresa" onClick={() => openChatForAd(ad)}>{"\u2709"}</button>}
+              {!isOwnAd && (alreadyLiked
+                ? <span className="iconButton successIcon isStatic" title="Avaliação já registrada" aria-label="Avaliação já registrada">{"\u2713"}</span>
+                : <button className="iconButton successIcon" title="Avaliar candidata" aria-label="Avaliar candidata" onClick={() => navigate(`match-tinder?id=${ad.id}`)}>{"\u2713"}</button>
+              )}
             </div>
           ];
         })} />
@@ -3918,14 +4289,20 @@ function TenderInterestList({ navigate, selectedTenderId = "cp-004-2026", sessio
   );
 }
 
-function MatchPartners({ navigate, sessionUser }) {
+function MatchPartners({ navigate, sessionUser, openChatForAd }) {
   const [ads, setAds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filters, setFilters] = useState({ search: "", agency: "Todos", criterion: "Todos", need: "Todas" });
+  const [filters, setFilters] = useState({ search: "", agency: "Todos", criterion: "Todos", type: "Todos", need: "Todas", sort: "published_desc" });
+  const [myAdsOpen, setMyAdsOpen] = useState(false);
+  const [editingAdId, setEditingAdId] = useState("");
+  const [adForm, setAdForm] = useState({ offerSummary: "", seekSummary: "" });
+  const [savingAdId, setSavingAdId] = useState("");
 
-  useEffect(() => {
-    fetch(`${API_BASE_URL}/api/partnership-ads`, { credentials: "include" })
+  const loadAds = () => {
+    setLoading(true);
+    setError("");
+    return fetch(`${API_BASE_URL}/api/partnership-ads`, { credentials: "include" })
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Não foi possível carregar a vitrine.");
@@ -3934,19 +4311,84 @@ function MatchPartners({ navigate, sessionUser }) {
       .then(setAds)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadAds();
   }, []);
 
   const agencies = ["Todos", ...Array.from(new Set(ads.map((ad) => ad.agency).filter(Boolean)))];
   const criteria = ["Todos", ...Array.from(new Set(ads.map((ad) => ad.judgmentCriterion).filter(Boolean)))];
-  const filteredAds = ads.filter((ad) => {
-    const haystack = `${ad.companyName} ${ad.tenderNumber} ${ad.tenderObject} ${ad.agency}`.toLocaleLowerCase("pt-BR");
+  const isMyAd = (ad) => ad.companyId === sessionUser?.companyId || (ad.consortiumMembers || []).some((company) => company.companyId === sessionUser?.companyId);
+  const myAds = ads.filter(isMyAd);
+  const filteredAds = ads.filter((ad) => !isMyAd(ad)).filter((ad) => {
+    const members = (ad.consortiumMembers || []).map((company) => company.companyName).join(" ");
+    const haystack = `${ad.companyName} ${ad.leaderCompanyName} ${members} ${ad.tenderNumber} ${ad.tenderObject} ${ad.agency}`.toLocaleLowerCase("pt-BR");
     const matchesSearch = !filters.search || haystack.includes(filters.search.toLocaleLowerCase("pt-BR"));
     const matchesAgency = filters.agency === "Todos" || ad.agency === filters.agency;
     const matchesCriterion = filters.criterion === "Todos" || ad.judgmentCriterion === filters.criterion;
+    const matchesType = filters.type === "Todos" || (filters.type === "Consórcio" ? ad.adType === "consortium" : ad.adType !== "consortium");
     const matchesNeed = filters.need === "Todas" || `${ad.seekSummary} ${JSON.stringify(ad.requirements || [])}`.toLocaleLowerCase("pt-BR").includes(filters.need.toLocaleLowerCase("pt-BR"));
-    return matchesSearch && matchesAgency && matchesCriterion && matchesNeed;
+    return matchesSearch && matchesAgency && matchesCriterion && matchesType && matchesNeed;
+  });
+  const orderedAds = [...filteredAds].sort((a, b) => {
+    if (filters.sort === "company_asc") return String(a.companyName || a.leaderCompanyName || "").localeCompare(String(b.companyName || b.leaderCompanyName || ""), "pt-BR");
+    if (filters.sort === "tender_asc") return String(a.tenderNumber || "").localeCompare(String(b.tenderNumber || ""), "pt-BR", { numeric: true });
+    return new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime();
   });
   const updateFilter = (field, value) => setFilters((current) => ({ ...current, [field]: value }));
+  const hasOwnPublishedPositionForTender = (tenderId) => ads.some((candidate) => (
+    candidate.companyId === sessionUser?.companyId
+    && candidate.tenderId === tenderId
+    && candidate.status === "published"
+    && ["company", "consortium"].includes(candidate.adType)
+  ));
+
+  const openAdEditor = (ad) => {
+    setEditingAdId(ad.id);
+    setAdForm({ offerSummary: ad.offerSummary || "", seekSummary: ad.seekSummary || "" });
+  };
+
+  const saveAd = async (ad) => {
+    setSavingAdId(ad.id);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/partnership-ads/${ad.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(adForm)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível editar o anúncio.");
+      setEditingAdId("");
+      await loadAds();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingAdId("");
+    }
+  };
+
+  const deleteAd = async (ad) => {
+    if (!window.confirm(`Excluir o anúncio da sua empresa para o edital ${ad.tenderNumber}? Ele deixará de aparecer na vitrine.`)) return;
+    setSavingAdId(ad.id);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/partnership-ads/${ad.id}`, {
+        method: "DELETE",
+        credentials: "include"
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível excluir o anúncio.");
+      if (editingAdId === ad.id) setEditingAdId("");
+      await loadAds();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingAdId("");
+    }
+  };
 
   return (
     <Page label="Match e consórcios" title="Vitrine de parceiros">
@@ -3958,7 +4400,7 @@ function MatchPartners({ navigate, sessionUser }) {
         </div>
       </section>
 
-      <Card className="compactFilters">
+      <Card className="compactFilters partnerFiltersSticky">
         <FormGrid>
           <Field label="Buscar por empresa, edital ou objeto">
             <input value={filters.search} onChange={(event) => updateFilter("search", event.target.value)} placeholder="Digite para localizar um anúncio" />
@@ -3969,31 +4411,67 @@ function MatchPartners({ navigate, sessionUser }) {
           <Field label="Critério">
             <select value={filters.criterion} onChange={(event) => updateFilter("criterion", event.target.value)}>{criteria.map((criterion) => <option key={criterion}>{criterion}</option>)}</select>
           </Field>
+          <Field label="Tipo de anúncio">
+            <select value={filters.type} onChange={(event) => updateFilter("type", event.target.value)}><option>Todos</option><option>Empresa</option><option>Consórcio</option></select>
+          </Field>
           <Field label="Necessidade">
             <select value={filters.need} onChange={(event) => updateFilter("need", event.target.value)}><option>Todas</option><option>operacional</option><option>equipe</option><option>peça técnica</option><option>certificações</option></select>
+          </Field>
+          <Field label="Ordenar por">
+            <select value={filters.sort} onChange={(event) => updateFilter("sort", event.target.value)}><option value="published_desc">Mais recentes</option><option value="tender_asc">Número do edital</option><option value="company_asc">Empresa A-Z</option></select>
           </Field>
         </FormGrid>
       </Card>
 
+      {!loading && !error && (
+        <section className="myAdsSection" aria-label="Meus anúncios">
+          <div className="myAdsSectionHead">
+            <div><span className="eyebrow">Minha empresa</span><h3>Meus anúncios</h3><p>{myAds.length ? `${myAds.length} anúncio${myAds.length > 1 ? "s" : ""} ativo${myAds.length > 1 ? "s" : ""} na vitrine.` : "Sua empresa ainda não possui anúncios ativos na vitrine."}</p></div>
+            <button className="iconButton secondaryIcon" title={myAdsOpen ? "Recolher meus anúncios" : "Expandir meus anúncios"} aria-label={myAdsOpen ? "Recolher meus anúncios" : "Expandir meus anúncios"} onClick={() => setMyAdsOpen((current) => !current)}>{myAdsOpen ? "−" : "+"}</button>
+          </div>
+          {myAdsOpen && (myAds.length ? <div className="myAdsList">
+            {myAds.map((ad) => {
+              const isCompanyAd = ad.companyId === sessionUser?.companyId && ad.adType !== "consortium";
+              const isEditing = editingAdId === ad.id;
+              return <div className="myAdRow" key={ad.id}>
+                <div className="myAdInfo"><strong>{ad.tenderNumber} · {ad.agency}</strong><span>{ad.tenderObject}</span><small>{ad.adType === "consortium" ? "Anúncio do consórcio" : "Anúncio da sua empresa"}</small></div>
+                <div className="myAdActions">
+                  <Button variant="secondary" onClick={() => navigate(`match-profile?id=${ad.id}`)}>Ver detalhe</Button>
+                  {isCompanyAd ? <><Button variant="secondary" onClick={() => isEditing ? setEditingAdId("") : openAdEditor(ad)}>Editar</Button><Button variant="danger" onClick={() => deleteAd(ad)} disabled={savingAdId === ad.id}>{savingAdId === ad.id ? "Encerrando..." : "Excluir"}</Button></> : <Button variant="secondary" onClick={() => navigate("match-list")}>Gerenciar consórcio</Button>}
+                </div>
+                {isEditing && <div className="myAdEditor"><FormGrid><Field label="O que a empresa oferece"><textarea value={adForm.offerSummary} onChange={(event) => setAdForm((current) => ({ ...current, offerSummary: event.target.value }))} /></Field><Field label="O que a empresa busca"><textarea value={adForm.seekSummary} onChange={(event) => setAdForm((current) => ({ ...current, seekSummary: event.target.value }))} /></Field></FormGrid><div className="actions"><Button onClick={() => saveAd(ad)} disabled={savingAdId === ad.id}>{savingAdId === ad.id ? "Salvando..." : "Salvar alterações"}</Button><Button variant="secondary" onClick={() => setEditingAdId("")}>Cancelar</Button></div></div>}
+              </div>;
+            })}
+          </div> : <p className="emptyMyAds">Registre interesse em um edital para publicar o primeiro anúncio da empresa.</p>)}
+        </section>
+      )}
+
       {loading && <Card><p>Carregando vitrine de parceiros...</p></Card>}
       {error && <Card className="dangerNotice"><p>{error}</p></Card>}
-      {!loading && !error && filteredAds.length === 0 && <Card><p>Nenhum anúncio encontrado com esses filtros.</p></Card>}
+      {!loading && !error && orderedAds.length === 0 && <Card><p>Nenhum anúncio encontrado com esses filtros.</p></Card>}
       <div className="partnerAdGrid">
-        {!loading && !error && filteredAds.map((ad) => (
-          <Card className="partnerAdCard" key={ad.id}>
-            {ad.companyId === sessionUser?.companyId && <span className="badge">Meu anúncio</span>}
+        {!loading && !error && orderedAds.map((ad) => (
+          (() => {
+            const isOwnAd = isMyAd(ad);
+            const canEvaluate = hasOwnPublishedPositionForTender(ad.tenderId);
+            const alreadyLiked = ad.currentEvaluationDecision === "liked";
+            return (
+          <Card className={`partnerAdCard ${ad.adType === "consortium" ? "consortiumAdCard" : ""}`} key={ad.id}>
+            {isOwnAd && <span className="badge">Meu anúncio</span>}
+            {ad.adType === "consortium" && <span className="consortiumRibbon">Consórcio em formação</span>}
             <div className="classifiedTenderHead">
-              <span className="badge">{ad.tenderNumber}</span>
+              <span className="badge">{ad.adType === "consortium" ? "Consórcio em formação" : ad.tenderNumber}</span>
               <small>{ad.agency} | {ad.judgmentCriterion || "Critério não informado"}</small>
               <strong>{ad.tenderObject}</strong>
             </div>
             <div className="partnerAdCardHead">
               <LogoSlot initials={ad.companyName.split(" ").map((word) => word[0]).join("").slice(0, 2)} src={ad.companyLogoUrl} size="sm" label={`Logo da ${ad.companyName}`} />
               <div>
-                <h3>{ad.companyName}</h3>
-                <p>{[ad.city, ad.state].filter(Boolean).join(" / ") || "Local não informado"}</p>
+                <h3>{ad.adType === "consortium" ? "Consórcio busca nova consorciada" : ad.companyName}</h3>
+                <p>{ad.adType === "consortium" ? `Líder: ${ad.leaderCompanyName || ad.companyName}` : [ad.city, ad.state].filter(Boolean).join(" / ") || "Local não informado"}</p>
               </div>
             </div>
+            {ad.adType === "consortium" && (ad.consortiumMembers || []).length > 0 && <div className="consortiumMembersGroup"><small>Empresas que já compõem o consórcio</small><div className="consortiumMembersLine">{ad.consortiumMembers.map((company) => <span key={`${ad.id}-${company.companyId}`}>{company.companyName}</span>)}</div></div>}
             <div className="matchColumns compactMatchColumns">
               <div><strong>Oferece</strong><span>{ad.offerSummary || "Não informado"}</span></div>
               <div><strong>Busca</strong><span>{ad.seekSummary || "Não informado"}</span></div>
@@ -4003,9 +4481,15 @@ function MatchPartners({ navigate, sessionUser }) {
             </div>
             <div className="actions">
               <Button onClick={() => navigate(`match-profile?id=${ad.id}`)}>Ver detalhe do anúncio</Button>
-              {ad.companyId !== sessionUser?.companyId && <Button variant="secondary" onClick={() => navigate(`match-tinder?id=${ad.id}`)}>Avaliar candidata</Button>}
+              {!isOwnAd && <Button variant="secondary" onClick={() => openChatForAd(ad)}>Conversar</Button>}
+              {!isOwnAd && (canEvaluate
+                ? (alreadyLiked ? <span className="statusPill open">Avaliação registrada</span> : <Button variant="secondary" onClick={() => navigate(`match-tinder?id=${ad.id}`)}>Avaliar candidata</Button>)
+                : <Button variant="secondary" onClick={() => navigate(`tender-interest?id=${ad.tenderId}`)}>Registrar interesse</Button>
+              )}
             </div>
           </Card>
+            );
+          })()
         ))}
       </div>
     </Page>
@@ -4045,8 +4529,13 @@ function MatchTinder({ navigate, sessionUser }) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível registrar a avaliação.");
+      if (!data || typeof data !== "object") throw new Error("Não foi possível registrar a avaliação deste anúncio. Atualize a página e tente novamente.");
       if (data.matchCreated && data.matchId) {
         navigate(`match-success?id=${data.matchId}`);
+      } else if (data.applicationAccepted) {
+        navigate("match-list?joined=1");
+      } else if (data.applicationCreated) {
+        navigate(`match-profile?id=${id}&application=sent`);
       } else {
         navigate(`match-profile?id=${id}`);
       }
@@ -4059,7 +4548,8 @@ function MatchTinder({ navigate, sessionUser }) {
 
   if (error) return <Page label="Match e consórcios" title="Avaliar candidata da licitação"><Card className="dangerNotice"><p>{error}</p></Card></Page>;
   if (!ad) return <Page label="Match e consórcios" title="Avaliar candidata da licitação"><Card><p>Carregando candidata...</p></Card></Page>;
-  const isOwnAd = ad.companyId && sessionUser?.companyId && ad.companyId === sessionUser.companyId;
+  const isConsortiumAd = ad.adType === "consortium";
+  const isOwnAd = (ad.companyId && sessionUser?.companyId && ad.companyId === sessionUser.companyId) || (ad.consortiumMembers || []).some((company) => company.companyId === sessionUser?.companyId);
 
   const hasItems = (ad.requirements || []).filter((item) => ["fully_meets", "partially_meets"].includes(item.statusKey)).map((item) => `${item.name}: ${interestStatusLabels[item.statusKey]}`);
   const seekItems = (ad.requirements || []).filter((item) => item.whatWeSeek || ["does_not_meet", "seeks_partner"].includes(item.statusKey)).map((item) => item.whatWeSeek || `${item.name}: ${interestStatusLabels[item.statusKey]}`);
@@ -4072,16 +4562,17 @@ function MatchTinder({ navigate, sessionUser }) {
             <LogoSlot initials={ad.companyName.split(" ").map((word) => word[0]).join("").slice(0, 2)} src={ad.companyLogoUrl} size="xl" label={`Logo da ${ad.companyName}`} />
             <span className="tenderChip">{ad.tenderNumber}</span>
             <div className="tinderIdentity">
-              <h3>{ad.companyName}</h3>
-              <p>{[ad.city, ad.state].filter(Boolean).join(" / ") || ad.agency}</p>
+              <h3>{isConsortiumAd ? "Consórcio em formação" : ad.companyName}</h3>
+              <p>{isConsortiumAd ? `Líder: ${ad.leaderCompanyName || ad.companyName}` : [ad.city, ad.state].filter(Boolean).join(" / ") || ad.agency}</p>
             </div>
           </div>
 
           <div className="tinderInfo">
             <strong>{ad.title}</strong>
+            {isConsortiumAd && <div className="consortiumMembersLine">{(ad.consortiumMembers || []).map((company) => <span key={`${ad.id}-tinder-${company.companyId}`}>{company.companyName}</span>)}</div>}
             <div className="matchColumns">
-              <div><strong>Tem</strong><span>{hasItems.join(" | ") || ad.offerSummary || "Não informado"}</span></div>
-              <div><strong>Busca</strong><span>{seekItems.join(" | ") || ad.seekSummary || "Não informado"}</span></div>
+              <div><strong>{isConsortiumAd ? "Consórcio" : "Tem"}</strong><span>{hasItems.join(" | ") || ad.offerSummary || "Não informado"}</span></div>
+              <div><strong>{isConsortiumAd ? "Busca nova consorciada" : "Busca"}</strong><span>{seekItems.join(" | ") || ad.seekSummary || "Não informado"}</span></div>
             </div>
           </div>
 
@@ -4098,7 +4589,7 @@ function MatchTinder({ navigate, sessionUser }) {
   );
 }
 
-function MatchProfile({ navigate, sessionUser }) {
+function MatchProfile({ navigate, sessionUser, openChatForAd }) {
   const id = currentHashParams().get("id") || "";
   const [ad, setAd] = useState(null);
   const [error, setError] = useState("");
@@ -4120,21 +4611,25 @@ function MatchProfile({ navigate, sessionUser }) {
 
   if (error) return <Page label="Match e consórcios" title="Detalhe do anúncio"><Card className="dangerNotice"><p>{error}</p></Card></Page>;
   if (!ad) return <Page label="Match e consórcios" title="Detalhe do anúncio"><Card><p>Carregando anúncio...</p></Card></Page>;
-  const isOwnAd = ad.companyId && sessionUser?.companyId && ad.companyId === sessionUser.companyId;
+  const isConsortiumAd = ad.adType === "consortium";
+  const isOwnAd = (ad.companyId && sessionUser?.companyId && ad.companyId === sessionUser.companyId) || (ad.consortiumMembers || []).some((company) => company.companyId === sessionUser?.companyId);
+  const applicationSent = currentHashParams().get("application") === "sent";
 
   return (
-    <Page label="Match e consórcios" title="Detalhe do anúncio" actions={!isOwnAd ? <Button onClick={() => navigate(`match-tinder?id=${ad.id}`)}>Ir para avaliar candidata</Button> : null}>
+    <Page label="Match e consórcios" title="Detalhe do anúncio" actions={!isOwnAd ? <><Button variant="secondary" onClick={() => openChatForAd(ad)}>Conversar</Button><Button onClick={() => navigate(`match-tinder?id=${ad.id}`)}>Ir para avaliar candidata</Button></> : null}>
+      {applicationSent && isConsortiumAd && <Card className="successNotice"><strong>Interesse enviado para a líder do consórcio.</strong><p>A empresa líder receberá a candidata em Meus consórcios e poderá dar o match final para incluí-la na composição.</p></Card>}
       <section className="partnerAdHero">
         <div>
-          <span className="badge">{isOwnAd ? "Meu anúncio" : ad.tenderNumber}</span>
+          <span className="badge">{isConsortiumAd ? "Consórcio em formação" : isOwnAd ? "Meu anúncio" : ad.tenderNumber}</span>
           {isOwnAd && <span className="badge">{ad.tenderNumber}</span>}
           <h3>{ad.title}</h3>
           <p>{ad.tenderObject}</p>
+          {isConsortiumAd && (ad.consortiumMembers || []).length > 0 && <div className="consortiumMembersGroup"><small>Empresas que já compõem o consórcio</small><div className="consortiumMembersLine">{ad.consortiumMembers.map((company) => <span key={`${ad.id}-profile-${company.companyId}`}>{company.companyName}</span>)}</div></div>}
         </div>
         <div className="partnerAdCompany">
           <LogoSlot initials={ad.companyName.split(" ").map((word) => word[0]).join("").slice(0, 2)} src={ad.companyLogoUrl} size="lg" label={`Logo da ${ad.companyName}`} />
-          <strong>{ad.companyName}</strong>
-          <small>{[ad.city, ad.state].filter(Boolean).join(" / ") || ad.agency} | Anúncio de parceria</small>
+          <strong>{isConsortiumAd ? "Líder: " + (ad.leaderCompanyName || ad.companyName) : ad.companyName}</strong>
+          <small>{[ad.city, ad.state].filter(Boolean).join(" / ") || ad.agency} | {isConsortiumAd ? "Anúncio do consórcio" : "Anúncio de parceria"}</small>
         </div>
       </section>
 
@@ -4216,7 +4711,15 @@ function MatchList({ sessionUser }) {
   const [openMatchId, setOpenMatchId] = useState("");
   const [leaders, setLeaders] = useState({});
   const [notes, setNotes] = useState({});
+  const [adNeeds, setAdNeeds] = useState({});
+  const [adNotes, setAdNotes] = useState({});
+  const [adFormsOpen, setAdFormsOpen] = useState({});
   const [savingId, setSavingId] = useState("");
+  const [savingAdId, setSavingAdId] = useState("");
+  const [savingApplicationId, setSavingApplicationId] = useState("");
+  const [withdrawingMatchId, setWithdrawingMatchId] = useState("");
+  const [filters, setFilters] = useState({ search: "", participation: "all", sort: "matched_desc" });
+  const joinedByReciprocalLike = currentHashParams().get("joined") === "1";
 
   const loadMatches = () => {
     setLoading(true);
@@ -4230,6 +4733,7 @@ function MatchList({ sessionUser }) {
         setMatches(data);
         setLeaders(Object.fromEntries(data.map((match) => [match.id, match.leadCompanyId || ""])));
         setNotes(Object.fromEntries(data.map((match) => [match.id, match.consortiumNotes || ""])));
+        setAdNeeds(Object.fromEntries(data.map((match) => [match.id, match.consortiumAdSeekSummary || ""])));
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -4244,20 +4748,41 @@ function MatchList({ sessionUser }) {
     return clean.length > 120 ? `${clean.slice(0, 120)}...` : clean;
   };
 
-  const partnerFor = (match) => {
-    const contacts = match.contacts || [];
-    const partner = contacts.find((contact) => contact.companyId !== sessionUser?.companyId) || contacts[0] || {};
-    return partner;
+  const companiesFor = (match) => {
+    const companies = new Map();
+    const addCompany = (company) => {
+      if (!company?.companyName) return;
+      const key = company.companyId || company.companyName;
+      const existingEntry = Array.from(companies.entries()).find(([, current]) => current.companyName === company.companyName);
+      if (!company.companyId && existingEntry) return;
+      if (company.companyId && existingEntry && existingEntry[0] !== key) companies.delete(existingEntry[0]);
+      companies.set(key, { ...companies.get(key), ...company });
+    };
+    const consortiumMembers = match.consortiumMembers || [];
+    if (match.consortiumIntentionId && consortiumMembers.length > 0) {
+      consortiumMembers.forEach(addCompany);
+      return Array.from(companies.values());
+    }
+    (match.contacts || []).forEach(addCompany);
+    consortiumMembers.forEach(addCompany);
+    addCompany({ companyName: match.companyAName });
+    addCompany({ companyName: match.companyBName });
+    return Array.from(companies.values());
   };
 
-  const companiesFor = (match) => {
-    const contacts = match.contacts || [];
-    if (contacts.length) return contacts;
-    return [
-      { companyId: "", companyName: match.companyAName },
-      { companyId: "", companyName: match.companyBName }
-    ];
-  };
+  const filteredMatches = matches.filter((match) => {
+    const members = companiesFor(match);
+    const term = filters.search.trim().toLocaleLowerCase("pt-BR");
+    const searchable = [match.tenderNumber, match.agency, match.tenderObject, match.leadCompanyName, ...members.map((company) => company.companyName)].join(" ").toLocaleLowerCase("pt-BR");
+    const matchesSearch = !term || searchable.includes(term);
+    const isLeader = match.leadCompanyId === sessionUser?.companyId;
+    const matchesParticipation = filters.participation === "all" || (filters.participation === "leader" ? isLeader : !isLeader);
+    return matchesSearch && matchesParticipation;
+  }).sort((a, b) => {
+    if (filters.sort === "tender_asc") return String(a.tenderNumber || "").localeCompare(String(b.tenderNumber || ""), "pt-BR", { numeric: true });
+    if (filters.sort === "agency_asc") return String(a.agency || "").localeCompare(String(b.agency || ""), "pt-BR");
+    return new Date(b.matchedAt || 0).getTime() - new Date(a.matchedAt || 0).getTime();
+  });
 
   const saveLeader = async (match) => {
     const leadCompanyId = leaders[match.id];
@@ -4284,29 +4809,121 @@ function MatchList({ sessionUser }) {
     }
   };
 
+  const createConsortiumAd = async (match) => {
+    const needSummary = String(adNeeds[match.id] || "").trim();
+    if (!needSummary) {
+      setError("Descreva o que falta complementar para publicar o anúncio do consórcio.");
+      return;
+    }
+    setSavingAdId(match.id);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/matches/${match.id}/consortium-ad`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ needSummary, notes: adNotes[match.id] || "" })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível publicar o anúncio do consórcio.");
+      setAdFormsOpen((current) => ({ ...current, [match.id]: false }));
+      loadMatches();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingAdId("");
+    }
+  };
+
+  const acceptApplication = async (match, application) => {
+    setSavingApplicationId(application.id);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/matches/${match.id}/application-accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ applicationId: application.id })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível aceitar a candidata.");
+      loadMatches();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingApplicationId("");
+    }
+  };
+
+  const withdrawFromConsortium = async (match, members) => {
+    const isLeader = match.leadCompanyId === sessionUser?.companyId;
+    const remainingMembers = members.filter((company) => company.companyId !== sessionUser?.companyId);
+    const successorCompanyId = isLeader && remainingMembers.length >= 2 ? leaders[match.id] : "";
+    if (isLeader && remainingMembers.length >= 2 && (!successorCompanyId || successorCompanyId === sessionUser?.companyId)) {
+      setError("Antes de desistir, selecione outra empresa ativa como líder do consórcio.");
+      return;
+    }
+    const warning = remainingMembers.length < 2
+      ? "A desistência deixará menos de duas empresas e encerrará este consórcio. Confirmar?"
+      : "Sua empresa deixará o consórcio. O anúncio de busca, se existir, será fechado. Confirmar desistência?";
+    if (!window.confirm(warning)) return;
+    setWithdrawingMatchId(match.id);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/matches/${match.id}/withdraw`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ successorCompanyId })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível registrar a desistência do consórcio.");
+      setOpenMatchId("");
+      loadMatches();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setWithdrawingMatchId("");
+    }
+  };
+
   if (loading) return <Page label="Editais" title="Meus consórcios"><Card><p>Carregando consórcios...</p></Card></Page>;
-  if (error) return <Page label="Editais" title="Meus consórcios"><Card className="dangerNotice"><p>{error}</p></Card></Page>;
 
   return (
     <Page label="Editais" title="Meus consórcios">
+      {joinedByReciprocalLike && <Card className="successNotice"><strong>Match confirmado.</strong><p>O aceite foi recíproco e a nova empresa já foi incluída neste consórcio.</p></Card>}
+      {error && <Card className="dangerNotice"><p>{error}</p></Card>}
+      <Card className="compactFilters consortiumFiltersSticky">
+        <FormGrid>
+          <Field label="Buscar consórcio"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Edital, órgão, objeto ou empresa" /></Field>
+          <Field label="Minha participação"><select value={filters.participation} onChange={(event) => setFilters((current) => ({ ...current, participation: event.target.value }))}><option value="all">Todos</option><option value="leader">Sou líder</option><option value="member">Sou consorciada</option></select></Field>
+          <Field label="Ordenar por"><select value={filters.sort} onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value }))}><option value="matched_desc">Match mais recente</option><option value="tender_asc">Número do edital</option><option value="agency_asc">Órgão A-Z</option></select></Field>
+        </FormGrid>
+      </Card>
       {matches.length === 0 ? (
         <Card><p>Ainda não há consórcios/matches ativos para sua empresa.</p></Card>
+      ) : filteredMatches.length === 0 ? (
+        <Card><p>Nenhum consórcio corresponde aos filtros informados.</p></Card>
       ) : (
         <div className="consortiumList">
-          {matches.map((match) => {
-            const partner = partnerFor(match);
+          {filteredMatches.map((match) => {
+            const members = companiesFor(match);
             const isOpen = openMatchId === match.id;
+            const isLeader = match.leadCompanyId && match.leadCompanyId === sessionUser?.companyId;
+            const adFormOpen = Boolean(adFormsOpen[match.id]);
+            const applications = Array.isArray(match.applications) ? match.applications : [];
+            const pendingApplications = applications.filter((application) => application.status === "interested");
             return (
               <Card className="consortiumItem" key={match.id}>
                 <div className="consortiumRow">
-                  <div><small>Órgão</small><strong>{match.agency || "-"}</strong></div>
                   <div><small>Edital</small><strong>{match.tenderNumber || "-"}</strong></div>
+                  <div><small>Órgão</small><strong>{match.agency || "-"}</strong></div>
                   <div className="wide"><small>Objeto resumido</small><span>{compactObject(match.tenderObject)}</span></div>
-                  <div><small>Parceiro</small><strong>{partner.companyName || "-"}</strong></div>
-                  <div><small>Telefone</small><span>{partner.phone || "-"}</span></div>
+                  <div><small>Líder</small><strong>{match.leadCompanyName || "A definir"}</strong></div>
+                  <div className="wide consortiumCompanies"><small>Empresas consorciadas</small><strong>{members.map((company) => company.companyName).join(" • ")}</strong></div>
                   <div className="consortiumActions">
-                    {partner.whatsappUrl ? <a className="whatsappButton compactWhatsapp" href={partner.whatsappUrl} target="_blank" rel="noreferrer">WhatsApp</a> : <span className="statusPill review">Sem WhatsApp</span>}
-                    <button className="iconButton secondaryIcon" title="Definir líder do consórcio" aria-label="Definir líder do consórcio" onClick={() => setOpenMatchId(isOpen ? "" : match.id)}>{isOpen ? "\u2212" : "\u002B"}</button>
+                    {isLeader && pendingApplications.length > 0 && <span className="statusPill review">{pendingApplications.length} candidata{pendingApplications.length > 1 ? "s" : ""} aguardando</span>}
+                    <button className="iconButton secondaryIcon" title="Gerenciar consórcio" aria-label="Gerenciar consórcio" onClick={() => setOpenMatchId(isOpen ? "" : match.id)}>{isOpen ? "\u2212" : "\u002B"}</button>
                   </div>
                 </div>
                 {isOpen && (
@@ -4315,12 +4932,13 @@ function MatchList({ sessionUser }) {
                       <h3>Definir líder do consórcio</h3>
                       <p>Escolha qual empresa ficará registrada como líder operacional deste consórcio.</p>
                       {match.leadCompanyName && <span className="statusPill open">Líder atual: {match.leadCompanyName}</span>}
+                      <div className="consortiumMembersGroup"><small>Composição atual do consórcio</small><div className="consortiumMembersLine">{members.map((company) => <span key={`${match.id}-current-${company.companyId || company.companyName}`}>{company.companyName}</span>)}</div></div>
                     </div>
                     <FormGrid>
                       <Field label="Empresa líder">
                         <select value={leaders[match.id] || ""} onChange={(event) => setLeaders((current) => ({ ...current, [match.id]: event.target.value }))}>
                           <option value="">Selecione</option>
-                          {companiesFor(match).map((company) => <option key={`${match.id}-${company.companyId || company.companyName}`} value={company.companyId}>{company.companyName}</option>)}
+                          {members.map((company) => <option key={`${match.id}-${company.companyId || company.companyName}`} value={company.companyId}>{company.companyName}</option>)}
                         </select>
                       </Field>
                       <Field label="Observação do consórcio">
@@ -4329,8 +4947,45 @@ function MatchList({ sessionUser }) {
                     </FormGrid>
                     <div className="actions">
                       <Button onClick={() => saveLeader(match)} disabled={savingId === match.id}>{savingId === match.id ? "Salvando..." : "Salvar liderança"}</Button>
+                      {isLeader && <Button variant="secondary" onClick={() => setAdFormsOpen((current) => ({ ...current, [match.id]: !current[match.id] }))}>{match.consortiumAdId ? "Editar anúncio de busca" : "Buscar nova consorciada"}</Button>}
+                      {sessionUser?.roleKey === "company_admin" && match.consortiumIntentionId && <Button variant="danger" onClick={() => withdrawFromConsortium(match, members)} disabled={withdrawingMatchId === match.id}>{withdrawingMatchId === match.id ? "Registrando desistência..." : "Desistir do consórcio"}</Button>}
                       <Button variant="secondary" onClick={() => setOpenMatchId("")}>Recolher</Button>
                     </div>
+                    {isLeader && adFormOpen && (
+                      <Card className="nestedPanel">
+                        <h3>{match.consortiumAdId ? "Anúncio do consórcio publicado" : "Criar anúncio do consórcio"}</h3>
+                        <p>Este anúncio aparecerá na vitrine e em empresas interessadas como consórcio em formação buscando nova consorciada. A comunicação fica centralizada na empresa líder.</p>
+                        <div className="consortiumMembersLine">
+                          {members.map((company) => <span key={`${match.id}-member-${company.companyId || company.companyName}`}>{company.companyName}</span>)}
+                        </div>
+                        <FormGrid>
+                          <Field label="O que falta complementar">
+                            <textarea value={adNeeds[match.id] || ""} onChange={(event) => setAdNeeds((current) => ({ ...current, [match.id]: event.target.value }))} placeholder="Ex.: precisamos de empresa com acervo em arqueologia e equipe disponível para coordenação ambiental." />
+                          </Field>
+                          <Field label="Observação interna">
+                            <textarea value={adNotes[match.id] || ""} onChange={(event) => setAdNotes((current) => ({ ...current, [match.id]: event.target.value }))} placeholder="Observação da líder sobre a busca, se necessário." />
+                          </Field>
+                        </FormGrid>
+                        <div className="actions">
+                          <Button onClick={() => createConsortiumAd(match)} disabled={savingAdId === match.id}>{savingAdId === match.id ? "Publicando..." : "Publicar anúncio do consórcio"}</Button>
+                        </div>
+                      </Card>
+                    )}
+                    {isLeader && applications.length > 0 && (
+                      <Card className="nestedPanel">
+                        <h3>Candidatas aguardando seu match</h3>
+                        <p>Ao dar match, a empresa será incluída oficialmente no consórcio e passará a vê-lo em Meus consórcios.</p>
+                        <div className="applicationList">
+                          {applications.map((application) => (
+                            <div className="applicationItem" key={application.id}>
+                              <strong>{application.companyName}</strong>
+                              <span>{application.status === "interested" ? "Demonstrou interesse" : application.status}</span>
+                              {application.status === "interested" && <Button variant="secondary" onClick={() => acceptApplication(match, application)} disabled={savingApplicationId === application.id}>{savingApplicationId === application.id ? "Registrando match..." : "Dar match e incluir"}</Button>}
+                            </div>
+                          ))}
+                        </div>
+                      </Card>
+                    )}
                   </div>
                 )}
               </Card>

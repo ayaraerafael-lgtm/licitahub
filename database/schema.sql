@@ -421,6 +421,8 @@ CREATE TABLE IF NOT EXISTS partnership_ads (
   tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
   company_id uuid NOT NULL REFERENCES companies(id),
   tender_interest_id uuid REFERENCES tender_interests(id) ON DELETE SET NULL,
+  consortium_intention_id uuid,
+  ad_type varchar(40) NOT NULL DEFAULT 'company',
   title varchar(220),
   offer_summary text,
   seek_summary text,
@@ -429,6 +431,7 @@ CREATE TABLE IF NOT EXISTS partnership_ads (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
+  CONSTRAINT partnership_ads_type_chk CHECK (ad_type IN ('company', 'consortium')),
   CONSTRAINT partnership_ads_status_chk CHECK (status IN (
     'draft', 'published', 'paused', 'closed'
   ))
@@ -480,6 +483,40 @@ CREATE TABLE IF NOT EXISTS match_contacts (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS chat_threads (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
+  partnership_ad_id uuid NOT NULL REFERENCES partnership_ads(id) ON DELETE CASCADE,
+  company_a_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  company_b_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  status varchar(40) NOT NULL DEFAULT 'open',
+  last_message_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz,
+  CONSTRAINT chat_threads_not_same_company_chk CHECK (company_a_id <> company_b_id),
+  CONSTRAINT chat_threads_status_chk CHECK (status IN ('open', 'archived', 'converted_to_match')),
+  CONSTRAINT chat_threads_unique_uk UNIQUE (partnership_ad_id, company_a_id, company_b_id)
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  thread_id uuid NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+  sender_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  sender_company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  content text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS chat_thread_reads (
+  thread_id uuid NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  last_read_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (thread_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS consortium_intentions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   match_id uuid REFERENCES matches(id) ON DELETE SET NULL,
@@ -500,8 +537,26 @@ CREATE TABLE IF NOT EXISTS consortium_members (
   company_id uuid NOT NULL REFERENCES companies(id),
   role varchar(120),
   responsibility_description text,
+  status varchar(40) NOT NULL DEFAULT 'active',
+  withdrawn_at timestamptz,
+  withdrawn_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT consortium_members_status_chk CHECK (status IN ('active', 'withdrawn')),
   CONSTRAINT consortium_members_uk UNIQUE (consortium_intention_id, company_id)
+);
+
+CREATE TABLE IF NOT EXISTS consortium_applications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  consortium_intention_id uuid NOT NULL REFERENCES consortium_intentions(id) ON DELETE CASCADE,
+  partnership_ad_id uuid NOT NULL REFERENCES partnership_ads(id) ON DELETE CASCADE,
+  applicant_company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  applicant_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  leader_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  status varchar(40) NOT NULL DEFAULT 'interested',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT consortium_applications_status_chk CHECK (status IN ('interested', 'accepted', 'rejected', 'withdrawn')),
+  CONSTRAINT consortium_applications_uk UNIQUE (consortium_intention_id, applicant_company_id)
 );
 
 -- =========================================================
@@ -644,9 +699,19 @@ CREATE TRIGGER trg_match_contacts_updated_at
 BEFORE UPDATE ON match_contacts
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_chat_threads_updated_at ON chat_threads;
+CREATE TRIGGER trg_chat_threads_updated_at
+BEFORE UPDATE ON chat_threads
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 DROP TRIGGER IF EXISTS trg_consortium_intentions_updated_at ON consortium_intentions;
 CREATE TRIGGER trg_consortium_intentions_updated_at
 BEFORE UPDATE ON consortium_intentions
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_consortium_applications_updated_at ON consortium_applications;
+CREATE TRIGGER trg_consortium_applications_updated_at
+BEFORE UPDATE ON consortium_applications
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- =========================================================
@@ -680,6 +745,7 @@ CREATE INDEX IF NOT EXISTS idx_tender_interests_company_id ON tender_interests(c
 CREATE INDEX IF NOT EXISTS idx_tender_interests_tender_status ON tender_interests(tender_id, status, visibility) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_partnership_ads_tender_status ON partnership_ads(tender_id, status);
 CREATE INDEX IF NOT EXISTS idx_partnership_ads_showcase ON partnership_ads(status, published_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_partnership_ads_consortium ON partnership_ads(consortium_intention_id, status) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS partnership_ads_active_interest_uk
   ON partnership_ads(tender_interest_id)
   WHERE tender_interest_id IS NOT NULL AND deleted_at IS NULL;
@@ -688,8 +754,14 @@ CREATE INDEX IF NOT EXISTS idx_matches_tender_id ON matches(tender_id);
 CREATE INDEX IF NOT EXISTS idx_matches_company_a_status ON matches(company_a_id, status, matched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_company_b_status ON matches(company_b_id, status, matched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_match_contacts_match_company ON match_contacts(match_id, company_id);
+CREATE INDEX IF NOT EXISTS idx_chat_threads_company_a ON chat_threads(company_a_id, updated_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_chat_threads_company_b ON chat_threads(company_b_id, updated_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_created ON chat_messages(thread_id, created_at) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_consortium_intentions_match ON consortium_intentions(match_id);
 CREATE INDEX IF NOT EXISTS idx_consortium_intentions_tender ON consortium_intentions(tender_id);
+CREATE INDEX IF NOT EXISTS idx_consortium_members_active ON consortium_members(consortium_intention_id, company_id) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_consortium_applications_intention ON consortium_applications(consortium_intention_id, status);
+CREATE INDEX IF NOT EXISTS idx_consortium_applications_ad ON consortium_applications(partnership_ad_id, status);
 CREATE INDEX IF NOT EXISTS idx_notifications_recipient_user ON notifications(recipient_user_id, is_read, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_recipient_company ON notifications(recipient_company_id, is_read, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_related ON notifications(related_entity_type, related_entity_id, created_at DESC);

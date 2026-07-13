@@ -15,12 +15,63 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
 type app struct {
 	psqlPath string
 	pg       postgresConfig
+	chatHub  *chatHub
+}
+
+type chatHub struct {
+	mu      sync.Mutex
+	clients map[string]map[chan []byte]bool
+}
+
+func newChatHub() *chatHub {
+	return &chatHub{clients: make(map[string]map[chan []byte]bool)}
+}
+
+func (h *chatHub) add(companyID string) chan []byte {
+	ch := make(chan []byte, 16)
+	if companyID == "" {
+		return ch
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.clients[companyID] == nil {
+		h.clients[companyID] = make(map[chan []byte]bool)
+	}
+	h.clients[companyID][ch] = true
+	return ch
+}
+
+func (h *chatHub) remove(companyID string, ch chan []byte) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if companyClients := h.clients[companyID]; companyClients != nil {
+		delete(companyClients, ch)
+		if len(companyClients) == 0 {
+			delete(h.clients, companyID)
+		}
+	}
+	close(ch)
+}
+
+func (h *chatHub) broadcast(companyID string, payload []byte) {
+	if companyID == "" || len(payload) == 0 {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for ch := range h.clients[companyID] {
+		select {
+		case ch <- payload:
+		default:
+		}
+	}
 }
 
 type postgresConfig struct {
@@ -47,6 +98,10 @@ func (s sessionUser) canManageCompanyUsers() bool {
 
 func (s sessionUser) canManagePlatform() bool {
 	return s.RoleKey == "platform_admin"
+}
+
+func (s sessionUser) canUseChat() bool {
+	return s.CompanyID != "" && (s.RoleKey == "company_admin" || s.RoleKey == "commercial")
 }
 
 type healthResponse struct {
@@ -155,9 +210,35 @@ type partnerEvaluationRequest struct {
 	Decision string `json:"decision"`
 }
 
+type updatePartnershipAdRequest struct {
+	OfferSummary string `json:"offerSummary"`
+	SeekSummary  string `json:"seekSummary"`
+}
+
 type updateConsortiumLeaderRequest struct {
 	LeadCompanyID string `json:"leadCompanyId"`
 	Notes         string `json:"notes"`
+}
+
+type createConsortiumAdRequest struct {
+	NeedSummary string `json:"needSummary"`
+	Notes       string `json:"notes"`
+}
+
+type acceptConsortiumApplicationRequest struct {
+	ApplicationID string `json:"applicationId"`
+}
+
+type withdrawFromConsortiumRequest struct {
+	SuccessorCompanyID string `json:"successorCompanyId"`
+}
+
+type startChatRequest struct {
+	AdID string `json:"adId"`
+}
+
+type createChatMessageRequest struct {
+	Content string `json:"content"`
 }
 
 type createInvitationRequest struct {
@@ -249,6 +330,7 @@ type errorResponse struct {
 func main() {
 	application := &app{
 		psqlPath: getenv("PSQL_PATH", `C:\Program Files\PostgreSQL\17\bin\psql.exe`),
+		chatHub:  newChatHub(),
 		pg: postgresConfig{
 			Host:     getenv("PGHOST", "localhost"),
 			Port:     getenv("PGPORT", "5432"),
@@ -293,6 +375,9 @@ func main() {
 	mux.HandleFunc("/api/tenders", application.handleTenders)
 	mux.HandleFunc("/api/partnership-ads/", application.handlePartnershipAdByPath)
 	mux.HandleFunc("/api/partnership-ads", application.handlePartnershipAds)
+	mux.HandleFunc("/api/chats/stream", application.handleChatStream)
+	mux.HandleFunc("/api/chats/", application.handleChatByPath)
+	mux.HandleFunc("/api/chats", application.handleChats)
 	mux.HandleFunc("/api/matches/", application.handleMatchByPath)
 	mux.HandleFunc("/api/matches", application.handleMatches)
 	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
@@ -1943,11 +2028,15 @@ func (a *app) handleTenderByPath(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
 		return
 	}
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
 	if err := a.refreshOccurredTenders(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "nao foi possivel atualizar editais ocorridos")
 		return
 	}
-	payload, err := a.queryJSON(r.Context(), tenderDetailSQL(id))
+	payload, err := a.queryJSON(r.Context(), tenderDetailSQL(id, session))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "nao foi possivel carregar o edital")
 		return
@@ -2343,7 +2432,18 @@ func (a *app) refreshOccurredTenders(ctx context.Context) error {
 	return err
 }
 
-func tenderDetailSQL(id string) string {
+func tenderDetailSQL(id string, session sessionUser) string {
+	myInterestSQL := "false"
+	if strings.TrimSpace(session.CompanyID) != "" {
+		myInterestSQL = fmt.Sprintf(`EXISTS (
+					SELECT 1
+					FROM tender_interests ti
+					WHERE ti.tender_id = t.id
+					  AND ti.company_id = %s::uuid
+					  AND ti.deleted_at IS NULL
+					  AND ti.status <> 'withdrawn'
+				)`, sqlQuote(session.CompanyID))
+	}
 	return fmt.Sprintf(`
 		SELECT row_to_json(item)
 		FROM (
@@ -2357,19 +2457,21 @@ func tenderDetailSQL(id string) string {
 				t.opening_date AS "openingDate",
 				t.status,
 				COALESCE(t.cloud_folder_url, '') AS "cloudFolderUrl",
-				COALESCE((SELECT file_url FROM tender_files WHERE tender_id=t.id AND file_type='analysis_html' ORDER BY created_at DESC LIMIT 1), '') AS "analysisUrl"
+				COALESCE((SELECT file_url FROM tender_files WHERE tender_id=t.id AND file_type='analysis_html' ORDER BY created_at DESC LIMIT 1), '') AS "analysisUrl",
+				%s AS "hasMyInterest"
 			FROM tenders t
 			WHERE t.id = %s::uuid AND t.deleted_at IS NULL
 			LIMIT 1
 		) item;
-	`, sqlQuote(id))
+	`, myInterestSQL, sqlQuote(id))
 }
 
 func (a *app) listTenderInterests(w http.ResponseWriter, r *http.Request, tenderID string) {
-	if _, ok := a.currentSessionUser(w, r); !ok {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
 		return
 	}
-	payload, err := a.queryJSON(r.Context(), partnershipAdsSQL(fmt.Sprintf("AND pa.tender_id = %s::uuid", sqlQuote(tenderID))))
+	payload, err := a.queryJSON(r.Context(), partnershipAdsSQL(fmt.Sprintf("AND pa.tender_id = %s::uuid", sqlQuote(tenderID)), session))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "nao foi possivel carregar empresas interessadas")
 		return
@@ -2419,10 +2521,11 @@ func (a *app) handlePartnershipAds(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
 		return
 	}
-	if _, ok := a.currentSessionUser(w, r); !ok {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
 		return
 	}
-	payload, err := a.queryJSON(r.Context(), partnershipAdsSQL(""))
+	payload, err := a.queryJSON(r.Context(), partnershipAdsSQL("", session))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "nao foi possivel carregar a vitrine de parceiros")
 		return
@@ -2444,11 +2547,24 @@ func (a *app) handlePartnershipAdByPath(w http.ResponseWriter, r *http.Request) 
 		a.evaluatePartnershipAd(w, r, id)
 		return
 	}
-	if action != "" || r.Method != http.MethodGet {
+	if action != "" {
 		writeError(w, http.StatusNotFound, "anuncio nao encontrado")
 		return
 	}
-	if _, ok := a.currentSessionUser(w, r); !ok {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if r.Method == http.MethodPut {
+		a.updatePartnershipAd(w, r, id, session)
+		return
+	}
+	if r.Method == http.MethodDelete {
+		a.deletePartnershipAd(w, r, id, session)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
 		return
 	}
 	payload, err := a.queryJSON(r.Context(), partnershipAdDetailSQL(id))
@@ -2458,6 +2574,71 @@ func (a *app) handlePartnershipAdByPath(w http.ResponseWriter, r *http.Request) 
 	}
 	if strings.TrimSpace(string(payload)) == "null" {
 		writeError(w, http.StatusNotFound, "anuncio nao encontrado")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
+}
+
+func (a *app) updatePartnershipAd(w http.ResponseWriter, r *http.Request, adID string, session sessionUser) {
+	if session.CompanyID == "" || !session.canUseChat() {
+		writeError(w, http.StatusForbidden, "seu perfil nao pode editar anuncios")
+		return
+	}
+	var req updatePartnershipAdRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "json invalido")
+		return
+	}
+	req.OfferSummary = strings.TrimSpace(req.OfferSummary)
+	req.SeekSummary = strings.TrimSpace(req.SeekSummary)
+	if req.OfferSummary == "" && req.SeekSummary == "" {
+		writeError(w, http.StatusBadRequest, "informe o que sua empresa oferece ou busca")
+		return
+	}
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		UPDATE partnership_ads pa
+		SET offer_summary = %s,
+			seek_summary = %s,
+			updated_at = now()
+		WHERE pa.id = %s::uuid
+		  AND pa.company_id = %s::uuid
+		  AND pa.status = 'published'
+		  AND pa.deleted_at IS NULL
+		  AND COALESCE(pa.ad_type, 'company') = 'company'
+		RETURNING row_to_json(pa);
+	`, sqlQuote(req.OfferSummary), sqlQuote(req.SeekSummary), sqlQuote(adID), sqlQuote(session.CompanyID)))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel editar o anuncio")
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusForbidden, "somente anuncios ativos da sua empresa podem ser editados aqui")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
+}
+
+func (a *app) deletePartnershipAd(w http.ResponseWriter, r *http.Request, adID string, session sessionUser) {
+	if session.CompanyID == "" || !session.canUseChat() {
+		writeError(w, http.StatusForbidden, "seu perfil nao pode excluir anuncios")
+		return
+	}
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		UPDATE partnership_ads pa
+		SET status = 'closed', deleted_at = now(), updated_at = now()
+		WHERE pa.id = %s::uuid
+		  AND pa.company_id = %s::uuid
+		  AND pa.status = 'published'
+		  AND pa.deleted_at IS NULL
+		  AND COALESCE(pa.ad_type, 'company') = 'company'
+		RETURNING json_build_object('id', pa.id::text, 'status', pa.status);
+	`, sqlQuote(adID), sqlQuote(session.CompanyID)))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel excluir o anuncio")
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusForbidden, "somente anuncios ativos da sua empresa podem ser excluidos aqui")
 		return
 	}
 	writeRawJSON(w, http.StatusOK, payload)
@@ -2484,12 +2665,276 @@ func (a *app) evaluatePartnershipAd(w http.ResponseWriter, r *http.Request, adID
 		writeError(w, http.StatusBadRequest, "decisao invalida")
 		return
 	}
-	payload, err := a.queryJSON(r.Context(), buildEvaluatePartnershipAdSQL(adID, session, req.Decision))
+	adPayload, err := a.queryJSON(r.Context(), partnershipAdKindSQL(adID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel carregar tipo do anuncio")
+		return
+	}
+	if strings.TrimSpace(string(adPayload)) == "null" {
+		writeError(w, http.StatusNotFound, "anuncio nao encontrado")
+		return
+	}
+	eligibilityPayload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		SELECT json_build_object(
+			'hasPublishedCompanyAd', EXISTS (
+				SELECT 1
+				FROM partnership_ads own_ad
+				JOIN partnership_ads target_ad ON target_ad.id = %s::uuid
+				WHERE own_ad.company_id = %s::uuid
+				  AND own_ad.tender_id = target_ad.tender_id
+				  AND own_ad.deleted_at IS NULL
+				  AND own_ad.status = 'published'
+				  AND COALESCE(own_ad.ad_type, 'company') IN ('company', 'consortium')
+			)
+		);
+	`, sqlQuote(adID), sqlQuote(session.CompanyID)))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel validar o interesse da empresa")
+		return
+	}
+	var eligibility struct {
+		HasPublishedCompanyAd bool `json:"hasPublishedCompanyAd"`
+	}
+	if json.Unmarshal(eligibilityPayload, &eligibility) != nil || !eligibility.HasPublishedCompanyAd {
+		writeError(w, http.StatusConflict, "registre o interesse da sua empresa neste edital antes de avaliar candidatas")
+		return
+	}
+	var adKind struct {
+		AdType string `json:"adType"`
+	}
+	if err := json.Unmarshal(adPayload, &adKind); err != nil {
+		writeError(w, http.StatusInternalServerError, "tipo do anuncio invalido")
+		return
+	}
+	var payload []byte
+	if adKind.AdType == "consortium" {
+		payload, err = a.queryJSON(r.Context(), buildEvaluateConsortiumAdSQL(adID, session, req.Decision))
+	} else {
+		payload, err = a.queryJSON(r.Context(), buildEvaluatePartnershipAdSQL(adID, session, req.Decision))
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "nao foi possivel registrar avaliacao: "+err.Error())
 		return
 	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusConflict, a.partnershipEvaluationUnavailableReason(r.Context(), adID, session))
+		return
+	}
 	writeRawJSON(w, http.StatusOK, payload)
+}
+
+func (a *app) partnershipEvaluationUnavailableReason(ctx context.Context, adID string, session sessionUser) string {
+	payload, err := a.queryJSON(ctx, fmt.Sprintf(`
+		SELECT row_to_json(item)
+		FROM (
+			SELECT
+				COALESCE(current_company.trade_name, 'sem empresa vinculada') AS "currentCompanyName",
+				COALESCE(owner_company.trade_name, '') AS "adOwnerCompanyName",
+				COALESCE(pa.status, 'nao encontrado') AS "adStatus",
+				COALESCE(pa.ad_type, '') AS "adType",
+				EXISTS (
+					SELECT 1
+					FROM consortium_members cm
+					WHERE cm.consortium_intention_id = pa.consortium_intention_id
+					  AND cm.company_id = %s::uuid
+				) AS "alreadyMember",
+				(pa.company_id = %s::uuid) AS "isOwnAd"
+			FROM partnership_ads pa
+			LEFT JOIN companies owner_company ON owner_company.id = pa.company_id
+			LEFT JOIN companies current_company ON current_company.id = %s::uuid
+			WHERE pa.id = %s::uuid
+			LIMIT 1
+		) item;
+	`, sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), sqlQuote(adID)))
+	if err != nil || strings.TrimSpace(string(payload)) == "null" {
+		return "este anuncio nao pode receber sua avaliacao agora"
+	}
+	var diagnostic struct {
+		CurrentCompanyName string `json:"currentCompanyName"`
+		AdOwnerCompanyName string `json:"adOwnerCompanyName"`
+		AdStatus           string `json:"adStatus"`
+		AlreadyMember      bool   `json:"alreadyMember"`
+		IsOwnAd            bool   `json:"isOwnAd"`
+	}
+	if json.Unmarshal(payload, &diagnostic) != nil {
+		return "este anuncio nao pode receber sua avaliacao agora"
+	}
+	if diagnostic.IsOwnAd {
+		return "voce esta conectado como " + diagnostic.CurrentCompanyName + ". Este e o anuncio da propria empresa, por isso nao pode ser avaliado"
+	}
+	if diagnostic.AlreadyMember {
+		return "voce esta conectado como " + diagnostic.CurrentCompanyName + ", que ja faz parte deste consorcio"
+	}
+	if diagnostic.AdStatus != "published" {
+		return "o anuncio nao esta mais publicado para receber candidaturas"
+	}
+	return "o sistema reconheceu voce como " + diagnostic.CurrentCompanyName + ", mas nao conseguiu registrar a candidatura. Tente atualizar a pagina e abrir novamente o anuncio do consorcio"
+}
+
+func (a *app) handleChats(w http.ResponseWriter, r *http.Request) {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if !session.canUseChat() {
+		writeError(w, http.StatusForbidden, "perfil sem permissao para usar conversas de parceria")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		payload, err := a.queryJSON(r.Context(), chatThreadsSQL(session, ""))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "nao foi possivel carregar conversas")
+			return
+		}
+		writeRawJSON(w, http.StatusOK, payload)
+	case http.MethodPost:
+		var req startChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "json invalido")
+			return
+		}
+		req.AdID = strings.TrimSpace(req.AdID)
+		if req.AdID == "" {
+			writeError(w, http.StatusBadRequest, "anuncio obrigatorio")
+			return
+		}
+		payload, err := a.queryJSON(r.Context(), buildStartChatSQL(session, req.AdID))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "nao foi possivel iniciar conversa: "+err.Error())
+			return
+		}
+		if strings.TrimSpace(string(payload)) == "null" {
+			writeError(w, http.StatusNotFound, "anuncio indisponivel para conversa")
+			return
+		}
+		a.broadcastChatThreadPayload(payload)
+		writeRawJSON(w, http.StatusCreated, payload)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+	}
+}
+
+func (a *app) handleChatByPath(w http.ResponseWriter, r *http.Request) {
+	threadID, action := splitResourcePath(r.URL.Path, "/api/chats/")
+	if threadID == "" {
+		writeError(w, http.StatusNotFound, "conversa nao encontrada")
+		return
+	}
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if !session.canUseChat() {
+		writeError(w, http.StatusForbidden, "perfil sem permissao para usar conversas de parceria")
+		return
+	}
+	if action != "messages" {
+		writeError(w, http.StatusNotFound, "acao de conversa nao encontrada")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		payload, err := a.queryJSON(r.Context(), chatMessagesSQL(session, threadID))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "nao foi possivel carregar mensagens")
+			return
+		}
+		writeRawJSON(w, http.StatusOK, payload)
+	case http.MethodPost:
+		var req createChatMessageRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "json invalido")
+			return
+		}
+		req.Content = strings.TrimSpace(req.Content)
+		if req.Content == "" {
+			writeError(w, http.StatusBadRequest, "mensagem obrigatoria")
+			return
+		}
+		if len([]rune(req.Content)) > 2000 {
+			writeError(w, http.StatusBadRequest, "mensagem muito longa")
+			return
+		}
+		payload, err := a.queryJSON(r.Context(), buildCreateChatMessageSQL(session, threadID, req.Content))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "nao foi possivel enviar mensagem: "+err.Error())
+			return
+		}
+		if strings.TrimSpace(string(payload)) == "null" {
+			writeError(w, http.StatusNotFound, "conversa indisponivel")
+			return
+		}
+		a.broadcastChatMessagePayload(payload)
+		writeRawJSON(w, http.StatusCreated, payload)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+	}
+}
+
+func (a *app) handleChatStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if !session.canUseChat() {
+		writeError(w, http.StatusForbidden, "perfil sem permissao para usar conversas de parceria")
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "stream nao suportado")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	ch := a.chatHub.add(session.CompanyID)
+	defer a.chatHub.remove(session.CompanyID, ch)
+	fmt.Fprint(w, "event: ready\ndata: {}\n\n")
+	flusher.Flush()
+	ticker := time.NewTicker(25 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case payload := <-ch:
+			fmt.Fprintf(w, "event: chat-message\ndata: %s\n\n", payload)
+			flusher.Flush()
+		case <-ticker.C:
+			fmt.Fprint(w, "event: ping\ndata: {}\n\n")
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+func (a *app) broadcastChatThreadPayload(payload []byte) {
+	var data struct {
+		CompanyAID string `json:"companyAId"`
+		CompanyBID string `json:"companyBId"`
+	}
+	if err := json.Unmarshal(payload, &data); err != nil {
+		return
+	}
+	a.chatHub.broadcast(data.CompanyAID, payload)
+	a.chatHub.broadcast(data.CompanyBID, payload)
+}
+
+func (a *app) broadcastChatMessagePayload(payload []byte) {
+	var data struct {
+		CompanyAID string `json:"companyAId"`
+		CompanyBID string `json:"companyBId"`
+	}
+	if err := json.Unmarshal(payload, &data); err != nil {
+		return
+	}
+	a.chatHub.broadcast(data.CompanyAID, payload)
+	a.chatHub.broadcast(data.CompanyBID, payload)
 }
 
 func (a *app) handleMatches(w http.ResponseWriter, r *http.Request) {
@@ -2527,6 +2972,30 @@ func (a *app) handleMatchByPath(w http.ResponseWriter, r *http.Request) {
 		a.updateConsortiumLeader(w, r, id, session)
 		return
 	}
+	if action == "consortium-ad" {
+		if r.Method != http.MethodPost && r.Method != http.MethodPut {
+			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+			return
+		}
+		a.createConsortiumAd(w, r, id, session)
+		return
+	}
+	if action == "application-accept" {
+		if r.Method != http.MethodPost && r.Method != http.MethodPut {
+			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+			return
+		}
+		a.acceptConsortiumApplication(w, r, id, session)
+		return
+	}
+	if action == "withdraw" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+			return
+		}
+		a.withdrawFromConsortium(w, r, id, session)
+		return
+	}
 	if action != "" || r.Method != http.MethodGet {
 		writeError(w, http.StatusNotFound, "match nao encontrado")
 		return
@@ -2562,6 +3031,84 @@ func (a *app) updateConsortiumLeader(w http.ResponseWriter, r *http.Request, mat
 	}
 	if strings.TrimSpace(string(payload)) == "null" {
 		writeError(w, http.StatusNotFound, "match nao encontrado")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
+}
+
+func (a *app) acceptConsortiumApplication(w http.ResponseWriter, r *http.Request, matchID string, session sessionUser) {
+	if session.CompanyID == "" {
+		writeError(w, http.StatusForbidden, "usuario sem empresa vinculada")
+		return
+	}
+	var req acceptConsortiumApplicationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "json invalido")
+		return
+	}
+	req.ApplicationID = strings.TrimSpace(req.ApplicationID)
+	if req.ApplicationID == "" {
+		writeError(w, http.StatusBadRequest, "candidatura obrigatoria")
+		return
+	}
+	payload, err := a.queryJSON(r.Context(), buildAcceptConsortiumApplicationSQL(matchID, session, req))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel aceitar candidata: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusForbidden, "apenas a lider pode aceitar esta candidata")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
+}
+
+func (a *app) withdrawFromConsortium(w http.ResponseWriter, r *http.Request, matchID string, session sessionUser) {
+	if !session.canManageCompany() {
+		writeError(w, http.StatusForbidden, "somente o administrador da empresa pode desistir do consorcio")
+		return
+	}
+	var req withdrawFromConsortiumRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "json invalido")
+		return
+	}
+	req.SuccessorCompanyID = strings.TrimSpace(req.SuccessorCompanyID)
+	payload, err := a.queryJSON(r.Context(), buildWithdrawFromConsortiumSQL(matchID, session, req))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel registrar a desistência do consorcio: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusBadRequest, "para a lider desistir, escolha antes outra empresa ativa como lider do consorcio")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
+}
+
+func (a *app) createConsortiumAd(w http.ResponseWriter, r *http.Request, matchID string, session sessionUser) {
+	if session.CompanyID == "" {
+		writeError(w, http.StatusForbidden, "usuario sem empresa vinculada")
+		return
+	}
+	var req createConsortiumAdRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "json invalido")
+		return
+	}
+	req.NeedSummary = strings.TrimSpace(req.NeedSummary)
+	req.Notes = strings.TrimSpace(req.Notes)
+	if req.NeedSummary == "" {
+		writeError(w, http.StatusBadRequest, "descreva o que falta complementar no consorcio")
+		return
+	}
+	payload, err := a.queryJSON(r.Context(), buildCreateConsortiumAdSQL(matchID, session, req))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel criar anuncio do consorcio: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusForbidden, "apenas a empresa lider pode criar anuncio para este consorcio")
 		return
 	}
 	writeRawJSON(w, http.StatusOK, payload)
@@ -3616,6 +4163,13 @@ func (a *app) ensureDatabaseMigrations(ctx context.Context) error {
 		CREATE UNIQUE INDEX IF NOT EXISTS partnership_ads_active_interest_uk
 			ON partnership_ads(tender_interest_id)
 			WHERE tender_interest_id IS NOT NULL AND deleted_at IS NULL;
+		ALTER TABLE partnership_ads ADD COLUMN IF NOT EXISTS consortium_intention_id uuid;
+		ALTER TABLE partnership_ads ADD COLUMN IF NOT EXISTS ad_type varchar(40) NOT NULL DEFAULT 'company';
+		ALTER TABLE partnership_ads DROP CONSTRAINT IF EXISTS partnership_ads_type_chk;
+		ALTER TABLE partnership_ads ADD CONSTRAINT partnership_ads_type_chk CHECK (ad_type IN ('company', 'consortium'));
+		CREATE INDEX IF NOT EXISTS idx_partnership_ads_consortium
+			ON partnership_ads(consortium_intention_id, status)
+			WHERE deleted_at IS NULL;
 		CREATE INDEX IF NOT EXISTS idx_tender_interests_tender_status
 			ON tender_interests(tender_id, status, visibility)
 			WHERE deleted_at IS NULL;
@@ -3628,10 +4182,75 @@ func (a *app) ensureDatabaseMigrations(ctx context.Context) error {
 			ON matches(company_b_id, status, matched_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_match_contacts_match_company
 			ON match_contacts(match_id, company_id);
+		CREATE TABLE IF NOT EXISTS chat_threads (
+			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+			tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
+			partnership_ad_id uuid NOT NULL REFERENCES partnership_ads(id) ON DELETE CASCADE,
+			company_a_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+			company_b_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+			created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+			status varchar(40) NOT NULL DEFAULT 'open',
+			last_message_at timestamptz,
+			created_at timestamptz NOT NULL DEFAULT now(),
+			updated_at timestamptz NOT NULL DEFAULT now(),
+			deleted_at timestamptz,
+			CONSTRAINT chat_threads_not_same_company_chk CHECK (company_a_id <> company_b_id),
+			CONSTRAINT chat_threads_status_chk CHECK (status IN ('open', 'archived', 'converted_to_match')),
+			CONSTRAINT chat_threads_unique_uk UNIQUE (partnership_ad_id, company_a_id, company_b_id)
+		);
+		CREATE TABLE IF NOT EXISTS chat_messages (
+			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+			thread_id uuid NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+			sender_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+			sender_company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+			content text NOT NULL,
+			created_at timestamptz NOT NULL DEFAULT now(),
+			deleted_at timestamptz
+		);
+		CREATE TABLE IF NOT EXISTS chat_thread_reads (
+			thread_id uuid NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+			user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			last_read_at timestamptz NOT NULL DEFAULT now(),
+			PRIMARY KEY (thread_id, user_id)
+		);
+		CREATE INDEX IF NOT EXISTS idx_chat_threads_company_a
+			ON chat_threads(company_a_id, updated_at DESC)
+			WHERE deleted_at IS NULL;
+		CREATE INDEX IF NOT EXISTS idx_chat_threads_company_b
+			ON chat_threads(company_b_id, updated_at DESC)
+			WHERE deleted_at IS NULL;
+		CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_created
+			ON chat_messages(thread_id, created_at)
+			WHERE deleted_at IS NULL;
 		CREATE INDEX IF NOT EXISTS idx_consortium_intentions_match
 			ON consortium_intentions(match_id);
 		CREATE INDEX IF NOT EXISTS idx_consortium_intentions_tender
 			ON consortium_intentions(tender_id);
+		ALTER TABLE consortium_members ADD COLUMN IF NOT EXISTS status varchar(40) NOT NULL DEFAULT 'active';
+		ALTER TABLE consortium_members ADD COLUMN IF NOT EXISTS withdrawn_at timestamptz;
+		ALTER TABLE consortium_members ADD COLUMN IF NOT EXISTS withdrawn_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL;
+		ALTER TABLE consortium_members DROP CONSTRAINT IF EXISTS consortium_members_status_chk;
+		ALTER TABLE consortium_members ADD CONSTRAINT consortium_members_status_chk CHECK (status IN ('active', 'withdrawn'));
+		CREATE INDEX IF NOT EXISTS idx_consortium_members_active
+			ON consortium_members(consortium_intention_id, company_id)
+			WHERE status = 'active';
+		CREATE TABLE IF NOT EXISTS consortium_applications (
+			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+			consortium_intention_id uuid NOT NULL REFERENCES consortium_intentions(id) ON DELETE CASCADE,
+			partnership_ad_id uuid NOT NULL REFERENCES partnership_ads(id) ON DELETE CASCADE,
+			applicant_company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+			applicant_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+			leader_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+			status varchar(40) NOT NULL DEFAULT 'interested',
+			created_at timestamptz NOT NULL DEFAULT now(),
+			updated_at timestamptz NOT NULL DEFAULT now(),
+			CONSTRAINT consortium_applications_status_chk CHECK (status IN ('interested', 'accepted', 'rejected', 'withdrawn')),
+			CONSTRAINT consortium_applications_uk UNIQUE (consortium_intention_id, applicant_company_id)
+		);
+		CREATE INDEX IF NOT EXISTS idx_consortium_applications_intention
+			ON consortium_applications(consortium_intention_id, status);
+		CREATE INDEX IF NOT EXISTS idx_consortium_applications_ad
+			ON consortium_applications(partnership_ad_id, status);
 		CREATE INDEX IF NOT EXISTS idx_notifications_related
 			ON notifications(related_entity_type, related_entity_id, created_at DESC);
 		UPDATE partnership_ads pa
@@ -3641,7 +4260,86 @@ func (a *app) ensureDatabaseMigrations(ctx context.Context) error {
 		  AND pa.tender_id = m.tender_id
 		  AND pa.company_id IN (m.company_a_id, m.company_b_id)
 		  AND pa.deleted_at IS NULL
+		  AND COALESCE(pa.ad_type, 'company') <> 'consortium'
 		  AND pa.status = 'published';
+		UPDATE chat_threads ct
+		SET
+			status = CASE
+				WHEN ct.company_a_id IN (m.company_a_id, m.company_b_id)
+				 AND ct.company_b_id IN (m.company_a_id, m.company_b_id)
+				THEN 'converted_to_match'
+				ELSE 'archived'
+			END,
+			updated_at = now()
+		FROM matches m
+		WHERE m.status = 'active'
+		  AND ct.tender_id = m.tender_id
+		  AND ct.deleted_at IS NULL
+		  AND ct.status = 'open'
+		  AND (ct.company_a_id IN (m.company_a_id, m.company_b_id) OR ct.company_b_id IN (m.company_a_id, m.company_b_id));
+		WITH reciprocal_candidates AS (
+			SELECT ca.id, ca.consortium_intention_id, ca.applicant_company_id
+			FROM consortium_applications ca
+			JOIN consortium_intentions ci ON ci.id = ca.consortium_intention_id
+			WHERE ca.status = 'interested'
+			  AND EXISTS (
+				SELECT 1
+				FROM partner_evaluations pe
+				WHERE pe.tender_id = ci.tender_id
+				  AND pe.evaluator_company_id = ci.lead_company_id
+				  AND pe.evaluated_company_id = ca.applicant_company_id
+				  AND pe.decision = 'liked'
+			  )
+		), accepted_applications AS (
+			UPDATE consortium_applications ca
+			SET status = 'accepted', updated_at = now()
+			FROM reciprocal_candidates rc
+			WHERE ca.id = rc.id
+			RETURNING ca.consortium_intention_id, ca.applicant_company_id
+		), closed_consortium_ads AS (
+			UPDATE partnership_ads pa
+			SET status = 'closed', updated_at = now()
+			FROM accepted_applications aa
+			JOIN consortium_intentions ci ON ci.id = aa.consortium_intention_id
+			WHERE pa.tender_id = ci.tender_id
+			  AND (
+				pa.company_id = aa.applicant_company_id
+				OR EXISTS (
+					SELECT 1 FROM consortium_members cm
+					WHERE cm.consortium_intention_id = aa.consortium_intention_id
+					  AND cm.company_id = pa.company_id
+				)
+			  )
+			  AND pa.status = 'published'
+			RETURNING pa.id
+		)
+		INSERT INTO consortium_members (
+			consortium_intention_id, company_id, role, responsibility_description
+		)
+		SELECT
+			consortium_intention_id,
+			applicant_company_id,
+			'Nova consorciada',
+			'Empresa incluida automaticamente apos aceite reciproco entre candidata e lider.'
+		FROM accepted_applications
+		ON CONFLICT (consortium_intention_id, company_id) DO NOTHING;
+		UPDATE partnership_ads pa
+		SET status = 'closed', updated_at = now()
+		FROM consortium_intentions ci
+		WHERE pa.tender_id = ci.tender_id
+		  AND pa.status = 'published'
+		  AND (
+			pa.consortium_intention_id = ci.id
+			OR EXISTS (
+				SELECT 1 FROM consortium_members cm
+				WHERE cm.consortium_intention_id = ci.id
+				  AND cm.company_id = pa.company_id
+			)
+		  )
+		  AND (
+			SELECT count(*) FROM consortium_members cm_count
+			WHERE cm_count.consortium_intention_id = ci.id
+		  ) >= 3;
 		UPDATE users u
 		SET status = 'pending_invite'
 		FROM companies c
@@ -4570,7 +5268,7 @@ func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req crea
 	)
 }
 
-func partnershipAdsSQL(extraWhere string) string {
+func partnershipAdsSQL(extraWhere string, session sessionUser) string {
 	return fmt.Sprintf(`
 		SELECT COALESCE(json_agg(row_to_json(item) ORDER BY item."publishedAt" DESC), '[]'::json)
 		FROM (
@@ -4579,6 +5277,8 @@ func partnershipAdsSQL(extraWhere string) string {
 				pa.tender_id::text AS "tenderId",
 				pa.company_id::text AS "companyId",
 				pa.tender_interest_id::text AS "interestId",
+				COALESCE(pa.ad_type, 'company') AS "adType",
+				COALESCE(pa.consortium_intention_id::text, '') AS "consortiumIntentionId",
 				pa.title,
 				COALESCE(pa.offer_summary, '') AS "offerSummary",
 				COALESCE(pa.seek_summary, '') AS "seekSummary",
@@ -4591,8 +5291,38 @@ func partnershipAdsSQL(extraWhere string) string {
 				COALESCE(t.state, '') AS state,
 				COALESCE(t.city, '') AS city,
 				c.trade_name AS "companyName",
+				CASE WHEN COALESCE(pa.ad_type, 'company') = 'consortium' THEN c.trade_name ELSE '' END AS "leaderCompanyName",
 				COALESCE(c.main_contact_phone, '') AS "companyPhone",
 				COALESCE(logo.file_url, '') AS "companyLogoUrl",
+				CASE
+					WHEN COALESCE(pa.ad_type, 'company') = 'consortium' AND EXISTS (
+						SELECT 1 FROM consortium_applications ca
+						WHERE ca.partnership_ad_id = pa.id
+						  AND ca.applicant_company_id = %s::uuid
+						  AND ca.status IN ('interested', 'accepted')
+					) THEN 'liked'
+					ELSE COALESCE((
+						SELECT pe.decision
+						FROM partner_evaluations pe
+						WHERE pe.tender_id = pa.tender_id
+						  AND pe.evaluator_company_id = %s::uuid
+						  AND pe.evaluated_company_id = pa.company_id
+						ORDER BY pe.updated_at DESC
+						LIMIT 1
+					), '')
+				END AS "currentEvaluationDecision",
+				COALESCE((
+					SELECT json_agg(row_to_json(member) ORDER BY member."companyName")
+					FROM (
+						SELECT
+							cm.company_id::text AS "companyId",
+							member_company.trade_name AS "companyName",
+							COALESCE(cm.role, '') AS role
+						FROM consortium_members cm
+						JOIN companies member_company ON member_company.id = cm.company_id
+						WHERE cm.consortium_intention_id = pa.consortium_intention_id
+					) member
+				), '[]'::json) AS "consortiumMembers",
 				COALESCE((
 					SELECT json_agg(row_to_json(req) ORDER BY req."orderIndex")
 					FROM (
@@ -4619,7 +5349,7 @@ func partnershipAdsSQL(extraWhere string) string {
 			  AND t.deleted_at IS NULL
 			  %s
 		) item;
-	`, extraWhere)
+	`, sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), extraWhere)
 }
 
 func partnershipAdDetailSQL(adID string) string {
@@ -4631,6 +5361,8 @@ func partnershipAdDetailSQL(adID string) string {
 				pa.tender_id::text AS "tenderId",
 				pa.company_id::text AS "companyId",
 				pa.tender_interest_id::text AS "interestId",
+				COALESCE(pa.ad_type, 'company') AS "adType",
+				COALESCE(pa.consortium_intention_id::text, '') AS "consortiumIntentionId",
 				pa.title,
 				COALESCE(pa.offer_summary, '') AS "offerSummary",
 				COALESCE(pa.seek_summary, '') AS "seekSummary",
@@ -4643,8 +5375,21 @@ func partnershipAdDetailSQL(adID string) string {
 				COALESCE(t.state, '') AS state,
 				COALESCE(t.city, '') AS city,
 				c.trade_name AS "companyName",
+				CASE WHEN COALESCE(pa.ad_type, 'company') = 'consortium' THEN c.trade_name ELSE '' END AS "leaderCompanyName",
 				COALESCE(c.main_contact_phone, '') AS "companyPhone",
 				COALESCE(logo.file_url, '') AS "companyLogoUrl",
+				COALESCE((
+					SELECT json_agg(row_to_json(member) ORDER BY member."companyName")
+					FROM (
+						SELECT
+							cm.company_id::text AS "companyId",
+							member_company.trade_name AS "companyName",
+							COALESCE(cm.role, '') AS role
+						FROM consortium_members cm
+						JOIN companies member_company ON member_company.id = cm.company_id
+						WHERE cm.consortium_intention_id = pa.consortium_intention_id
+					) member
+				), '[]'::json) AS "consortiumMembers",
 				COALESCE((
 					SELECT json_agg(row_to_json(req) ORDER BY req."orderIndex")
 					FROM (
@@ -4672,6 +5417,437 @@ func partnershipAdDetailSQL(adID string) string {
 			LIMIT 1
 		) item;
 	`, sqlQuote(adID))
+}
+
+func partnershipAdKindSQL(adID string) string {
+	return fmt.Sprintf(`
+		SELECT row_to_json(item)
+		FROM (
+			SELECT
+				pa.id::text AS id,
+				COALESCE(pa.ad_type, 'company') AS "adType",
+				pa.company_id::text AS "companyId",
+				COALESCE(pa.consortium_intention_id::text, '') AS "consortiumIntentionId"
+			FROM partnership_ads pa
+			WHERE pa.id = %s::uuid
+			  AND pa.deleted_at IS NULL
+			LIMIT 1
+		) item;
+	`, sqlQuote(adID))
+}
+
+func chatThreadsSQL(session sessionUser, extraWhere string) string {
+	return fmt.Sprintf(`
+		SELECT COALESCE(json_agg(row_to_json(item) ORDER BY item."lastActivityAt" DESC), '[]'::json)
+		FROM (
+			SELECT
+				ct.id::text AS id,
+				ct.tender_id::text AS "tenderId",
+				ct.partnership_ad_id::text AS "adId",
+				ct.company_a_id::text AS "companyAId",
+				ct.company_b_id::text AS "companyBId",
+				other_company.id::text AS "otherCompanyId",
+				other_company.trade_name AS "otherCompanyName",
+				COALESCE(other_logo.file_url, '') AS "otherCompanyLogoUrl",
+				t.number AS "tenderNumber",
+				t.agency,
+				t.object AS "tenderObject",
+				ct.status,
+				CASE
+					WHEN ct.status = 'archived' THEN true
+					ELSE false
+				END AS "isClosed",
+				CASE
+					WHEN ct.status = 'archived' THEN 'Conversa encerrada porque uma das empresas avancou com outro parceiro neste edital.'
+					WHEN ct.status = 'converted_to_match' THEN 'Conversa mantida apos match para alinhamento do consorcio.'
+					ELSE ''
+				END AS "closedReason",
+				CASE
+					WHEN ct.status IN ('open', 'converted_to_match') THEN true
+					ELSE false
+				END AS "canReply",
+				COALESCE((
+					SELECT other_ad.id::text
+					FROM partnership_ads other_ad
+					WHERE other_ad.tender_id = ct.tender_id
+					  AND other_ad.company_id = other_company.id
+					  AND other_ad.deleted_at IS NULL
+					ORDER BY CASE WHEN other_ad.status = 'published' THEN 0 ELSE 1 END, other_ad.created_at DESC
+					LIMIT 1
+				), ct.partnership_ad_id::text) AS "evaluationAdId",
+				COALESCE(ct.last_message_at, ct.updated_at, ct.created_at) AS "lastActivityAt",
+				COALESCE((
+					SELECT cm.content
+					FROM chat_messages cm
+					WHERE cm.thread_id = ct.id
+					  AND cm.deleted_at IS NULL
+					ORDER BY cm.created_at DESC
+					LIMIT 1
+				), '') AS "lastMessage",
+				(
+					SELECT count(*)
+					FROM chat_messages cm
+					WHERE cm.thread_id = ct.id
+					  AND cm.deleted_at IS NULL
+					  AND cm.sender_company_id <> %s::uuid
+					  AND cm.created_at > COALESCE(ctr.last_read_at, 'epoch'::timestamptz)
+				)::int AS "unreadCount"
+			FROM chat_threads ct
+			JOIN tenders t ON t.id = ct.tender_id
+			JOIN companies other_company ON other_company.id = CASE
+				WHEN ct.company_a_id = %s::uuid THEN ct.company_b_id
+				ELSE ct.company_a_id
+			END
+			LEFT JOIN company_profiles other_profile ON other_profile.company_id = other_company.id
+			LEFT JOIN media_files other_logo ON other_logo.id = other_profile.logo_media_id
+			LEFT JOIN chat_thread_reads ctr ON ctr.thread_id = ct.id AND ctr.user_id = %s::uuid
+			WHERE ct.deleted_at IS NULL
+			  AND (%s::uuid IN (ct.company_a_id, ct.company_b_id))
+			  %s
+		) item;
+	`, sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(session.CompanyID), extraWhere)
+}
+
+func buildStartChatSQL(session sessionUser, adID string) string {
+	return fmt.Sprintf(`
+		WITH selected_ad AS (
+			SELECT pa.id, pa.tender_id, pa.company_id
+			FROM partnership_ads pa
+			WHERE pa.id = %s::uuid
+			  AND pa.deleted_at IS NULL
+			  AND pa.status = 'published'
+			  AND pa.company_id <> %s::uuid
+			  AND (COALESCE(pa.ad_type, 'company') = 'consortium' OR NOT EXISTS (
+				SELECT 1
+				FROM matches m
+				WHERE m.tender_id = pa.tender_id
+				  AND m.status = 'active'
+				  AND (%s::uuid IN (m.company_a_id, m.company_b_id) OR pa.company_id IN (m.company_a_id, m.company_b_id))
+			  ))
+			LIMIT 1
+		),
+		upserted AS (
+			INSERT INTO chat_threads (
+				tender_id, partnership_ad_id, company_a_id, company_b_id, created_by_user_id, last_message_at
+			)
+			SELECT
+				sa.tender_id,
+				sa.id,
+				CASE WHEN %s::uuid::text < sa.company_id::text THEN %s::uuid ELSE sa.company_id END,
+				CASE WHEN %s::uuid::text < sa.company_id::text THEN sa.company_id ELSE %s::uuid END,
+				%s::uuid,
+				now()
+			FROM selected_ad sa
+			ON CONFLICT ON CONSTRAINT chat_threads_unique_uk
+			DO UPDATE SET updated_at = now()
+			RETURNING *
+		)
+		SELECT row_to_json(item)
+		FROM (
+			SELECT
+				'chat-thread' AS "eventType",
+				ct.id::text AS id,
+				ct.tender_id::text AS "tenderId",
+				ct.partnership_ad_id::text AS "adId",
+				ct.company_a_id::text AS "companyAId",
+				ct.company_b_id::text AS "companyBId",
+				other_company.id::text AS "otherCompanyId",
+				other_company.trade_name AS "otherCompanyName",
+				COALESCE(other_logo.file_url, '') AS "otherCompanyLogoUrl",
+				t.number AS "tenderNumber",
+				t.agency,
+				t.object AS "tenderObject",
+				ct.status,
+				false AS "isClosed",
+				'' AS "closedReason",
+				true AS "canReply",
+				ct.partnership_ad_id::text AS "evaluationAdId",
+				COALESCE(ct.last_message_at, ct.updated_at, ct.created_at) AS "lastActivityAt",
+				'' AS "lastMessage",
+				0 AS "unreadCount"
+			FROM upserted ct
+			JOIN tenders t ON t.id = ct.tender_id
+			JOIN companies other_company ON other_company.id = CASE
+				WHEN ct.company_a_id = %s::uuid THEN ct.company_b_id
+				ELSE ct.company_a_id
+			END
+			LEFT JOIN company_profiles other_profile ON other_profile.company_id = other_company.id
+			LEFT JOIN media_files other_logo ON other_logo.id = other_profile.logo_media_id
+			LIMIT 1
+		) item;
+	`, sqlQuote(adID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(session.CompanyID))
+}
+
+func chatMessagesSQL(session sessionUser, threadID string) string {
+	return fmt.Sprintf(`
+		WITH selected_thread AS (
+			SELECT *
+			FROM chat_threads
+			WHERE id = %s::uuid
+			  AND deleted_at IS NULL
+			  AND %s::uuid IN (company_a_id, company_b_id)
+			LIMIT 1
+		),
+		read_marker AS (
+			INSERT INTO chat_thread_reads (thread_id, user_id, last_read_at)
+			SELECT id, %s::uuid, now()
+			FROM selected_thread
+			ON CONFLICT (thread_id, user_id)
+			DO UPDATE SET last_read_at = now()
+			RETURNING *
+		)
+		SELECT COALESCE(json_agg(row_to_json(item) ORDER BY item."createdAt"), '[]'::json)
+		FROM (
+			SELECT
+				cm.id::text AS id,
+				cm.thread_id::text AS "threadId",
+				st.company_a_id::text AS "companyAId",
+				st.company_b_id::text AS "companyBId",
+				st.status,
+				(st.status = 'archived') AS "isClosed",
+				cm.sender_user_id::text AS "senderUserId",
+				cm.sender_company_id::text AS "senderCompanyId",
+				COALESCE(u.full_name, 'Usuario') AS "senderName",
+				COALESCE(u.job_title, '') AS "senderJobTitle",
+				COALESCE(user_photo.file_url, '') AS "senderPhotoUrl",
+				c.trade_name AS "senderCompanyName",
+				cm.content,
+				(cm.sender_user_id = %s::uuid) AS mine,
+				cm.created_at AS "createdAt"
+			FROM selected_thread st
+			JOIN chat_messages cm ON cm.thread_id = st.id
+			JOIN companies c ON c.id = cm.sender_company_id
+			LEFT JOIN users u ON u.id = cm.sender_user_id
+			LEFT JOIN media_files user_photo ON user_photo.id = u.profile_photo_media_id
+			WHERE cm.deleted_at IS NULL
+		) item;
+	`, sqlQuote(threadID), sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(session.UserID))
+}
+
+func buildCreateChatMessageSQL(session sessionUser, threadID string, content string) string {
+	return fmt.Sprintf(`
+		WITH selected_thread AS (
+			SELECT *
+			FROM chat_threads
+			WHERE id = %s::uuid
+			  AND deleted_at IS NULL
+			  AND status IN ('open', 'converted_to_match')
+			  AND %s::uuid IN (company_a_id, company_b_id)
+			LIMIT 1
+		),
+		inserted_message AS (
+			INSERT INTO chat_messages (thread_id, sender_user_id, sender_company_id, content)
+			SELECT id, %s::uuid, %s::uuid, %s
+			FROM selected_thread
+			RETURNING *
+		),
+		updated_thread AS (
+			UPDATE chat_threads
+			SET last_message_at = now(), updated_at = now()
+			WHERE id = (SELECT thread_id FROM inserted_message)
+			RETURNING *
+		)
+		SELECT row_to_json(item)
+		FROM (
+			SELECT
+				'chat-message' AS "eventType",
+				im.id::text AS id,
+				im.thread_id::text AS "threadId",
+				ut.company_a_id::text AS "companyAId",
+				ut.company_b_id::text AS "companyBId",
+				im.sender_user_id::text AS "senderUserId",
+				im.sender_company_id::text AS "senderCompanyId",
+				COALESCE(u.full_name, 'Usuario') AS "senderName",
+				COALESCE(u.job_title, '') AS "senderJobTitle",
+				COALESCE(user_photo.file_url, '') AS "senderPhotoUrl",
+				c.trade_name AS "senderCompanyName",
+				im.content,
+				im.created_at AS "createdAt"
+			FROM inserted_message im
+			JOIN updated_thread ut ON ut.id = im.thread_id
+			JOIN companies c ON c.id = im.sender_company_id
+			LEFT JOIN users u ON u.id = im.sender_user_id
+			LEFT JOIN media_files user_photo ON user_photo.id = u.profile_photo_media_id
+			LIMIT 1
+		) item;
+	`, sqlQuote(threadID), sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(session.CompanyID), sqlQuote(content))
+}
+
+func buildEvaluateConsortiumAdSQL(adID string, session sessionUser, decision string) string {
+	status := "interested"
+	if decision == "rejected" {
+		status = "withdrawn"
+	}
+	if decision == "later" {
+		status = "interested"
+	}
+	return fmt.Sprintf(`
+		WITH selected_ad AS (
+			SELECT
+				pa.*, ci.lead_company_id, ci.match_id, t.number AS tender_number,
+				EXISTS (
+					SELECT 1
+					FROM partner_evaluations pe
+					WHERE pe.tender_id = pa.tender_id
+					  AND pe.evaluator_company_id = ci.lead_company_id
+					  AND pe.evaluated_company_id = %s::uuid
+					  AND pe.decision = 'liked'
+				) AS leader_liked_candidate
+			FROM partnership_ads pa
+			JOIN consortium_intentions ci ON ci.id = pa.consortium_intention_id
+			JOIN tenders t ON t.id = pa.tender_id
+			WHERE pa.id = %s::uuid
+			  AND pa.deleted_at IS NULL
+			  AND pa.status = 'published'
+			  AND pa.ad_type = 'consortium'
+			  AND pa.company_id <> %s::uuid
+			  AND NOT EXISTS (
+				SELECT 1
+				FROM consortium_members cm
+				WHERE cm.consortium_intention_id = pa.consortium_intention_id
+				  AND cm.company_id = %s::uuid
+			  )
+			LIMIT 1
+		),
+		updated_application AS (
+			UPDATE consortium_applications ca
+			SET
+				status = CASE
+					WHEN %s = 'liked' AND sa.leader_liked_candidate THEN 'accepted'
+					ELSE %s
+				END,
+				applicant_user_id = %s::uuid,
+				updated_at = now()
+			FROM selected_ad sa
+			WHERE ca.consortium_intention_id = sa.consortium_intention_id
+			  AND ca.applicant_company_id = %s::uuid
+			RETURNING ca.*
+		),
+		inserted_application AS (
+			INSERT INTO consortium_applications (
+				consortium_intention_id, partnership_ad_id, applicant_company_id,
+				applicant_user_id, status
+			)
+			SELECT
+				sa.consortium_intention_id,
+				sa.id,
+				%s::uuid,
+				%s::uuid,
+				CASE
+					WHEN %s = 'liked' AND sa.leader_liked_candidate THEN 'accepted'
+					ELSE %s
+				END
+			FROM selected_ad sa
+			WHERE NOT EXISTS (SELECT 1 FROM updated_application)
+			RETURNING *
+		),
+		selected_application AS (
+			SELECT * FROM updated_application
+			UNION ALL
+			SELECT * FROM inserted_application
+			LIMIT 1
+		),
+		inserted_member AS (
+			INSERT INTO consortium_members (
+				consortium_intention_id, company_id, role, responsibility_description
+			)
+			SELECT
+				app.consortium_intention_id,
+				app.applicant_company_id,
+				'Nova consorciada',
+				'Empresa incluida automaticamente apos aceite reciproco entre candidata e lider.'
+			FROM selected_application app
+			WHERE app.status = 'accepted'
+			ON CONFLICT (consortium_intention_id, company_id) DO NOTHING
+			RETURNING id
+		),
+		closed_consortium_ad AS (
+			UPDATE partnership_ads pa
+			SET status = 'closed', updated_at = now()
+			FROM selected_ad sa
+			JOIN selected_application app ON true
+			WHERE pa.tender_id = sa.tender_id
+			  AND app.status = 'accepted'
+			  AND (
+				pa.company_id = app.applicant_company_id
+				OR EXISTS (
+					SELECT 1 FROM consortium_members cm
+					WHERE cm.consortium_intention_id = app.consortium_intention_id
+					  AND cm.company_id = pa.company_id
+				)
+			  )
+			  AND pa.status = 'published'
+			RETURNING pa.id
+		),
+		created_notifications AS (
+			INSERT INTO notifications (
+				recipient_user_id, recipient_company_id, type, title, message,
+				destination_screen, related_entity_type, related_entity_id
+			)
+			SELECT
+				u.id,
+				sa.lead_company_id,
+				'match',
+				'Nova candidata ao consorcio',
+				c_app.trade_name || ' demonstrou interesse em entrar no consorcio do edital ' || sa.tender_number || '.',
+				'match-list',
+				'consortium_application',
+				app.id
+			FROM selected_application app
+			JOIN selected_ad sa ON true
+			JOIN companies c_app ON c_app.id = app.applicant_company_id
+			JOIN users u ON u.company_id = sa.lead_company_id
+			WHERE app.status = 'interested'
+			  AND u.status = 'active'
+			  AND u.deleted_at IS NULL
+			RETURNING id
+		),
+		accepted_notifications AS (
+			INSERT INTO notifications (
+				recipient_user_id, recipient_company_id, type, title, message,
+				destination_screen, related_entity_type, related_entity_id
+			)
+			SELECT
+				u.id,
+				app.applicant_company_id,
+				'match',
+				'Entrada no consorcio confirmada',
+				'Os dois lados deram aceite. Sua empresa agora compoe este consorcio.',
+				'match-list',
+				'consortium_application',
+				app.id
+			FROM selected_application app
+			JOIN users u ON u.company_id = app.applicant_company_id
+			WHERE app.status = 'accepted'
+			  AND u.status = 'active'
+			  AND u.deleted_at IS NULL
+			RETURNING id
+		)
+		SELECT row_to_json(item)
+		FROM (
+			SELECT
+				app.id::text AS "applicationId",
+				app.status,
+				false AS "matchCreated",
+				'' AS "matchId",
+				true AS "applicationCreated",
+				(app.status = 'accepted') AS "applicationAccepted"
+			FROM selected_application app
+		) item;
+	`,
+		sqlQuote(session.CompanyID),
+		sqlQuote(adID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(decision),
+		sqlQuote(status),
+		sqlQuote(session.UserID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.UserID),
+		sqlQuote(decision),
+		sqlQuote(status),
+	)
 }
 
 func buildEvaluatePartnershipAdSQL(adID string, session sessionUser, decision string) string {
@@ -4746,6 +5922,54 @@ func buildEvaluatePartnershipAdSQL(adID string, session sessionUser, decision st
 			SET status = 'active', updated_at = now()
 			RETURNING *
 		),
+		accepted_consortium_application AS (
+			UPDATE consortium_applications ca
+			SET
+				status = 'accepted',
+				leader_user_id = %s::uuid,
+				updated_at = now()
+			FROM selected_eval se
+			JOIN consortium_intentions ci
+				ON ci.tender_id = se.tender_id
+			JOIN matches base_match
+				ON base_match.id = ci.match_id AND base_match.status = 'active'
+			WHERE se.decision = 'liked'
+			  AND ci.lead_company_id = se.evaluator_company_id
+			  AND ca.consortium_intention_id = ci.id
+			  AND ca.applicant_company_id = se.evaluated_company_id
+			  AND ca.status = 'interested'
+			RETURNING ca.*
+		),
+		inserted_consortium_member AS (
+			INSERT INTO consortium_members (
+				consortium_intention_id, company_id, role, responsibility_description
+			)
+			SELECT
+				ca.consortium_intention_id,
+				ca.applicant_company_id,
+				'Nova consorciada',
+				'Empresa incluida automaticamente apos aceite reciproco entre candidata e lider.'
+			FROM accepted_consortium_application ca
+			ON CONFLICT (consortium_intention_id, company_id) DO NOTHING
+			RETURNING id
+		),
+		closed_consortium_ads AS (
+			UPDATE partnership_ads pa
+			SET status = 'closed', updated_at = now()
+			FROM accepted_consortium_application ca
+			JOIN consortium_intentions ci ON ci.id = ca.consortium_intention_id
+			WHERE pa.tender_id = ci.tender_id
+			  AND (
+				pa.company_id = ca.applicant_company_id
+				OR EXISTS (
+					SELECT 1 FROM consortium_members cm
+					WHERE cm.consortium_intention_id = ca.consortium_intention_id
+					  AND cm.company_id = pa.company_id
+				)
+			  )
+			  AND pa.status = 'published'
+			RETURNING pa.id
+		),
 		closed_ads AS (
 			UPDATE partnership_ads pa
 			SET status = 'closed', updated_at = now()
@@ -4753,7 +5977,25 @@ func buildEvaluatePartnershipAdSQL(adID string, session sessionUser, decision st
 			WHERE pa.tender_id = m.tender_id
 			  AND pa.company_id IN (m.company_a_id, m.company_b_id)
 			  AND pa.deleted_at IS NULL
+			  AND COALESCE(pa.ad_type, 'company') <> 'consortium'
 			RETURNING pa.id
+		),
+		updated_chat_threads AS (
+			UPDATE chat_threads ct
+			SET
+				status = CASE
+					WHEN ct.company_a_id IN (m.company_a_id, m.company_b_id)
+					 AND ct.company_b_id IN (m.company_a_id, m.company_b_id)
+					THEN 'converted_to_match'
+					ELSE 'archived'
+				END,
+				updated_at = now()
+			FROM inserted_match m
+			WHERE ct.tender_id = m.tender_id
+			  AND ct.deleted_at IS NULL
+			  AND ct.status = 'open'
+			  AND (ct.company_a_id IN (m.company_a_id, m.company_b_id) OR ct.company_b_id IN (m.company_a_id, m.company_b_id))
+			RETURNING ct.id
 		),
 		inserted_contacts AS (
 			INSERT INTO match_contacts (match_id, company_id, contact_name, phone, whatsapp_url, message_template)
@@ -4792,7 +6034,28 @@ func buildEvaluatePartnershipAdSQL(adID string, session sessionUser, decision st
 			JOIN users u ON u.company_id = se.evaluated_company_id
 			WHERE se.decision = 'liked'
 			  AND NOT EXISTS (SELECT 1 FROM inserted_match)
+			  AND NOT EXISTS (SELECT 1 FROM accepted_consortium_application)
 			  AND u.status = 'active'
+			  AND u.deleted_at IS NULL
+			RETURNING id
+		),
+		consortium_accept_notifications AS (
+			INSERT INTO notifications (
+				recipient_user_id, recipient_company_id, type, title, message,
+				destination_screen, related_entity_type, related_entity_id
+			)
+			SELECT
+				u.id,
+				ca.applicant_company_id,
+				'match',
+				'Entrada no consorcio confirmada',
+				'Os dois lados deram aceite. Sua empresa agora compoe este consorcio.',
+				'match-list',
+				'consortium_application',
+				ca.id
+			FROM accepted_consortium_application ca
+			JOIN users u ON u.company_id = ca.applicant_company_id
+			WHERE u.status = 'active'
 			  AND u.deleted_at IS NULL
 			RETURNING id
 		),
@@ -4822,7 +6085,8 @@ func buildEvaluatePartnershipAdSQL(adID string, session sessionUser, decision st
 				se.id::text AS "evaluationId",
 				se.decision,
 				EXISTS (SELECT 1 FROM inserted_match) AS "matchCreated",
-				(SELECT id::text FROM inserted_match LIMIT 1) AS "matchId"
+				(SELECT id::text FROM inserted_match LIMIT 1) AS "matchId",
+				EXISTS (SELECT 1 FROM accepted_consortium_application) AS "applicationAccepted"
 			FROM selected_eval se
 		) item;
 	`,
@@ -4833,6 +6097,7 @@ func buildEvaluatePartnershipAdSQL(adID string, session sessionUser, decision st
 		sqlQuote(session.CompanyID),
 		sqlQuote(session.CompanyID),
 		sqlQuote(decision),
+		sqlQuote(session.UserID),
 		sqlQuote(session.UserID),
 	)
 }
@@ -4945,10 +6210,355 @@ func buildUpdateConsortiumLeaderSQL(matchID string, session sessionUser, req upd
 	)
 }
 
+func buildCreateConsortiumAdSQL(matchID string, session sessionUser, req createConsortiumAdRequest) string {
+	return fmt.Sprintf(`
+		WITH selected_intention AS (
+			SELECT ci.*, m.tender_id AS match_tender_id, t.number, t.object, t.agency, lead.trade_name AS lead_name
+			FROM consortium_intentions ci
+			JOIN matches m ON m.id = ci.match_id
+			JOIN tenders t ON t.id = m.tender_id
+			JOIN companies lead ON lead.id = ci.lead_company_id
+			WHERE ci.match_id = %s::uuid
+			  AND ci.lead_company_id = %s::uuid
+			  AND m.status = 'active'
+			LIMIT 1
+		),
+		member_names AS (
+			SELECT
+				si.id AS consortium_intention_id,
+				string_agg(c.trade_name, ', ' ORDER BY c.trade_name) AS names
+			FROM selected_intention si
+			JOIN consortium_members cm ON cm.consortium_intention_id = si.id
+			JOIN companies c ON c.id = cm.company_id
+			GROUP BY si.id
+		),
+		updated_ad AS (
+			UPDATE partnership_ads pa
+			SET
+				title = 'Consorcio em formacao busca nova consorciada',
+				offer_summary = 'Consorcio formado por: ' || COALESCE((SELECT names FROM member_names), si.lead_name),
+				seek_summary = %s,
+				status = 'published',
+				published_at = COALESCE(pa.published_at, now()),
+				updated_at = now(),
+				ad_type = 'consortium',
+				company_id = si.lead_company_id,
+				tender_id = si.match_tender_id
+			FROM selected_intention si
+			WHERE pa.consortium_intention_id = si.id
+			  AND pa.ad_type = 'consortium'
+			  AND pa.deleted_at IS NULL
+			RETURNING pa.*
+		),
+		inserted_ad AS (
+			INSERT INTO partnership_ads (
+				tender_id, company_id, consortium_intention_id, ad_type, title,
+				offer_summary, seek_summary, status, published_at
+			)
+			SELECT
+				si.match_tender_id,
+				si.lead_company_id,
+				si.id,
+				'consortium',
+				'Consorcio em formacao busca nova consorciada',
+				'Consorcio formado por: ' || COALESCE((SELECT names FROM member_names), si.lead_name),
+				%s,
+				'published',
+				now()
+			FROM selected_intention si
+			WHERE NOT EXISTS (SELECT 1 FROM updated_ad)
+			RETURNING *
+		),
+		selected_ad AS (
+			SELECT * FROM updated_ad
+			UNION ALL
+			SELECT * FROM inserted_ad
+			LIMIT 1
+		),
+		updated_notes AS (
+			UPDATE consortium_intentions ci
+			SET notes = COALESCE(NULLIF(%s, ''), notes), updated_at = now()
+			WHERE ci.id = (SELECT consortium_intention_id FROM selected_ad)
+			RETURNING ci.id
+		)
+		SELECT row_to_json(item)
+		FROM (
+			SELECT
+				sa.id::text AS id,
+				sa.tender_id::text AS "tenderId",
+				sa.company_id::text AS "companyId",
+				sa.consortium_intention_id::text AS "consortiumIntentionId",
+				sa.ad_type AS "adType",
+				sa.title,
+				COALESCE(sa.offer_summary, '') AS "offerSummary",
+				COALESCE(sa.seek_summary, '') AS "seekSummary",
+				sa.status,
+				sa.published_at AS "publishedAt"
+			FROM selected_ad sa
+		) item;
+	`,
+		sqlQuote(matchID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(req.NeedSummary),
+		sqlQuote(req.NeedSummary),
+		sqlQuote(req.Notes),
+	)
+}
+
+func buildAcceptConsortiumApplicationSQL(matchID string, session sessionUser, req acceptConsortiumApplicationRequest) string {
+	return fmt.Sprintf(`
+		WITH selected_application AS (
+			SELECT ca.*, ci.lead_company_id, ci.match_id, ci.tender_id
+			FROM consortium_applications ca
+			JOIN consortium_intentions ci ON ci.id = ca.consortium_intention_id
+			JOIN matches m ON m.id = ci.match_id
+			WHERE ca.id = %s::uuid
+			  AND ci.match_id = %s::uuid
+			  AND ci.lead_company_id = %s::uuid
+			  AND ca.status = 'interested'
+			  AND m.status = 'active'
+			LIMIT 1
+		),
+		updated_application AS (
+			UPDATE consortium_applications ca
+			SET status = 'accepted',
+				leader_user_id = %s::uuid,
+				updated_at = now()
+			FROM selected_application sa
+			WHERE ca.id = sa.id
+			RETURNING ca.*
+		),
+		inserted_member AS (
+			INSERT INTO consortium_members (
+				consortium_intention_id, company_id, role, responsibility_description
+			)
+			SELECT
+				sa.consortium_intention_id,
+				sa.applicant_company_id,
+				'Nova consorciada',
+				'Empresa aceita pela lider para composicao complementar do consorcio.'
+			FROM selected_application sa
+			ON CONFLICT (consortium_intention_id, company_id) DO UPDATE
+			SET role = EXCLUDED.role,
+				responsibility_description = EXCLUDED.responsibility_description
+			RETURNING *
+		),
+		closed_consortium_ad AS (
+			UPDATE partnership_ads pa
+			SET status = 'closed', updated_at = now()
+			FROM selected_application sa
+			JOIN consortium_intentions ci ON ci.id = sa.consortium_intention_id
+			WHERE pa.tender_id = ci.tender_id
+			  AND (
+				pa.company_id = sa.applicant_company_id
+				OR EXISTS (
+					SELECT 1 FROM consortium_members cm
+					WHERE cm.consortium_intention_id = sa.consortium_intention_id
+					  AND cm.company_id = pa.company_id
+				)
+			  )
+			  AND pa.status = 'published'
+			RETURNING pa.id
+		),
+		created_notifications AS (
+			INSERT INTO notifications (
+				recipient_user_id, recipient_company_id, type, title, message,
+				destination_screen, related_entity_type, related_entity_id
+			)
+			SELECT
+				u.id,
+				sa.applicant_company_id,
+				'match',
+				'Entrada no consorcio aprovada',
+				c_lead.trade_name || ' aprovou sua entrada no consorcio.',
+				'match-list',
+				'consortium_application',
+				sa.id
+			FROM selected_application sa
+			JOIN companies c_lead ON c_lead.id = sa.lead_company_id
+			JOIN users u ON u.company_id = sa.applicant_company_id
+			WHERE u.status = 'active'
+			  AND u.deleted_at IS NULL
+			RETURNING id
+		)
+		SELECT row_to_json(item)
+		FROM (
+			SELECT
+				ua.id::text AS id,
+				ua.status,
+				ua.applicant_company_id::text AS "companyId",
+				c.trade_name AS "companyName"
+			FROM updated_application ua
+			JOIN companies c ON c.id = ua.applicant_company_id
+		) item;
+	`,
+		sqlQuote(req.ApplicationID),
+		sqlQuote(matchID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.UserID),
+	)
+}
+
+func buildWithdrawFromConsortiumSQL(matchID string, session sessionUser, req withdrawFromConsortiumRequest) string {
+	return fmt.Sprintf(`
+		WITH selected_consortium AS (
+			SELECT
+				m.id AS match_id,
+				ci.id AS consortium_intention_id,
+				ci.tender_id,
+				ci.lead_company_id,
+				(
+					SELECT count(*)
+					FROM consortium_members cm_count
+					WHERE cm_count.consortium_intention_id = ci.id
+					  AND cm_count.status = 'active'
+				) AS active_member_count
+			FROM matches m
+			JOIN consortium_intentions ci ON ci.match_id = m.id
+			WHERE m.id = %s::uuid
+			  AND m.status = 'active'
+			  AND EXISTS (
+				SELECT 1
+				FROM consortium_members cm_current
+				WHERE cm_current.consortium_intention_id = ci.id
+				  AND cm_current.company_id = %s::uuid
+				  AND cm_current.status = 'active'
+			  )
+			  AND NOT (
+				ci.lead_company_id = %s::uuid
+				AND (
+					SELECT count(*) FROM consortium_members cm_count
+					WHERE cm_count.consortium_intention_id = ci.id
+					  AND cm_count.status = 'active'
+				) - 1 >= 2
+				AND NOT EXISTS (
+					SELECT 1
+					FROM consortium_members cm_successor
+					WHERE cm_successor.consortium_intention_id = ci.id
+					  AND cm_successor.company_id = NULLIF(%s, '')::uuid
+					  AND cm_successor.company_id <> %s::uuid
+					  AND cm_successor.status = 'active'
+				)
+			  )
+			LIMIT 1
+		), withdrawn_member AS (
+			UPDATE consortium_members cm
+			SET
+				status = 'withdrawn',
+				withdrawn_at = now(),
+				withdrawn_by_user_id = %s::uuid,
+				role = 'Retirada do consorcio'
+			FROM selected_consortium sc
+			WHERE cm.consortium_intention_id = sc.consortium_intention_id
+			  AND cm.company_id = %s::uuid
+			  AND cm.status = 'active'
+			RETURNING sc.*
+		), updated_consortium AS (
+			UPDATE consortium_intentions ci
+			SET
+				lead_company_id = CASE
+					WHEN ci.lead_company_id = %s::uuid AND wm.active_member_count - 1 >= 2
+						THEN NULLIF(%s, '')::uuid
+					ELSE ci.lead_company_id
+				END,
+				status = CASE WHEN wm.active_member_count - 1 < 2 THEN 'withdrawn' ELSE 'intention_registered' END,
+				updated_at = now()
+			FROM withdrawn_member wm
+			WHERE ci.id = wm.consortium_intention_id
+			RETURNING ci.*, wm.match_id, wm.active_member_count
+		), cancelled_small_consortium AS (
+			UPDATE matches m
+			SET status = 'cancelled', updated_at = now()
+			FROM updated_consortium uc
+			WHERE m.id = uc.match_id
+			  AND uc.active_member_count - 1 < 2
+			RETURNING m.id
+		), closed_ads AS (
+			UPDATE partnership_ads pa
+			SET status = 'closed', updated_at = now()
+			FROM updated_consortium uc
+			WHERE pa.tender_id = uc.tender_id
+			  AND pa.status = 'published'
+			  AND (
+				pa.consortium_intention_id = uc.id
+				OR pa.company_id = %s::uuid
+			  )
+			RETURNING pa.id
+		), created_notifications AS (
+			INSERT INTO notifications (
+				recipient_user_id, recipient_company_id, type, title, message,
+				destination_screen, related_entity_type, related_entity_id
+			)
+			SELECT
+				u.id,
+				u.company_id,
+				'system',
+				'Empresa desistiu do consorcio',
+				c_withdrawn.trade_name || ' deixou a composicao deste consorcio.',
+				'match-list',
+				'match',
+				uc.match_id
+			FROM updated_consortium uc
+			JOIN consortium_members cm ON cm.consortium_intention_id = uc.id AND cm.status = 'active'
+			JOIN users u ON u.company_id = cm.company_id AND u.status = 'active' AND u.deleted_at IS NULL
+			JOIN companies c_withdrawn ON c_withdrawn.id = %s::uuid
+			RETURNING id
+		), created_audit AS (
+			INSERT INTO audit_logs (actor_user_id, company_id, module, action, entity_type, entity_id, description, metadata)
+			SELECT
+				%s::uuid,
+				%s::uuid,
+				'consorcios',
+				'desistencia',
+				'consortium_intention',
+				uc.id,
+				'Empresa desistiu do consorcio.',
+				jsonb_build_object('matchId', uc.match_id, 'successorCompanyId', NULLIF(%s, ''))
+			FROM updated_consortium uc
+			RETURNING id
+		)
+		SELECT row_to_json(item)
+		FROM (
+			SELECT
+				uc.match_id::text AS "matchId",
+				uc.id::text AS "consortiumIntentionId",
+				CASE WHEN uc.active_member_count - 1 < 2 THEN true ELSE false END AS "consortiumClosed"
+			FROM updated_consortium uc
+		) item;
+	`,
+		sqlQuote(matchID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(req.SuccessorCompanyID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.UserID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(req.SuccessorCompanyID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.UserID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(req.SuccessorCompanyID),
+	)
+}
+
 func matchesSQL(session sessionUser, extraWhere string) string {
 	companyFilter := ""
 	if session.CompanyID != "" {
-		companyFilter = fmt.Sprintf("AND %s::uuid IN (m.company_a_id, m.company_b_id)", sqlQuote(session.CompanyID))
+		companyFilter = fmt.Sprintf(`AND (
+			(NOT EXISTS (SELECT 1 FROM consortium_intentions ci_existing WHERE ci_existing.match_id = m.id)
+			 AND %s::uuid IN (m.company_a_id, m.company_b_id))
+			OR EXISTS (
+				SELECT 1
+				FROM consortium_intentions ci_filter
+				JOIN consortium_members cm_filter ON cm_filter.consortium_intention_id = ci_filter.id
+				WHERE ci_filter.match_id = m.id
+				  AND cm_filter.company_id = %s::uuid
+				  AND cm_filter.status = 'active'
+			)
+		)`, sqlQuote(session.CompanyID), sqlQuote(session.CompanyID))
 	}
 	return fmt.Sprintf(`
 		SELECT COALESCE(json_agg(row_to_json(item) ORDER BY item."matchedAt" DESC), '[]'::json)
@@ -4962,11 +6572,41 @@ func matchesSQL(session sessionUser, extraWhere string) string {
 				m.status,
 				m.matched_at AS "matchedAt",
 				COALESCE(ci.lead_company_id::text, '') AS "leadCompanyId",
+				COALESCE(ci.id::text, '') AS "consortiumIntentionId",
 				COALESCE(lead.trade_name, '') AS "leadCompanyName",
 				COALESCE(ci.status, '') AS "consortiumStatus",
 				COALESCE(ci.notes, '') AS "consortiumNotes",
+				COALESCE(cons_ad.id::text, '') AS "consortiumAdId",
+				COALESCE(cons_ad.seek_summary, '') AS "consortiumAdSeekSummary",
 				a.trade_name AS "companyAName",
 				b.trade_name AS "companyBName",
+				COALESCE((
+					SELECT json_agg(row_to_json(member) ORDER BY member."companyName")
+					FROM (
+						SELECT
+							cm.company_id::text AS "companyId",
+							member_company.trade_name AS "companyName",
+							COALESCE(cm.role, '') AS role
+						FROM consortium_members cm
+						JOIN companies member_company ON member_company.id = cm.company_id
+						WHERE cm.consortium_intention_id = ci.id
+						  AND cm.status = 'active'
+					) member
+				), '[]'::json) AS "consortiumMembers",
+				COALESCE((
+					SELECT json_agg(row_to_json(app_item) ORDER BY app_item."createdAt" DESC)
+					FROM (
+						SELECT
+							ca.id::text AS id,
+							ca.applicant_company_id::text AS "companyId",
+							app_company.trade_name AS "companyName",
+							ca.status,
+							ca.created_at AS "createdAt"
+						FROM consortium_applications ca
+						JOIN companies app_company ON app_company.id = ca.applicant_company_id
+						WHERE ca.consortium_intention_id = ci.id
+					) app_item
+				), '[]'::json) AS applications,
 				COALESCE((
 					SELECT json_agg(row_to_json(contact))
 					FROM (
@@ -4987,6 +6627,10 @@ func matchesSQL(session sessionUser, extraWhere string) string {
 			JOIN companies b ON b.id = m.company_b_id
 			LEFT JOIN consortium_intentions ci ON ci.match_id = m.id
 			LEFT JOIN companies lead ON lead.id = ci.lead_company_id
+			LEFT JOIN partnership_ads cons_ad ON cons_ad.consortium_intention_id = ci.id
+				AND cons_ad.ad_type = 'consortium'
+				AND cons_ad.deleted_at IS NULL
+				AND cons_ad.status = 'published'
 			WHERE m.status = 'active'
 			  %s
 			  %s

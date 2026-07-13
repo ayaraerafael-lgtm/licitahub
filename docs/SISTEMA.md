@@ -68,6 +68,7 @@ Regras principais:
 - Cargo e perfil de acesso de usuario vinculado sao alterados pelo administrador da empresa.
 - Usuarios vinculados aparecem apenas dentro da propria empresa.
 - Lista de usuarios vinculados possui filtros fixos por busca, perfil e status.
+- O perfil publico apresenta profissionais ativos em area retratil. Ao selecionar um profissional, a comunidade ve foto, nome, cargo, e-mail e telefone institucionais; senha, perfil de acesso e dados internos nao sao exibidos.
 
 ## Modulo Comunidade
 
@@ -220,10 +221,19 @@ Filtros previstos:
 - Regiao/UF.
 - Status.
 
+Organizacao da tela:
+
+- A vitrine principal apresenta anuncios de outras empresas.
+- A area retratil **Meus anuncios** separa os anuncios da empresa logada.
+- Anuncio proprio de empresa pode ter resumo de oferta e busca editados, ou ser encerrado/excluido da vitrine sem apagar o historico.
+- Anuncio de consorcio e administrado pela empresa lider em **Meus consorcios**.
+
 Regras principais:
 
-- O proprio anuncio da empresa logada aparece marcado como "Meu anuncio".
+- O proprio anuncio nao se mistura aos anuncios externos da vitrine.
 - O botao de avaliacao nao aparece no proprio anuncio.
+- Para avaliar outra empresa no mesmo edital, a empresa precisa ter manifestacao/anuncio ativo para aquela licitacao.
+- Depois de registrar uma avaliacao positiva, a acao passa a aparecer como avaliacao registrada, evitando repeticao de likes.
 
 ## Detalhe do anuncio
 
@@ -255,12 +265,37 @@ Fluxo:
 5. Match aparece em meus consorcios.
 6. Sistema disponibiliza contato/WhatsApp.
 7. Empresas podem definir lider do consorcio.
-8. Ao fechar match/consorcio, anuncios das empresas consorciadas devem sair da vitrine publica daquele edital.
+8. Ao fechar match/consorcio, anuncios das empresas consorciadas saem da vitrine publica daquele edital.
+9. A lider pode publicar anuncio de consorcio buscando empresa complementar.
+10. Uma terceira empresa interessada registra candidatura e o aceite reciproco com a lider a inclui no consorcio.
 
 Regras principais:
 
 - Uma empresa nao pode avaliar o proprio anuncio.
 - Uma empresa nao pode gerar consorcio consigo mesma.
+- A composicao e registrada por membros ativos, permitindo mais de duas empresas na estrutura de dados.
+- Na regra atual do produto, a busca complementar e encerrada quando o consorcio alcanca tres empresas. A expansao para quarta ou mais empresas podera ser liberada futuramente pela lider.
+- Apenas administrador da empresa pode definir lider, criar anuncio complementar, aceitar candidatura pendente ou desistir do consorcio.
+- Ao desistir, a empresa fica marcada como retirada, com data e usuario responsavel. Ela deixa de ver o consorcio ativo.
+- Se a lider desistir e permanecerem pelo menos duas empresas, outra lider deve ser definida antes da saida. Se restar menos de duas empresas, o consorcio e encerrado.
+
+## Chat de parceria
+
+Uso principal: permitir alinhamento entre empresas antes da avaliacao e do match.
+
+Funcionalidades:
+
+- Botao **Conversar** em anuncios da vitrine e empresas interessadas.
+- Janela flutuante que pode ser minimizada.
+- Mais de uma conversa simultanea.
+- Mensagens gravadas no banco e entregues em tempo real enquanto o backend estiver conectado.
+- Alerta visual e sonoro para nova mensagem, quando permitido pelo navegador.
+
+Regras principais:
+
+- Administrador da empresa e comercial podem usar o chat em nome da empresa.
+- Conversas ficam vinculadas ao edital e aos participantes do anuncio.
+- Quando um consorcio e fechado, a conversa relacionada passa a ser usada apenas para alinhamento da composicao e novas conversas sobre aquele anuncio podem ser bloqueadas conforme o status.
 
 ## Notificacoes no sino
 
@@ -276,6 +311,8 @@ Eventos previstos:
 - Empresa aprovada ou recusada.
 - Match realizado.
 - Lider de consorcio definido.
+- Candidatura ao consorcio, entrada aprovada e desistencia de empresa.
+- Nova mensagem de chat.
 
 Regra principal:
 
@@ -292,7 +329,7 @@ Principais grupos:
 - Radar: categorias e noticias.
 - Comunidade: categorias, publicacoes, imagens, curtidas, comentarios e favoritos.
 - Editais: editais, arquivos, requisitos, interesses e requisitos do interesse.
-- Match/consorcio: anuncios, avaliacoes, matches, contatos, intencoes e membros.
+- Match/consorcio: anuncios, avaliacoes, matches, contatos, intencoes, membros, candidaturas e chat.
 - Notificacoes: alertas por usuario/empresa.
 - Auditoria: estrutura existe, mas uso completo fica para fase posterior.
 
@@ -307,6 +344,7 @@ Principais grupos:
 - Deploy externo.
 - Evolucao para aplicativo mobile.
 - Integracoes com IA/API.
+- Kanban de montagem da licitacao apos definicao do consorcio e da lider.
 
 ## Roteiro de teste manual
 
@@ -325,9 +363,12 @@ O teste manual deve passar por:
 11. Vitrine geral.
 12. Detalhe de anuncio.
 13. Avaliacao reciproca.
-14. Match e definicao de lider.
-15. Notificacoes no sino.
-16. Tentativas de acesso indevido por usuario comum.
+14. Match, definicao de lider e anuncio para busca complementar.
+15. Inclusao de terceira empresa e encerramento dos anuncios envolvidos.
+16. Desistencia de empresa e troca de lider, quando aplicavel.
+17. Chat entre empresas antes do match.
+18. Notificacoes no sino.
+19. Tentativas de acesso indevido por usuario comum.
 
 ## Situacao dos testes manuais
 

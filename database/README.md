@@ -68,6 +68,10 @@ licitahub_dev
 - `match_contacts`
 - `consortium_intentions`
 - `consortium_members`
+- `consortium_applications`
+- `chat_threads`
+- `chat_messages`
+- `chat_thread_reads`
 
 ### Notificacoes e auditoria
 
@@ -84,6 +88,8 @@ A tabela `audit_logs` existe como base tecnica, mas a auditoria funcional comple
 - Usuarios removidos nao aparecem como ativos.
 - Noticias vencidas nao aparecem no Radar publico.
 - Anuncios consorciados podem ser fechados para sair da vitrine publica.
+- Membros de consorcio podem ser marcados como retirados, preservando data e usuario responsavel pela desistência.
+- Chat e mensagens ficam vinculados a edital, anuncio e empresas participantes.
 - Notificacoes sao lidas por usuario/empresa e deixam de aparecer como novas apos leitura.
 
 ## Indices recentes

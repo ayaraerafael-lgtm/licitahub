@@ -31,7 +31,7 @@ O script:
 O `run-dev.cmd` aponta para:
 
 ```text
-licitahub-v28.exe
+licitahub-v44.exe
 ```
 
 Se o backend for recompilado, atualize o `run-dev.cmd` para apontar para a versao nova.
@@ -65,6 +65,8 @@ Se o backend for recompilado, atualize o `run-dev.cmd` para apontar para a versa
 - `/api/tenders`
 - `/api/partnership-ads`
 - `/api/matches`
+- `/api/chat/threads`
+- `/api/chat/events`
 
 ## Permissoes
 
@@ -77,6 +79,7 @@ Exemplos:
 - Cadastro/edicao/exclusao de edital: administrador da plataforma.
 - Edicao do perfil da empresa: administrador da empresa.
 - Gestao de usuarios vinculados: administrador da empresa.
+- Desistencia, lideranca e anuncio complementar do consorcio: administrador da empresa.
 
 ## Pendente para fase posterior
 
