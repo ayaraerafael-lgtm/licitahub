@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -9,8 +10,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,9 +23,11 @@ import (
 )
 
 type app struct {
-	psqlPath string
-	pg       postgresConfig
-	chatHub  *chatHub
+	psqlPath       string
+	pg             postgresConfig
+	chatHub        *chatHub
+	httpClient     *http.Client
+	analysisPrompt string
 }
 
 type chatHub struct {
@@ -102,6 +107,10 @@ func (s sessionUser) canManagePlatform() bool {
 
 func (s sessionUser) canUseChat() bool {
 	return s.CompanyID != "" && (s.RoleKey == "company_admin" || s.RoleKey == "commercial")
+}
+
+func (s sessionUser) canUseMessaging() bool {
+	return s.CompanyID != "" && s.RoleKey != "reader"
 }
 
 type healthResponse struct {
@@ -191,6 +200,47 @@ type updateTenderAnalysisRequest struct {
 	AnalysisMimeType string `json:"analysisMimeType"`
 }
 
+type tenderDocumentUploadRequest struct {
+	FileDataURL string `json:"fileDataUrl"`
+	FileName    string `json:"fileName"`
+	MimeType    string `json:"mimeType"`
+}
+
+type tenderChallengeDocumentRequest struct {
+	FileDataURL string `json:"fileDataUrl"`
+	FileName    string `json:"fileName"`
+	MimeType    string `json:"mimeType"`
+}
+
+type createTenderChallengeRequest struct {
+	Subject   string                           `json:"subject"`
+	Rationale string                           `json:"rationale"`
+	Documents []tenderChallengeDocumentRequest `json:"documents"`
+}
+
+type updateTenderChallengeStatusRequest struct {
+	Status string `json:"status"`
+}
+
+type tenderAIInputFile struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	FileURL  string `json:"fileUrl"`
+	MimeType string `json:"mimeType"`
+}
+
+type openAIResponse struct {
+	ID         string `json:"id"`
+	Status     string `json:"status"`
+	OutputText string `json:"output_text"`
+	Output     []struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	} `json:"output"`
+}
+
 type tenderInterestRequirementRequest struct {
 	RequirementKey string `json:"requirementKey"`
 	StatusKey      string `json:"statusKey"`
@@ -235,6 +285,15 @@ type withdrawFromConsortiumRequest struct {
 
 type startChatRequest struct {
 	AdID string `json:"adId"`
+}
+
+type startTaskChatRequest struct {
+	AssemblyID string `json:"assemblyId"`
+	TaskID     string `json:"taskId"`
+}
+
+type startDirectChatRequest struct {
+	UserID string `json:"userId"`
 }
 
 type createChatMessageRequest struct {
@@ -328,9 +387,15 @@ type errorResponse struct {
 }
 
 func main() {
+	analysisPrompt, err := loadTenderAnalysisPrompt()
+	if err != nil {
+		log.Fatalf("nao foi possivel carregar o roteiro de analise: %v", err)
+	}
 	application := &app{
-		psqlPath: getenv("PSQL_PATH", `C:\Program Files\PostgreSQL\17\bin\psql.exe`),
-		chatHub:  newChatHub(),
+		psqlPath:       getenv("PSQL_PATH", `C:\Program Files\PostgreSQL\17\bin\psql.exe`),
+		chatHub:        newChatHub(),
+		httpClient:     &http.Client{Timeout: 6 * time.Minute},
+		analysisPrompt: analysisPrompt,
 		pg: postgresConfig{
 			Host:     getenv("PGHOST", "localhost"),
 			Port:     getenv("PGPORT", "5432"),
@@ -344,6 +409,9 @@ func main() {
 		log.Fatal(err)
 	}
 	if err := application.ensureDatabaseMigrations(context.Background()); err != nil {
+		log.Fatal(err)
+	}
+	if err := application.ensureAssemblyMigrations(context.Background()); err != nil {
 		log.Fatal(err)
 	}
 
@@ -373,13 +441,20 @@ func main() {
 	mux.HandleFunc("/api/community/posts", application.handleCommunityPosts)
 	mux.HandleFunc("/api/tenders/", application.handleTenderByPath)
 	mux.HandleFunc("/api/tenders", application.handleTenders)
+	mux.HandleFunc("/api/tender-challenges/", application.handleTenderChallengeByPath)
+	mux.HandleFunc("/api/tender-challenges", application.handleTenderChallenges)
 	mux.HandleFunc("/api/partnership-ads/", application.handlePartnershipAdByPath)
 	mux.HandleFunc("/api/partnership-ads", application.handlePartnershipAds)
 	mux.HandleFunc("/api/chats/stream", application.handleChatStream)
+	mux.HandleFunc("/api/task-chats", application.handleTaskChats)
+	mux.HandleFunc("/api/direct-chats", application.handleDirectChats)
 	mux.HandleFunc("/api/chats/", application.handleChatByPath)
 	mux.HandleFunc("/api/chats", application.handleChats)
 	mux.HandleFunc("/api/matches/", application.handleMatchByPath)
 	mux.HandleFunc("/api/matches", application.handleMatches)
+	mux.HandleFunc("/api/assemblies/", application.handleAssemblyByPath)
+	mux.HandleFunc("/api/assemblies", application.handleAssemblies)
+	mux.HandleFunc("/api/my-assembly-tasks", application.handleMyAssemblyTasks)
 	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 	mux.Handle("/", frontendFileServer())
 
@@ -1560,17 +1635,16 @@ func (a *app) handleCompanies(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) handleCompanyByPath(w http.ResponseWriter, r *http.Request) {
 	id, action := splitResourcePath(r.URL.Path, "/api/companies/")
-	if id != "me" {
-		writeError(w, http.StatusNotFound, "empresa nao encontrada")
-		return
-	}
-
 	if action == "public-profile" {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
 			return
 		}
-		a.getMyCompanyPublicProfile(w, r)
+		a.getCompanyPublicProfile(w, r, id)
+		return
+	}
+	if id != "me" {
+		writeError(w, http.StatusNotFound, "empresa nao encontrada")
 		return
 	}
 
@@ -1607,7 +1681,7 @@ func (a *app) getMyCompanyProfile(w http.ResponseWriter, r *http.Request) {
 	writeRawJSON(w, http.StatusOK, payload)
 }
 
-func (a *app) getMyCompanyPublicProfile(w http.ResponseWriter, r *http.Request) {
+func (a *app) getCompanyPublicProfile(w http.ResponseWriter, r *http.Request, requestedCompanyID string) {
 	session, ok := a.currentSessionUser(w, r)
 	if !ok {
 		return
@@ -1617,9 +1691,17 @@ func (a *app) getMyCompanyPublicProfile(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(companyPublicProfileSQL(), sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID)))
+	companyID := strings.TrimSpace(requestedCompanyID)
+	if companyID == "me" {
+		companyID = session.CompanyID
+	}
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(companyPublicProfileSQL(), sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(session.CompanyID), sqlQuote(companyID)))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "nao foi possivel carregar o perfil publico da empresa")
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusNotFound, "perfil publico da empresa nao encontrado")
 		return
 	}
 	writeRawJSON(w, http.StatusOK, payload)
@@ -2004,12 +2086,45 @@ func (a *app) handleTenderByPath(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if action == "challenge" {
+		switch r.Method {
+		case http.MethodGet:
+			a.getMyTenderChallenge(w, r, id)
+		case http.MethodPost:
+			a.createTenderChallenge(w, r, id)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		}
+		return
+	}
 	if action == "analysis" {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
 			return
 		}
 		a.updateTenderAnalysis(w, r, id)
+		return
+	}
+	if action == "ai-analysis" {
+		switch r.Method {
+		case http.MethodGet:
+			a.getTenderAIAnalysis(w, r, id)
+		case http.MethodPost:
+			a.startTenderAIAnalysis(w, r, id)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		}
+		return
+	}
+	if action == "files" {
+		switch r.Method {
+		case http.MethodPost:
+			a.uploadTenderDocument(w, r, id)
+		case http.MethodDelete:
+			a.deleteTenderDocument(w, r, id)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		}
 		return
 	}
 	if action != "" {
@@ -2137,6 +2252,588 @@ func (a *app) updateTenderAnalysis(w http.ResponseWriter, r *http.Request, tende
 		return
 	}
 	writeRawJSON(w, http.StatusCreated, payload)
+}
+
+func (a *app) getMyTenderChallenge(w http.ResponseWriter, r *http.Request, tenderID string) {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if session.CompanyID == "" {
+		writeError(w, http.StatusForbidden, "usuario sem empresa vinculada")
+		return
+	}
+	payload, err := a.queryJSON(r.Context(), tenderChallengeSQL(tenderID, session.CompanyID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel carregar o pedido de impugnacao")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
+}
+
+func (a *app) createTenderChallenge(w http.ResponseWriter, r *http.Request, tenderID string) {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if session.CompanyID == "" || session.RoleKey == "reader" {
+		writeError(w, http.StatusForbidden, "seu perfil nao pode protocolar impugnacao")
+		return
+	}
+	var req createTenderChallengeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "dados da impugnacao invalidos")
+		return
+	}
+	req.Subject = strings.TrimSpace(req.Subject)
+	req.Rationale = strings.TrimSpace(req.Rationale)
+	if len(req.Subject) < 8 {
+		writeError(w, http.StatusBadRequest, "informe um assunto mais detalhado para a impugnacao")
+		return
+	}
+	if len(req.Rationale) < 30 {
+		writeError(w, http.StatusBadRequest, "descreva a fundamentacao da impugnacao com mais detalhes")
+		return
+	}
+
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		WITH selected_tender AS (
+			SELECT id, number, agency, opening_date,
+				COALESCE((
+					SELECT COUNT(*)::integer
+					FROM generate_series(current_date + 1, opening_date::date - 1, interval '1 day') AS day
+					WHERE EXTRACT(ISODOW FROM day) < 6
+				), 0) AS business_days_before_opening
+			FROM tenders
+			WHERE id=%s::uuid
+			  AND deleted_at IS NULL
+			  AND status IN ('published', 'under_review', 'challenged')
+		), saved_challenge AS (
+			INSERT INTO tender_challenges (
+				tender_id, company_id, created_by_user_id, subject, rationale, status, submitted_at,
+				business_days_before_opening, is_untimely
+			)
+			SELECT id, %s::uuid, %s::uuid, %s, %s, 'submitted', now(),
+				business_days_before_opening, business_days_before_opening < 3
+			FROM selected_tender
+			ON CONFLICT (tender_id, company_id) DO UPDATE
+			SET subject=EXCLUDED.subject, rationale=EXCLUDED.rationale, status='submitted', submitted_at=now(),
+				business_days_before_opening=EXCLUDED.business_days_before_opening,
+				is_untimely=EXCLUDED.is_untimely, updated_at=now()
+			WHERE tender_challenges.status IN ('draft', 'submitted')
+			RETURNING id, tender_id
+		), created_notifications AS (
+			INSERT INTO notifications (
+				recipient_user_id, type, title, message, destination_screen, related_entity_type, related_entity_id
+			)
+			SELECT admin_user.id, 'system', 'Nova impugnacao de edital',
+				company.trade_name || ' protocolou pedido de impugnacao para o edital ' || tender.number || '.',
+				'tender-admin', 'tender_challenge', sc.id
+			FROM saved_challenge sc
+			JOIN selected_tender tender ON tender.id=sc.tender_id
+			JOIN companies company ON company.id=%s::uuid
+			JOIN users admin_user ON admin_user.company_id IS NULL
+			JOIN access_profiles ap ON ap.id=admin_user.access_profile_id
+			WHERE ap.key='platform_admin' AND admin_user.status='active' AND admin_user.deleted_at IS NULL
+			RETURNING id
+		)
+		SELECT row_to_json(item) FROM (
+			SELECT id::text AS id, tender_id::text AS "tenderId", 'submitted' AS status FROM saved_challenge
+		) item;
+	`, sqlQuote(tenderID), sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(req.Subject), sqlQuote(req.Rationale), sqlQuote(session.CompanyID)))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel registrar a impugnacao")
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusBadRequest, "este edital nao esta disponivel para impugnacao")
+		return
+	}
+	var challenge struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(payload, &challenge); err != nil || challenge.ID == "" {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel preparar os anexos da impugnacao")
+		return
+	}
+	for _, document := range req.Documents {
+		fileURL, title, mimeType, fileSize, saveErr := saveTenderDocument(document.FileDataURL, document.FileName, document.MimeType)
+		if saveErr != nil {
+			writeError(w, http.StatusBadRequest, "nao foi possivel anexar documento: "+saveErr.Error())
+			return
+		}
+		if _, insertErr := a.runPSQL(r.Context(), fmt.Sprintf(`
+			INSERT INTO tender_challenge_files (tender_challenge_id, title, file_url, mime_type, file_size, uploaded_by_user_id)
+			VALUES (%s::uuid, %s, %s, %s, %d, %s::uuid);
+		`, sqlQuote(challenge.ID), sqlQuote(title), sqlQuote(fileURL), sqlQuote(mimeType), fileSize, sqlQuote(session.UserID))); insertErr != nil {
+			writeError(w, http.StatusInternalServerError, "a impugnacao foi registrada, mas nao foi possivel guardar um anexo")
+			return
+		}
+	}
+	fullPayload, err := a.queryJSON(r.Context(), tenderChallengeSQL(tenderID, session.CompanyID))
+	if err != nil {
+		writeRawJSON(w, http.StatusCreated, payload)
+		return
+	}
+	writeRawJSON(w, http.StatusCreated, fullPayload)
+}
+
+func (a *app) handleTenderChallenges(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	a.listTenderChallenges(w, r)
+}
+
+func (a *app) handleTenderChallengeByPath(w http.ResponseWriter, r *http.Request) {
+	id, action := splitResourcePath(r.URL.Path, "/api/tender-challenges/")
+	if id == "" || action != "" {
+		writeError(w, http.StatusNotFound, "pedido de impugnacao nao encontrado")
+		return
+	}
+	if r.Method != http.MethodPatch {
+		writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	a.updateTenderChallengeStatus(w, r, id)
+}
+
+func (a *app) listTenderChallenges(w http.ResponseWriter, r *http.Request) {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if !session.canManagePlatform() {
+		writeError(w, http.StatusForbidden, "apenas administrador da plataforma pode consultar impugnacoes")
+		return
+	}
+	payload, err := a.queryJSON(r.Context(), `
+		SELECT COALESCE(json_agg(row_to_json(item) ORDER BY item."submittedAt" DESC), '[]'::json)
+		FROM (
+			SELECT tc.id::text AS id, tc.status, tc.subject, tc.rationale,
+				tc.submitted_at AS "submittedAt", tc.updated_at AS "updatedAt",
+				tc.business_days_before_opening AS "businessDaysBeforeOpening", tc.is_untimely AS "isUntimely",
+				t.id::text AS "tenderId", t.number AS "tenderNumber", t.agency AS "tenderAgency",
+				t.object AS "tenderObject", t.opening_date AS "openingDate",
+				(t.opening_date::date - 6) AS "internalDeadline",
+				c.trade_name AS "companyName", u.full_name AS "authorName",
+				(SELECT COUNT(*) FROM tender_challenge_files tcf WHERE tcf.tender_challenge_id = tc.id) AS "documentCount",
+				COALESCE((
+					SELECT json_agg(row_to_json(file_item) ORDER BY file_item."createdAt" DESC)
+					FROM (
+						SELECT id::text AS id, title, file_url AS "fileUrl", created_at AS "createdAt"
+						FROM tender_challenge_files
+						WHERE tender_challenge_id=tc.id
+					) file_item
+				), '[]'::json) AS documents
+			FROM tender_challenges tc
+			JOIN tenders t ON t.id=tc.tender_id AND t.deleted_at IS NULL
+			JOIN companies c ON c.id=tc.company_id
+			LEFT JOIN users u ON u.id=tc.created_by_user_id
+		) item;
+	`)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel carregar as impugnacoes")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
+}
+
+func (a *app) updateTenderChallengeStatus(w http.ResponseWriter, r *http.Request, challengeID string) {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if !session.canManagePlatform() {
+		writeError(w, http.StatusForbidden, "apenas administrador da plataforma pode atualizar impugnacoes")
+		return
+	}
+	var req updateTenderChallengeStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "dados do status invalidos")
+		return
+	}
+	req.Status = strings.TrimSpace(req.Status)
+	labels := map[string]string{
+		"submitted": "Protocolado", "under_review": "Em analise", "accepted": "Procedente",
+		"rejected": "Improcedente", "withdrawn": "Retirado",
+	}
+	if _, valid := labels[req.Status]; !valid {
+		writeError(w, http.StatusBadRequest, "status de impugnacao invalido")
+		return
+	}
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		WITH updated AS (
+			UPDATE tender_challenges
+			SET status=%s, updated_at=now()
+			WHERE id=%s::uuid
+			RETURNING id, tender_id, company_id, subject
+		), notified AS (
+			INSERT INTO notifications (
+				recipient_user_id, recipient_company_id, type, title, message,
+				destination_screen, related_entity_type, related_entity_id
+			)
+			SELECT u.id, u.company_id, 'system', 'Atualizacao do pedido de impugnacao',
+				'O pedido "' || updated.subject || '" foi atualizado para: %s.',
+				'tender-detail', 'tender', updated.tender_id
+			FROM updated
+			JOIN users u ON u.company_id=updated.company_id
+			WHERE u.status='active' AND u.deleted_at IS NULL
+			RETURNING id
+		)
+		SELECT row_to_json(item) FROM (
+			SELECT id::text AS id, %s AS status FROM updated
+		) item;
+	`, sqlQuote(req.Status), sqlQuote(challengeID), sqlQuote(labels[req.Status]), sqlQuote(req.Status)))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel atualizar a impugnacao")
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusNotFound, "pedido de impugnacao nao encontrado")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
+}
+
+func (a *app) getTenderAIAnalysis(w http.ResponseWriter, r *http.Request, tenderID string) {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if !session.canManagePlatform() {
+		writeError(w, http.StatusForbidden, "apenas administrador da plataforma pode consultar o processamento da IA")
+		return
+	}
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		SELECT COALESCE(row_to_json(job), 'null'::json)
+		FROM (
+			SELECT id::text AS id, status, COALESCE(model, '') AS model,
+				COALESCE(error_message, '') AS "errorMessage", source_file_count AS "sourceFileCount",
+				created_at AS "createdAt", started_at AS "startedAt", completed_at AS "completedAt"
+			FROM tender_ai_analysis_jobs
+			WHERE tender_id = %s::uuid
+			ORDER BY created_at DESC
+			LIMIT 1
+		) job;
+	`, sqlQuote(tenderID)))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel consultar a analise por IA")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
+}
+
+func (a *app) startTenderAIAnalysis(w http.ResponseWriter, r *http.Request, tenderID string) {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if !session.canManagePlatform() {
+		writeError(w, http.StatusForbidden, "apenas administrador da plataforma pode gerar a pre-analise com IA")
+		return
+	}
+	if strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) == "" {
+		writeError(w, http.StatusPreconditionFailed, "a IA ainda nao foi configurada nesta instalacao")
+		return
+	}
+	model := strings.TrimSpace(getenv("OPENAI_ANALYSIS_MODEL", "gpt-5.6"))
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		WITH selected_tender AS (
+			SELECT id FROM tenders WHERE id = %s::uuid AND deleted_at IS NULL
+		), input_files AS (
+			SELECT COUNT(*)::integer AS total
+			FROM tender_files tf JOIN selected_tender st ON st.id = tf.tender_id
+			WHERE tf.file_type = 'tender_document'
+		), inserted_job AS (
+			INSERT INTO tender_ai_analysis_jobs (
+				tender_id, requested_by_user_id, status, model, prompt_version, source_file_count
+			)
+			SELECT st.id, %s::uuid, 'queued', %s, 'analise-primaria-v1', input_files.total
+			FROM selected_tender st CROSS JOIN input_files
+			WHERE input_files.total > 0
+			  AND NOT EXISTS (
+				SELECT 1 FROM tender_ai_analysis_jobs active
+				WHERE active.tender_id = st.id AND active.status IN ('queued', 'processing')
+			  )
+			RETURNING id, tender_id, source_file_count
+		)
+		SELECT row_to_json(item) FROM (
+			SELECT id::text AS id, tender_id::text AS "tenderId", source_file_count AS "sourceFileCount", 'queued' AS status
+			FROM inserted_job
+		) item;
+	`, sqlQuote(tenderID), sqlQuote(session.UserID), sqlQuote(model)))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel iniciar a pre-analise")
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusConflict, "anexe ao menos um documento ao edital ou aguarde a analise em andamento terminar")
+		return
+	}
+	var job struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(payload, &job); err != nil || job.ID == "" {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel preparar a analise")
+		return
+	}
+	go a.runTenderAIAnalysis(job.ID, tenderID, session.UserID, model)
+	writeRawJSON(w, http.StatusAccepted, payload)
+}
+
+func (a *app) runTenderAIAnalysis(jobID, tenderID, userID, model string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	if _, err := a.runPSQL(ctx, fmt.Sprintf(`UPDATE tender_ai_analysis_jobs SET status='processing', started_at=now(), error_message=NULL WHERE id=%s::uuid;`, sqlQuote(jobID))); err != nil {
+		log.Printf("nao foi possivel iniciar o job de IA %s: %v", jobID, err)
+		return
+	}
+	fail := func(err error) {
+		message := strings.TrimSpace(err.Error())
+		if len(message) > 900 {
+			message = message[:900]
+		}
+		_, updateErr := a.runPSQL(context.Background(), fmt.Sprintf(`
+			UPDATE tender_ai_analysis_jobs
+			SET status='failed', error_message=%s, completed_at=now()
+			WHERE id=%s::uuid;
+		`, sqlQuote(message), sqlQuote(jobID)))
+		if updateErr != nil {
+			log.Printf("nao foi possivel registrar falha da IA: %v", updateErr)
+		}
+	}
+	filesJSON, err := a.queryJSON(ctx, fmt.Sprintf(`
+		SELECT COALESCE(json_agg(row_to_json(item) ORDER BY item."createdAt"), '[]'::json)
+		FROM (
+			SELECT id::text AS id, title, file_url AS "fileUrl", COALESCE(mime_type, '') AS "mimeType", created_at AS "createdAt"
+			FROM tender_files
+			WHERE tender_id=%s::uuid AND file_type='tender_document'
+		) item;
+	`, sqlQuote(tenderID)))
+	if err != nil {
+		fail(errors.New("nao foi possivel preparar os documentos para analise"))
+		return
+	}
+	var files []tenderAIInputFile
+	if err := json.Unmarshal(filesJSON, &files); err != nil || len(files) == 0 {
+		fail(errors.New("nenhum documento valido foi localizado para a analise"))
+		return
+	}
+	content := make([]map[string]any, 0, len(files)+1)
+	content = append(content, map[string]any{"type": "input_text", "text": a.analysisPrompt + "\n\nEntregue somente o arquivo HTML completo. Nao inclua Markdown, explicacoes externas, scripts remotos, formularios ou chamadas de rede."})
+	totalBytes := int64(0)
+	acceptedFiles := 0
+	for _, file := range files {
+		if !isAIAnalyzableTenderDocument(file.Title) {
+			continue
+		}
+		localPath, pathErr := tenderDocumentLocalPath(file.FileURL)
+		if pathErr != nil {
+			fail(pathErr)
+			return
+		}
+		contents, readErr := os.ReadFile(localPath)
+		if readErr != nil {
+			fail(errors.New("um documento anexado nao esta mais disponivel para leitura"))
+			return
+		}
+		if len(contents) > 22*1024*1024 {
+			fail(fmt.Errorf("o documento %q tem mais de 22MB e precisa ser reduzido para a analise com IA", file.Title))
+			return
+		}
+		totalBytes += int64(len(contents))
+		if totalBytes > 50*1024*1024 {
+			fail(errors.New("os documentos selecionados ultrapassam 50MB no total para uma analise unica"))
+			return
+		}
+		mimeType := strings.TrimSpace(file.MimeType)
+		if mimeType == "" {
+			mimeType = mimeTypeForTenderFile(file.Title)
+		}
+		content = append(content, map[string]any{
+			"type": "input_file", "filename": file.Title,
+			"file_data": "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(contents),
+		})
+		acceptedFiles++
+	}
+	if acceptedFiles == 0 {
+		fail(errors.New("nenhum documento em formato analisavel foi encontrado; anexe ao menos PDF, Word, planilha, texto ou imagem"))
+		return
+	}
+	html, responseID, err := a.requestTenderAnalysis(ctx, model, content)
+	if err != nil {
+		fail(err)
+		return
+	}
+	html, err = validateAIAnalysisHTML(html)
+	if err != nil {
+		fail(err)
+		return
+	}
+	analysisURL, err := saveTenderHTML("data:text/html;base64,"+base64.StdEncoding.EncodeToString([]byte(html)), "ai-analysis")
+	if err != nil {
+		fail(err)
+		return
+	}
+	_, err = a.runPSQL(ctx, fmt.Sprintf(`
+		WITH inserted_file AS (
+			INSERT INTO tender_files (tender_id, file_type, title, file_url, mime_type, is_downloadable, uploaded_by_user_id)
+			VALUES (%s::uuid, 'analysis_html', 'Pre-analise gerada por IA', %s, 'text/html', true, %s::uuid)
+			RETURNING id
+		)
+		UPDATE tender_ai_analysis_jobs
+		SET status='completed', response_id=%s, analysis_file_id=(SELECT id FROM inserted_file), completed_at=now(), error_message=NULL
+		WHERE id=%s::uuid;
+	`, sqlQuote(tenderID), sqlQuote(analysisURL), sqlQuote(userID), sqlQuote(responseID), sqlQuote(jobID)))
+	if err != nil {
+		fail(errors.New("a analise foi gerada, mas nao foi possivel salva-la no edital"))
+	}
+}
+
+func (a *app) requestTenderAnalysis(ctx context.Context, model string, content []map[string]any) (string, string, error) {
+	body, err := json.Marshal(map[string]any{
+		"model":             model,
+		"input":             []map[string]any{{"role": "user", "content": content}},
+		"max_output_tokens": 32000,
+	})
+	if err != nil {
+		return "", "", errors.New("nao foi possivel preparar o pedido para a IA")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.openai.com/v1/responses", bytes.NewReader(body))
+	if err != nil {
+		return "", "", errors.New("nao foi possivel criar o pedido para a IA")
+	}
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("OPENAI_API_KEY"))
+	req.Header.Set("Content-Type", "application/json")
+	response, err := a.httpClient.Do(req)
+	if err != nil {
+		return "", "", errors.New("nao foi possivel comunicar com a IA; tente novamente")
+	}
+	defer response.Body.Close()
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, 12*1024*1024))
+	if err != nil {
+		return "", "", errors.New("nao foi possivel ler a resposta da IA")
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		var providerError struct {
+			Error struct {
+				Message string `json:"message"`
+				Type    string `json:"type"`
+				Code    string `json:"code"`
+			} `json:"error"`
+		}
+		_ = json.Unmarshal(responseBody, &providerError)
+		providerDetails := strings.ToLower(strings.Join([]string{providerError.Error.Message, providerError.Error.Type, providerError.Error.Code}, " "))
+		if response.StatusCode == http.StatusTooManyRequests {
+			if strings.Contains(providerDetails, "quota") || strings.Contains(providerDetails, "billing") || strings.Contains(providerDetails, "credit") {
+				return "", "", errors.New("a conta da API da OpenAI nao possui credito disponivel ou faturamento ativo")
+			}
+			return "", "", errors.New("a conta da API da OpenAI atingiu um limite temporario; aguarde alguns minutos e tente novamente")
+		}
+		return "", "", fmt.Errorf("a IA recusou a analise (codigo %d)", response.StatusCode)
+	}
+	var parsed openAIResponse
+	if err := json.Unmarshal(responseBody, &parsed); err != nil {
+		return "", "", errors.New("a IA retornou uma resposta invalida")
+	}
+	result := strings.TrimSpace(parsed.OutputText)
+	if result == "" {
+		for _, item := range parsed.Output {
+			for _, part := range item.Content {
+				if part.Type == "output_text" {
+					result += part.Text
+				}
+			}
+		}
+	}
+	if result == "" {
+		return "", "", errors.New("a IA nao retornou o HTML da analise")
+	}
+	return result, parsed.ID, nil
+}
+
+func (a *app) uploadTenderDocument(w http.ResponseWriter, r *http.Request, tenderID string) {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if session.RoleKey != "platform_admin" {
+		writeError(w, http.StatusForbidden, "apenas administrador da plataforma pode anexar documentos do edital")
+		return
+	}
+
+	var req tenderDocumentUploadRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "json invalido")
+		return
+	}
+	fileURL, title, mimeType, fileSize, err := saveTenderDocument(req.FileDataURL, req.FileName, req.MimeType)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		WITH selected_tender AS (
+			SELECT id FROM tenders WHERE id = %s::uuid AND deleted_at IS NULL LIMIT 1
+		), inserted_file AS (
+			INSERT INTO tender_files (
+				tender_id, file_type, title, file_url, mime_type, file_size, is_downloadable, uploaded_by_user_id
+			)
+			SELECT id, 'tender_document', %s, %s, %s, %d, true, %s::uuid
+			FROM selected_tender
+			RETURNING *
+		)
+		SELECT row_to_json(item)
+		FROM (
+			SELECT id::text AS id, title, file_url AS "fileUrl", mime_type AS "mimeType", file_size AS "fileSize", created_at AS "createdAt"
+			FROM inserted_file
+		) item;
+	`, sqlQuote(tenderID), sqlQuote(title), sqlQuote(fileURL), sqlQuote(mimeType), fileSize, sqlQuote(session.UserID)))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel anexar documento: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusNotFound, "edital nao encontrado")
+		return
+	}
+	writeRawJSON(w, http.StatusCreated, payload)
+}
+
+func (a *app) deleteTenderDocument(w http.ResponseWriter, r *http.Request, tenderID string) {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if session.RoleKey != "platform_admin" {
+		writeError(w, http.StatusForbidden, "apenas administrador da plataforma pode remover documentos do edital")
+		return
+	}
+	fileID := strings.TrimSpace(r.URL.Query().Get("fileId"))
+	if fileID == "" {
+		writeError(w, http.StatusBadRequest, "arquivo obrigatorio")
+		return
+	}
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		WITH deleted_file AS (
+			DELETE FROM tender_files
+			WHERE id = %s::uuid AND tender_id = %s::uuid AND file_type = 'tender_document'
+			RETURNING id
+		)
+		SELECT row_to_json(item) FROM (SELECT id::text AS id, true AS deleted FROM deleted_file) item;
+	`, sqlQuote(fileID), sqlQuote(tenderID)))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel remover documento")
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusNotFound, "documento nao encontrado")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
 }
 
 func (a *app) listTenders(w http.ResponseWriter, r *http.Request) {
@@ -2434,6 +3131,7 @@ func (a *app) refreshOccurredTenders(ctx context.Context) error {
 
 func tenderDetailSQL(id string, session sessionUser) string {
 	myInterestSQL := "false"
+	myChallengeSQL := "'null'::json"
 	if strings.TrimSpace(session.CompanyID) != "" {
 		myInterestSQL = fmt.Sprintf(`EXISTS (
 					SELECT 1
@@ -2442,7 +3140,17 @@ func tenderDetailSQL(id string, session sessionUser) string {
 					  AND ti.company_id = %s::uuid
 					  AND ti.deleted_at IS NULL
 					  AND ti.status <> 'withdrawn'
-				)`, sqlQuote(session.CompanyID))
+		)`, sqlQuote(session.CompanyID))
+		myChallengeSQL = fmt.Sprintf(`(
+			SELECT row_to_json(challenge_item)
+			FROM (
+				SELECT id::text AS id, subject, rationale, status, submitted_at AS "submittedAt", created_at AS "createdAt",
+					business_days_before_opening AS "businessDaysBeforeOpening", is_untimely AS "isUntimely"
+				FROM tender_challenges
+				WHERE tender_id=t.id AND company_id=%s::uuid
+				LIMIT 1
+			) challenge_item
+		)`, sqlQuote(session.CompanyID))
 	}
 	return fmt.Sprintf(`
 		SELECT row_to_json(item)
@@ -2458,12 +3166,55 @@ func tenderDetailSQL(id string, session sessionUser) string {
 				t.status,
 				COALESCE(t.cloud_folder_url, '') AS "cloudFolderUrl",
 				COALESCE((SELECT file_url FROM tender_files WHERE tender_id=t.id AND file_type='analysis_html' ORDER BY created_at DESC LIMIT 1), '') AS "analysisUrl",
+				COALESCE((
+					SELECT row_to_json(ai_job)
+					FROM (
+						SELECT id::text AS id, status, COALESCE(model, '') AS model,
+							COALESCE(error_message, '') AS "errorMessage", source_file_count AS "sourceFileCount",
+							created_at AS "createdAt", started_at AS "startedAt", completed_at AS "completedAt"
+						FROM tender_ai_analysis_jobs
+						WHERE tender_id=t.id
+						ORDER BY created_at DESC
+						LIMIT 1
+					) ai_job
+				), 'null'::json) AS "aiAnalysis",
+				COALESCE((
+					SELECT json_agg(row_to_json(document_item) ORDER BY document_item."createdAt" DESC)
+					FROM (
+						SELECT id::text AS id, title, file_url AS "fileUrl", COALESCE(mime_type, '') AS "mimeType", file_size AS "fileSize", created_at AS "createdAt"
+						FROM tender_files
+						WHERE tender_id = t.id AND file_type = 'tender_document'
+					) document_item
+				), '[]'::json) AS documents,
+				COALESCE(%s, 'null'::json) AS "myChallenge",
 				%s AS "hasMyInterest"
 			FROM tenders t
 			WHERE t.id = %s::uuid AND t.deleted_at IS NULL
 			LIMIT 1
 		) item;
-	`, myInterestSQL, sqlQuote(id))
+	`, myChallengeSQL, myInterestSQL, sqlQuote(id))
+}
+
+func tenderChallengeSQL(tenderID, companyID string) string {
+	return fmt.Sprintf(`
+		SELECT COALESCE(row_to_json(item), 'null'::json)
+		FROM (
+			SELECT tc.id::text AS id, tc.tender_id::text AS "tenderId", tc.subject, tc.rationale, tc.status,
+				tc.submitted_at AS "submittedAt", tc.created_at AS "createdAt", tc.updated_at AS "updatedAt",
+				tc.business_days_before_opening AS "businessDaysBeforeOpening", tc.is_untimely AS "isUntimely",
+				COALESCE((
+					SELECT json_agg(row_to_json(file_item) ORDER BY file_item."createdAt" DESC)
+					FROM (
+						SELECT id::text AS id, title, file_url AS "fileUrl", COALESCE(mime_type, '') AS "mimeType", file_size AS "fileSize", created_at AS "createdAt"
+						FROM tender_challenge_files
+						WHERE tender_challenge_id=tc.id
+					) file_item
+				), '[]'::json) AS documents
+			FROM tender_challenges tc
+			WHERE tc.tender_id=%s::uuid AND tc.company_id=%s::uuid
+			LIMIT 1
+		) item;
+	`, sqlQuote(tenderID), sqlQuote(companyID))
 }
 
 func (a *app) listTenderInterests(w http.ResponseWriter, r *http.Request, tenderID string) {
@@ -2776,8 +3527,8 @@ func (a *app) handleChats(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !session.canUseChat() {
-		writeError(w, http.StatusForbidden, "perfil sem permissao para usar conversas de parceria")
+	if !session.canUseMessaging() {
+		writeError(w, http.StatusForbidden, "perfil sem permissao para usar conversas")
 		return
 	}
 	switch r.Method {
@@ -2789,6 +3540,10 @@ func (a *app) handleChats(w http.ResponseWriter, r *http.Request) {
 		}
 		writeRawJSON(w, http.StatusOK, payload)
 	case http.MethodPost:
+		if !session.canUseChat() {
+			writeError(w, http.StatusForbidden, "perfil sem permissao para iniciar conversa de anuncio")
+			return
+		}
 		var req startChatRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "json invalido")
@@ -2815,6 +3570,76 @@ func (a *app) handleChats(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (a *app) handleTaskChats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if !session.canUseMessaging() {
+		writeError(w, http.StatusForbidden, "perfil sem permissao para usar conversas")
+		return
+	}
+	var req startTaskChatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "json invalido")
+		return
+	}
+	req.AssemblyID, req.TaskID = strings.TrimSpace(req.AssemblyID), strings.TrimSpace(req.TaskID)
+	if req.AssemblyID == "" || req.TaskID == "" {
+		writeError(w, http.StatusBadRequest, "tarefa obrigatoria")
+		return
+	}
+	payload, err := a.queryJSON(r.Context(), buildStartTaskChatSQL(session, req.AssemblyID, req.TaskID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel abrir a conversa da tarefa: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusForbidden, "conversa restrita a lideranca e ao profissional responsavel")
+		return
+	}
+	writeRawJSON(w, http.StatusCreated, payload)
+}
+
+func (a *app) handleDirectChats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if !session.canUseMessaging() {
+		writeError(w, http.StatusForbidden, "perfil sem permissao para usar conversas")
+		return
+	}
+	var req startDirectChatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "json invalido")
+		return
+	}
+	req.UserID = strings.TrimSpace(req.UserID)
+	if req.UserID == "" || req.UserID == session.UserID {
+		writeError(w, http.StatusBadRequest, "selecione outro profissional")
+		return
+	}
+	payload, err := a.queryJSON(r.Context(), buildStartDirectChatSQL(session, req.UserID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel abrir a conversa direta: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusNotFound, "profissional indisponivel para conversa")
+		return
+	}
+	writeRawJSON(w, http.StatusCreated, payload)
+}
+
 func (a *app) handleChatByPath(w http.ResponseWriter, r *http.Request) {
 	threadID, action := splitResourcePath(r.URL.Path, "/api/chats/")
 	if threadID == "" {
@@ -2825,8 +3650,8 @@ func (a *app) handleChatByPath(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !session.canUseChat() {
-		writeError(w, http.StatusForbidden, "perfil sem permissao para usar conversas de parceria")
+	if !session.canUseMessaging() {
+		writeError(w, http.StatusForbidden, "perfil sem permissao para usar conversas")
 		return
 	}
 	if action != "messages" {
@@ -2927,10 +3752,14 @@ func (a *app) broadcastChatThreadPayload(payload []byte) {
 
 func (a *app) broadcastChatMessagePayload(payload []byte) {
 	var data struct {
-		CompanyAID string `json:"companyAId"`
-		CompanyBID string `json:"companyBId"`
+		CompanyAID  string `json:"companyAId"`
+		CompanyBID  string `json:"companyBId"`
+		ContextType string `json:"contextType"`
 	}
 	if err := json.Unmarshal(payload, &data); err != nil {
+		return
+	}
+	if data.ContextType != "partnership_ad" {
 		return
 	}
 	a.chatHub.broadcast(data.CompanyAID, payload)
@@ -4146,6 +4975,59 @@ func (a *app) ensureDatabaseMigrations(ctx context.Context) error {
 			ON post_favorites(user_id, created_at DESC);
 		ALTER TABLE tenders DROP CONSTRAINT IF EXISTS tenders_status_chk;
 		ALTER TABLE tenders ADD CONSTRAINT tenders_status_chk CHECK (status IN ('draft', 'published', 'under_review', 'suspended', 'challenged', 'occurred', 'closed', 'cancelled'));
+		ALTER TABLE tender_files ADD COLUMN IF NOT EXISTS file_size bigint;
+		CREATE INDEX IF NOT EXISTS idx_tender_files_tender_type_created
+			ON tender_files(tender_id, file_type, created_at DESC);
+		CREATE TABLE IF NOT EXISTS tender_ai_analysis_jobs (
+			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+			tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
+			requested_by_user_id uuid REFERENCES users(id),
+			status varchar(30) NOT NULL DEFAULT 'queued',
+			model varchar(120),
+			prompt_version varchar(80) NOT NULL DEFAULT 'analise-primaria-v1',
+			source_file_count integer NOT NULL DEFAULT 0,
+			response_id varchar(160),
+			analysis_file_id uuid REFERENCES tender_files(id) ON DELETE SET NULL,
+			error_message text,
+			created_at timestamptz NOT NULL DEFAULT now(),
+			started_at timestamptz,
+			completed_at timestamptz,
+			CONSTRAINT tender_ai_analysis_jobs_status_chk CHECK (status IN ('queued', 'processing', 'completed', 'failed'))
+		);
+		CREATE INDEX IF NOT EXISTS idx_tender_ai_analysis_jobs_tender_created
+			ON tender_ai_analysis_jobs(tender_id, created_at DESC);
+		CREATE TABLE IF NOT EXISTS tender_challenges (
+			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+			tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
+			company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+			created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+			subject varchar(220) NOT NULL,
+			rationale text NOT NULL,
+			status varchar(40) NOT NULL DEFAULT 'submitted',
+			business_days_before_opening integer,
+			is_untimely boolean NOT NULL DEFAULT false,
+			submitted_at timestamptz,
+			created_at timestamptz NOT NULL DEFAULT now(),
+			updated_at timestamptz NOT NULL DEFAULT now(),
+			CONSTRAINT tender_challenges_status_chk CHECK (status IN ('draft', 'submitted', 'under_review', 'accepted', 'rejected', 'withdrawn')),
+			CONSTRAINT tender_challenges_tender_company_uk UNIQUE (tender_id, company_id)
+		);
+		ALTER TABLE tender_challenges ADD COLUMN IF NOT EXISTS business_days_before_opening integer;
+		ALTER TABLE tender_challenges ADD COLUMN IF NOT EXISTS is_untimely boolean NOT NULL DEFAULT false;
+		CREATE TABLE IF NOT EXISTS tender_challenge_files (
+			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+			tender_challenge_id uuid NOT NULL REFERENCES tender_challenges(id) ON DELETE CASCADE,
+			title varchar(220) NOT NULL,
+			file_url text NOT NULL,
+			mime_type varchar(120),
+			file_size bigint,
+			uploaded_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+			created_at timestamptz NOT NULL DEFAULT now()
+		);
+		CREATE INDEX IF NOT EXISTS idx_tender_challenges_tender_status
+			ON tender_challenges(tender_id, status, created_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_tender_challenge_files_challenge
+			ON tender_challenge_files(tender_challenge_id, created_at DESC);
 		UPDATE tenders
 		SET status = 'occurred', updated_at = now()
 		WHERE status IN ('published', 'under_review', 'suspended', 'challenged')
@@ -4222,6 +5104,25 @@ func (a *app) ensureDatabaseMigrations(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_created
 			ON chat_messages(thread_id, created_at)
 			WHERE deleted_at IS NULL;
+		ALTER TABLE chat_threads ALTER COLUMN partnership_ad_id DROP NOT NULL;
+		ALTER TABLE chat_threads ALTER COLUMN tender_id DROP NOT NULL;
+		ALTER TABLE chat_threads DROP CONSTRAINT IF EXISTS chat_threads_not_same_company_chk;
+		ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS context_type varchar(40) NOT NULL DEFAULT 'partnership_ad';
+		ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS context_id uuid;
+		ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS context_title varchar(220);
+		ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS context_key varchar(160);
+		CREATE UNIQUE INDEX IF NOT EXISTS chat_threads_context_uk
+			ON chat_threads(context_type, context_id) WHERE context_id IS NOT NULL AND deleted_at IS NULL;
+		CREATE UNIQUE INDEX IF NOT EXISTS chat_threads_context_key_uk
+			ON chat_threads(context_type, context_key) WHERE context_key IS NOT NULL AND deleted_at IS NULL;
+		CREATE TABLE IF NOT EXISTS chat_thread_participants (
+			thread_id uuid NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+			user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+			participant_role varchar(40) NOT NULL DEFAULT 'member',
+			created_at timestamptz NOT NULL DEFAULT now(),
+			PRIMARY KEY (thread_id, user_id)
+		);
 		CREATE INDEX IF NOT EXISTS idx_consortium_intentions_match
 			ON consortium_intentions(match_id);
 		CREATE INDEX IF NOT EXISTS idx_consortium_intentions_tender
@@ -4990,6 +5891,8 @@ func companyPublicProfileSQL() string {
 			LEFT JOIN media_files logo ON logo.id = p.logo_media_id
 			WHERE c.id = %s::uuid
 			  AND c.deleted_at IS NULL
+			  AND c.status = 'active'
+			  AND COALESCE(p.is_public, true) = true
 			LIMIT 1
 		) item;
 	`
@@ -5442,6 +6345,8 @@ func chatThreadsSQL(session sessionUser, extraWhere string) string {
 		FROM (
 			SELECT
 				ct.id::text AS id,
+				ct.context_type AS "contextType",
+				CASE WHEN ct.context_type = 'direct_user' THEN COALESCE((SELECT direct_user.full_name FROM chat_thread_participants direct_participant JOIN users direct_user ON direct_user.id = direct_participant.user_id WHERE direct_participant.thread_id = ct.id AND direct_participant.user_id <> %s::uuid LIMIT 1), 'Conversa direta') ELSE COALESCE(ct.context_title, '') END AS "contextTitle",
 				ct.tender_id::text AS "tenderId",
 				ct.partnership_ad_id::text AS "adId",
 				ct.company_a_id::text AS "companyAId",
@@ -5489,11 +6394,11 @@ func chatThreadsSQL(session sessionUser, extraWhere string) string {
 					FROM chat_messages cm
 					WHERE cm.thread_id = ct.id
 					  AND cm.deleted_at IS NULL
-					  AND cm.sender_company_id <> %s::uuid
+					  AND ((ct.context_type = 'partnership_ad' AND cm.sender_company_id <> %s::uuid) OR (ct.context_type <> 'partnership_ad' AND cm.sender_user_id <> %s::uuid))
 					  AND cm.created_at > COALESCE(ctr.last_read_at, 'epoch'::timestamptz)
 				)::int AS "unreadCount"
 			FROM chat_threads ct
-			JOIN tenders t ON t.id = ct.tender_id
+			LEFT JOIN tenders t ON t.id = ct.tender_id
 			JOIN companies other_company ON other_company.id = CASE
 				WHEN ct.company_a_id = %s::uuid THEN ct.company_b_id
 				ELSE ct.company_a_id
@@ -5502,10 +6407,11 @@ func chatThreadsSQL(session sessionUser, extraWhere string) string {
 			LEFT JOIN media_files other_logo ON other_logo.id = other_profile.logo_media_id
 			LEFT JOIN chat_thread_reads ctr ON ctr.thread_id = ct.id AND ctr.user_id = %s::uuid
 			WHERE ct.deleted_at IS NULL
-			  AND (%s::uuid IN (ct.company_a_id, ct.company_b_id))
+			  AND ((ct.context_type = 'partnership_ad' AND %s AND %s::uuid IN (ct.company_a_id, ct.company_b_id))
+				OR EXISTS (SELECT 1 FROM chat_thread_participants participant WHERE participant.thread_id = ct.id AND participant.user_id = %s::uuid))
 			  %s
 		) item;
-	`, sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(session.CompanyID), extraWhere)
+	`, sqlQuote(session.UserID), sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlBool(session.canUseChat()), sqlQuote(session.CompanyID), sqlQuote(session.UserID), extraWhere)
 }
 
 func buildStartChatSQL(session sessionUser, adID string) string {
@@ -5578,6 +6484,60 @@ func buildStartChatSQL(session sessionUser, adID string) string {
 	`, sqlQuote(adID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(session.CompanyID))
 }
 
+func buildStartTaskChatSQL(session sessionUser, assemblyID, taskID string) string {
+	return fmt.Sprintf(`
+		WITH selected_task AS (
+			SELECT task.id, task.title, task.responsible_user_id, responsible.company_id AS responsible_company_id, assembly.tender_id, assembly.lead_company_id
+			FROM bid_assembly_tasks task
+			JOIN bid_assembly_stages stage ON stage.id = task.stage_id
+			JOIN bid_assemblies assembly ON assembly.id = stage.assembly_id
+			JOIN users responsible ON responsible.id = task.responsible_user_id AND responsible.status = 'active' AND responsible.deleted_at IS NULL
+			WHERE assembly.id = %s::uuid AND task.id = %s::uuid AND assembly.status <> 'cancelled'
+			AND ((assembly.lead_company_id = %s::uuid AND %s) OR task.responsible_user_id = %s::uuid)
+		), upserted AS (
+			INSERT INTO chat_threads (tender_id, partnership_ad_id, company_a_id, company_b_id, created_by_user_id, status, last_message_at, context_type, context_id, context_title)
+			SELECT tender_id, NULL, lead_company_id, responsible_company_id, %s::uuid, 'open', now(), 'assembly_task', id, title FROM selected_task
+			ON CONFLICT (context_type, context_id) WHERE context_id IS NOT NULL AND deleted_at IS NULL DO UPDATE SET updated_at = now()
+			RETURNING *
+		), participants AS (
+			INSERT INTO chat_thread_participants (thread_id, user_id, company_id, participant_role)
+			SELECT upserted.id, users.id, users.company_id, CASE WHEN users.id = selected_task.responsible_user_id THEN 'responsible' ELSE 'leader' END
+			FROM upserted CROSS JOIN selected_task
+			JOIN users ON users.id = selected_task.responsible_user_id OR users.company_id = selected_task.lead_company_id
+			JOIN access_profiles profile ON profile.id = users.access_profile_id
+			WHERE users.status = 'active' AND users.deleted_at IS NULL
+			  AND (users.id = selected_task.responsible_user_id OR profile.key IN ('company_admin','commercial'))
+			ON CONFLICT (thread_id, user_id) DO NOTHING RETURNING thread_id
+		)
+		SELECT row_to_json(item) FROM (SELECT upserted.id::text AS id, 'assembly_task' AS "contextType" FROM upserted) item;
+	`, sqlQuote(assemblyID), sqlQuote(taskID), sqlQuote(session.CompanyID), sqlBool(session.canCoordinateAssembly()), sqlQuote(session.UserID), sqlQuote(session.UserID))
+}
+
+func buildStartDirectChatSQL(session sessionUser, targetUserID string) string {
+	return fmt.Sprintf(`
+		WITH selected_target AS (
+			SELECT target.id, target.company_id, target.full_name,
+				LEAST(%s, target.id::text) || ':' || GREATEST(%s, target.id::text) AS pair_key
+			FROM users target JOIN companies company ON company.id = target.company_id
+			JOIN access_profiles profile ON profile.id = target.access_profile_id
+			WHERE target.id = %s::uuid AND target.id <> %s::uuid AND target.status = 'active' AND target.deleted_at IS NULL
+			  AND company.status = 'active' AND profile.key <> 'reader'
+		), upserted AS (
+			INSERT INTO chat_threads (tender_id, partnership_ad_id, company_a_id, company_b_id, created_by_user_id, status, last_message_at, context_type, context_key, context_title)
+			SELECT NULL, NULL, %s::uuid, company_id, %s::uuid, 'open', now(), 'direct_user', pair_key, 'Conversa direta' FROM selected_target
+			ON CONFLICT (context_type, context_key) WHERE context_key IS NOT NULL AND deleted_at IS NULL DO UPDATE SET updated_at = now()
+			RETURNING *
+		), participants AS (
+			INSERT INTO chat_thread_participants (thread_id, user_id, company_id, participant_role)
+			SELECT upserted.id, participant.user_id, participant.company_id, 'direct'
+			FROM upserted CROSS JOIN selected_target
+			CROSS JOIN LATERAL (VALUES (%s::uuid, %s::uuid), (selected_target.id, selected_target.company_id)) participant(user_id, company_id)
+			ON CONFLICT (thread_id, user_id) DO NOTHING RETURNING thread_id
+		)
+		SELECT row_to_json(item) FROM (SELECT upserted.id::text AS id, 'direct_user' AS "contextType" FROM upserted) item;
+	`, sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(targetUserID), sqlQuote(session.UserID), sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(session.CompanyID))
+}
+
 func chatMessagesSQL(session sessionUser, threadID string) string {
 	return fmt.Sprintf(`
 		WITH selected_thread AS (
@@ -5585,7 +6545,8 @@ func chatMessagesSQL(session sessionUser, threadID string) string {
 			FROM chat_threads
 			WHERE id = %s::uuid
 			  AND deleted_at IS NULL
-			  AND %s::uuid IN (company_a_id, company_b_id)
+			  AND ((context_type = 'partnership_ad' AND %s AND %s::uuid IN (company_a_id, company_b_id))
+				OR EXISTS (SELECT 1 FROM chat_thread_participants participant WHERE participant.thread_id = chat_threads.id AND participant.user_id = %s::uuid))
 			LIMIT 1
 		),
 		read_marker AS (
@@ -5621,7 +6582,7 @@ func chatMessagesSQL(session sessionUser, threadID string) string {
 			LEFT JOIN media_files user_photo ON user_photo.id = u.profile_photo_media_id
 			WHERE cm.deleted_at IS NULL
 		) item;
-	`, sqlQuote(threadID), sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(session.UserID))
+	`, sqlQuote(threadID), sqlBool(session.canUseChat()), sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(session.UserID))
 }
 
 func buildCreateChatMessageSQL(session sessionUser, threadID string, content string) string {
@@ -5632,7 +6593,8 @@ func buildCreateChatMessageSQL(session sessionUser, threadID string, content str
 			WHERE id = %s::uuid
 			  AND deleted_at IS NULL
 			  AND status IN ('open', 'converted_to_match')
-			  AND %s::uuid IN (company_a_id, company_b_id)
+			  AND ((context_type = 'partnership_ad' AND %s AND %s::uuid IN (company_a_id, company_b_id))
+				OR EXISTS (SELECT 1 FROM chat_thread_participants participant WHERE participant.thread_id = chat_threads.id AND participant.user_id = %s::uuid))
 			LIMIT 1
 		),
 		inserted_message AS (
@@ -5651,6 +6613,7 @@ func buildCreateChatMessageSQL(session sessionUser, threadID string, content str
 		FROM (
 			SELECT
 				'chat-message' AS "eventType",
+				ut.context_type AS "contextType",
 				im.id::text AS id,
 				im.thread_id::text AS "threadId",
 				ut.company_a_id::text AS "companyAId",
@@ -5670,7 +6633,7 @@ func buildCreateChatMessageSQL(session sessionUser, threadID string, content str
 			LEFT JOIN media_files user_photo ON user_photo.id = u.profile_photo_media_id
 			LIMIT 1
 		) item;
-	`, sqlQuote(threadID), sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(session.CompanyID), sqlQuote(content))
+	`, sqlQuote(threadID), sqlBool(session.canUseChat()), sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(session.CompanyID), sqlQuote(content))
 }
 
 func buildEvaluateConsortiumAdSQL(adID string, session sessionUser, decision string) string {
@@ -6537,7 +7500,6 @@ func buildWithdrawFromConsortiumSQL(matchID string, session sessionUser, req wit
 		sqlQuote(req.SuccessorCompanyID),
 		sqlQuote(session.CompanyID),
 		sqlQuote(session.CompanyID),
-		sqlQuote(session.CompanyID),
 		sqlQuote(session.UserID),
 		sqlQuote(session.CompanyID),
 		sqlQuote(req.SuccessorCompanyID),
@@ -7158,6 +8120,140 @@ func saveTenderHTML(dataURL string, prefix string) (string, error) {
 		return "", errors.New("nao foi possivel salvar o arquivo HTML")
 	}
 	return strings.TrimRight(getenv("PUBLIC_BASE_URL", "http://127.0.0.1:8080"), "/") + "/uploads/tenders/" + fileName, nil
+}
+
+func loadTenderAnalysisPrompt() (string, error) {
+	path := getenv("TENDER_ANALYSIS_PROMPT_FILE", filepath.Join("prompts", "analise-primaria-edital.txt"))
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	prompt := strings.TrimSpace(string(content))
+	if prompt == "" {
+		return "", errors.New("roteiro de analise vazio")
+	}
+	return prompt, nil
+}
+
+func tenderDocumentLocalPath(fileURL string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(fileURL))
+	if err != nil || parsed.Path == "" {
+		return "", errors.New("documento do edital com endereco invalido")
+	}
+	fileName := filepath.Base(parsed.Path)
+	if fileName == "." || fileName == string(filepath.Separator) || strings.TrimSpace(fileName) == "" {
+		return "", errors.New("documento do edital com nome invalido")
+	}
+	return filepath.Join("uploads", "tenders", "documents", fileName), nil
+}
+
+func isAIAnalyzableTenderDocument(fileName string) bool {
+	switch strings.ToLower(filepath.Ext(fileName)) {
+	case ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".ppt", ".pptx", ".odt", ".ods", ".txt", ".xml", ".jpg", ".jpeg", ".png", ".webp":
+		return true
+	default:
+		return false
+	}
+}
+
+func mimeTypeForTenderFile(fileName string) string {
+	switch strings.ToLower(filepath.Ext(fileName)) {
+	case ".pdf":
+		return "application/pdf"
+	case ".doc":
+		return "application/msword"
+	case ".docx":
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case ".xls":
+		return "application/vnd.ms-excel"
+	case ".xlsx":
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	case ".csv":
+		return "text/csv"
+	case ".ppt":
+		return "application/vnd.ms-powerpoint"
+	case ".pptx":
+		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case ".odt":
+		return "application/vnd.oasis.opendocument.text"
+	case ".ods":
+		return "application/vnd.oasis.opendocument.spreadsheet"
+	case ".xml":
+		return "application/xml"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".webp":
+		return "image/webp"
+	default:
+		return "text/plain"
+	}
+}
+
+func validateAIAnalysisHTML(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "```") {
+		value = strings.TrimPrefix(value, "```html")
+		value = strings.TrimPrefix(value, "```HTML")
+		value = strings.TrimPrefix(value, "```")
+		value = strings.TrimSpace(strings.TrimSuffix(value, "```"))
+	}
+	lower := strings.ToLower(value)
+	if !strings.HasPrefix(lower, "<!doctype html") || !strings.Contains(lower, "<html") || !strings.Contains(lower, "</html>") {
+		return "", errors.New("a IA nao retornou um arquivo HTML completo")
+	}
+	if len(value) > 10*1024*1024 {
+		return "", errors.New("o HTML gerado pela IA ultrapassou o limite permitido")
+	}
+	return value, nil
+}
+
+func saveTenderDocument(dataURL string, originalName string, mimeType string) (string, string, string, int, error) {
+	header, payload, ok := strings.Cut(strings.TrimSpace(dataURL), ",")
+	if !ok || !strings.HasPrefix(strings.ToLower(header), "data:") {
+		return "", "", "", 0, errors.New("arquivo do edital invalido")
+	}
+	originalName = strings.TrimSpace(filepath.Base(originalName))
+	ext := strings.ToLower(filepath.Ext(originalName))
+	if !isAllowedTenderDocumentExtension(ext) {
+		return "", "", "", 0, errors.New("tipo de arquivo nao permitido para documentos do edital")
+	}
+	bytes, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		return "", "", "", 0, errors.New("nao foi possivel ler o arquivo do edital")
+	}
+	if len(bytes) == 0 {
+		return "", "", "", 0, errors.New("arquivo do edital vazio")
+	}
+	if len(bytes) > 25*1024*1024 {
+		return "", "", "", 0, errors.New("cada arquivo do edital pode ter no maximo 25MB")
+	}
+	if mimeType == "" {
+		mimeType = strings.TrimPrefix(strings.TrimSuffix(header, ";base64"), "data:")
+	}
+	if len(originalName) > 220 {
+		originalName = originalName[:220]
+	}
+	dir := filepath.Join("uploads", "tenders", "documents")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", "", "", 0, errors.New("nao foi possivel preparar a pasta de documentos do edital")
+	}
+	fileName := fmt.Sprintf("document-%d%s", time.Now().UnixNano(), ext)
+	if err := os.WriteFile(filepath.Join(dir, fileName), bytes, 0644); err != nil {
+		return "", "", "", 0, errors.New("nao foi possivel salvar o documento do edital")
+	}
+	url := strings.TrimRight(getenv("PUBLIC_BASE_URL", "http://127.0.0.1:8080"), "/") + "/uploads/tenders/documents/" + fileName
+	return url, originalName, mimeType, len(bytes), nil
+}
+
+func isAllowedTenderDocumentExtension(ext string) bool {
+	switch strings.ToLower(strings.TrimSpace(ext)) {
+	case ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".ppt", ".pptx", ".odt", ".ods", ".txt", ".xml", ".zip", ".rar", ".7z", ".dwg", ".dxf", ".jpg", ".jpeg", ".png", ".webp":
+		return true
+	default:
+		return false
+	}
 }
 
 func imageExtension(mimeType string) string {

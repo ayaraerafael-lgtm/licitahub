@@ -137,6 +137,7 @@ const modules = [
     roles: ["companyAdmin", "commercial", "technical", "reader"],
     items: [
       { id: "company-dashboard", label: "Dashboard" },
+      { id: "my-assembly-tasks", label: "Minhas tarefas" },
       { id: "my-profile", label: "Meu perfil", hidden: true },
       { id: "company-profile-edit", label: "Editar perfil", roles: ["companyAdmin"] },
       { id: "company-users", label: "Usuários vinculados", roles: ["companyAdmin"] },
@@ -164,10 +165,13 @@ const modules = [
     items: [
       { id: "tender-admin", label: "Admin editais", roles: ["platformAdmin"] },
       { id: "tender-new", label: "Cadastro de edital", roles: ["platformAdmin"] },
+	  { id: "tender-challenge-board", label: "Impugnações", roles: ["platformAdmin"] },
       { id: "tender-list", label: "Lista de editais", roles: ["companyAdmin", "commercial", "technical", "reader"] },
       { id: "match-partners", label: "Vitrine de parceiros", roles: ["companyAdmin", "commercial"] },
-      { id: "match-list", label: "Meus consórcios", roles: ["companyAdmin", "commercial"] },
+      { id: "match-list", label: "Meus consórcios", roles: ["companyAdmin", "commercial", "technical", "reader"] },
+      { id: "assembly-board", label: "Central de Montagem", roles: ["companyAdmin", "commercial", "technical", "reader"], hidden: true },
       { id: "tender-detail", label: "Detalhe do edital", roles: ["platformAdmin", "companyAdmin", "commercial", "technical", "reader"], hidden: true },
+      { id: "tender-challenge", label: "Pedido de impugnação", roles: ["companyAdmin", "commercial", "technical"], hidden: true },
       { id: "tender-interest", label: "Interesse no edital", roles: ["companyAdmin", "commercial"], hidden: true },
       { id: "tender-interest-list", label: "Empresas interessadas", roles: ["companyAdmin", "commercial"], hidden: true }
     ]
@@ -327,6 +331,8 @@ function App() {
   const [selectedNews, setSelectedNews] = useState(null);
   const [navigationStack, setNavigationStack] = useState([]);
   const [chatSeedAd, setChatSeedAd] = useState(null);
+  const [chatSeedTask, setChatSeedTask] = useState(null);
+  const [chatSeedUser, setChatSeedUser] = useState(null);
   const screen = useHashScreen(role);
   const visibleModules = useMemo(() => modules.filter((group) =>
     group.roles.includes(role) && group.items.some((item) => canSee(item, role) && !item.hidden)
@@ -413,6 +419,8 @@ function App() {
   const openChatForAd = (ad) => {
     setChatSeedAd(ad);
   };
+  const openChatForTask = (task) => setChatSeedTask(task);
+  const openChatForUser = (user) => setChatSeedUser(user);
 
   const handleLogin = (user) => {
     const nextRole = frontendRole(user.roleKey);
@@ -465,8 +473,8 @@ function App() {
       <main className="main">
         <NavigationContext.Provider value={{ canGoBack: navigationStack.length > 0, goBack }}>
           <Topbar navigate={navigateTo} openPublicationManager={openPublicationManager} openTenderInterestCompanies={openTenderInterestCompanies} sessionUser={sessionUser} onLogout={handleLogout} />
-          <Screen screen={screen} navigate={navigateTo} userStatuses={userStatuses} openUserAction={openUserAction} selectedUserAction={selectedUserAction} updateUserStatus={updateUserStatus} selectedUserProfile={selectedUserProfile} openUserProfile={openUserProfile} selectedPublicationId={selectedPublicationId} openPublicationManager={openPublicationManager} selectedTenderId={selectedTenderId} openTenderInterestCompanies={openTenderInterestCompanies} selectedNews={selectedNews} openNewsDetail={openNewsDetail} refreshSession={refreshSession} sessionUser={sessionUser} openChatForAd={openChatForAd} />
-          <FloatingChat sessionUser={sessionUser} seedAd={chatSeedAd} onSeedConsumed={() => setChatSeedAd(null)} navigate={navigateTo} />
+          <Screen screen={screen} navigate={navigateTo} userStatuses={userStatuses} openUserAction={openUserAction} selectedUserAction={selectedUserAction} updateUserStatus={updateUserStatus} selectedUserProfile={selectedUserProfile} openUserProfile={openUserProfile} selectedPublicationId={selectedPublicationId} openPublicationManager={openPublicationManager} selectedTenderId={selectedTenderId} openTenderInterestCompanies={openTenderInterestCompanies} selectedNews={selectedNews} openNewsDetail={openNewsDetail} refreshSession={refreshSession} sessionUser={sessionUser} openChatForAd={openChatForAd} openChatForTask={openChatForTask} openChatForUser={openChatForUser} />
+          <FloatingChat sessionUser={sessionUser} seedAd={chatSeedAd} seedTask={chatSeedTask} seedUser={chatSeedUser} onSeedConsumed={() => { setChatSeedAd(null); setChatSeedTask(null); setChatSeedUser(null); }} navigate={navigateTo} />
           <ScrollControls />
         </NavigationContext.Provider>
       </main>
@@ -719,8 +727,9 @@ function ScrollControls() {
   );
 }
 
-function FloatingChat({ sessionUser, seedAd, onSeedConsumed, navigate }) {
-  const canUseChat = ["company_admin", "commercial"].includes(sessionUser?.roleKey) && sessionUser?.companyId;
+function FloatingChat({ sessionUser, seedAd, seedTask, seedUser, onSeedConsumed, navigate }) {
+  const canUseChat = sessionUser?.companyId && sessionUser?.roleKey !== "reader";
+  const canUsePartnershipChat = ["company_admin", "commercial"].includes(sessionUser?.roleKey);
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(true);
   const [threads, setThreads] = useState([]);
@@ -729,8 +738,12 @@ function FloatingChat({ sessionUser, seedAd, onSeedConsumed, navigate }) {
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [threadFilters, setThreadFilters] = useState({ search: "", contextType: "all", date: "" });
+  const [messageFilters, setMessageFilters] = useState({ search: "", sender: "all", date: "" });
   const [soundEnabled, setSoundEnabled] = useState(() => window.localStorage.getItem("licitahubChatSound") !== "off");
   const activeThreadRef = React.useRef("");
+  const chatMessagesRef = React.useRef(null);
   const lastSoundAtRef = React.useRef(0);
   const audioContextRef = React.useRef(null);
   const audioUnlockedRef = React.useRef(false);
@@ -744,6 +757,41 @@ function FloatingChat({ sessionUser, seedAd, onSeedConsumed, navigate }) {
   const unreadTotal = threads.reduce((total, thread) => total + Number(thread.unreadCount || 0), 0);
   const activeThread = threads.find((thread) => thread.id === activeThreadId);
   const canReply = !activeThread || activeThread.canReply !== false;
+  const latestMessageId = messages[messages.length - 1]?.id || "";
+  const dateKey = (value) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  };
+  const normalized = (value) => String(value || "").toLocaleLowerCase("pt-BR");
+  const contextLabel = (thread) => thread?.contextType === "assembly_task" ? "Tarefa de montagem" : thread?.contextType === "direct_user" ? "Conversa direta" : "Parceria de licitação";
+  const filteredThreads = threads.filter((thread) => {
+    const search = normalized(threadFilters.search);
+    const searchable = normalized([thread.otherCompanyName, thread.contextTitle, thread.tenderNumber, thread.agency, thread.tenderObject, thread.lastMessage].join(" "));
+    return (!search || searchable.includes(search))
+      && (threadFilters.contextType === "all" || thread.contextType === threadFilters.contextType)
+      && (!threadFilters.date || dateKey(thread.lastActivityAt) === threadFilters.date);
+  });
+  const messageSenders = Array.from(new Map(messages.map((message) => [message.mine ? "me" : message.senderUserId || message.senderName, message.mine ? "Você" : message.senderName || "Usuário"])).entries());
+  const filteredMessages = messages.filter((message) => {
+    const search = normalized(messageFilters.search);
+    const searchable = normalized([message.content, message.senderName, message.senderJobTitle].join(" "));
+    const sender = message.mine ? "me" : message.senderUserId || message.senderName;
+    return (!search || searchable.includes(search))
+      && (messageFilters.sender === "all" || messageFilters.sender === sender)
+      && (!messageFilters.date || dateKey(message.createdAt) === messageFilters.date);
+  });
+  const clearChatFilters = () => {
+    setThreadFilters({ search: "", contextType: "all", date: "" });
+    setMessageFilters({ search: "", sender: "all", date: "" });
+  };
+
+  useEffect(() => {
+    const container = chatMessagesRef.current;
+    if (!container || !activeThreadId) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+  }, [activeThreadId, latestMessageId]);
 
   const unlockChatAudio = () => {
     if (audioUnlockedRef.current) return;
@@ -784,16 +832,16 @@ function FloatingChat({ sessionUser, seedAd, onSeedConsumed, navigate }) {
       }
       const oscillator = context.createOscillator();
       const gain = context.createGain();
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(740, context.currentTime);
-      oscillator.frequency.exponentialRampToValueAtTime(520, context.currentTime + 0.16);
+      oscillator.type = "triangle";
+      oscillator.frequency.setValueAtTime(880, context.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(620, context.currentTime + 0.22);
       gain.gain.setValueAtTime(0.0001, context.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
+      gain.gain.exponentialRampToValueAtTime(0.18, context.currentTime + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.25);
       oscillator.connect(gain);
       gain.connect(context.destination);
       oscillator.start();
-      oscillator.stop(context.currentTime + 0.2);
+      oscillator.stop(context.currentTime + 0.27);
     } catch (_err) {
       // Browsers may block audio until the first user interaction.
     }
@@ -875,6 +923,28 @@ function FloatingChat({ sessionUser, seedAd, onSeedConsumed, navigate }) {
     }
   };
 
+  const startTaskChat = async (task) => {
+    if (!task?.taskId || !task?.assemblyId) return;
+    setOpen(true); setMinimized(false); setError(""); setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/task-chats`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(task) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível abrir a conversa da tarefa.");
+      setActiveThreadId(data.id); await loadThreads(); await loadMessages(data.id);
+    } catch (err) { setError(err.message); } finally { setLoading(false); onSeedConsumed?.(); }
+  };
+
+  const startDirectChat = async (user) => {
+    if (!user?.id) return;
+    setOpen(true); setMinimized(false); setError(""); setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/direct-chats`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ userId: user.id }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível abrir a conversa direta.");
+      setActiveThreadId(data.id); await loadThreads(); await loadMessages(data.id);
+    } catch (err) { setError(err.message); } finally { setLoading(false); onSeedConsumed?.(); }
+  };
+
   useEffect(() => {
     if (canUseChat) {
       loadThreads().catch(() => {});
@@ -898,7 +968,22 @@ function FloatingChat({ sessionUser, seedAd, onSeedConsumed, navigate }) {
   }, [canUseChat, seedAd?.id]);
 
   useEffect(() => {
+    if (canUseChat && seedTask?.taskId) startTaskChat(seedTask);
+  }, [canUseChat, seedTask?.taskId]);
+
+  useEffect(() => {
+    if (canUseChat && seedUser?.id) startDirectChat(seedUser);
+  }, [canUseChat, seedUser?.id]);
+
+  useEffect(() => {
     if (!canUseChat) return undefined;
+    const interval = window.setInterval(() => { loadThreads().catch(() => {}); if (activeThreadRef.current) loadMessages(activeThreadRef.current).catch(() => {}); }, 5000);
+    return () => window.clearInterval(interval);
+  }, [canUseChat]);
+
+  useEffect(() => {
+    if (!canUseChat) return undefined;
+    if (!canUsePartnershipChat) return undefined;
     const source = new EventSource(`${API_BASE_URL}/api/chats/stream`, { withCredentials: true });
     source.addEventListener("chat-message", (event) => {
       try {
@@ -921,7 +1006,7 @@ function FloatingChat({ sessionUser, seedAd, onSeedConsumed, navigate }) {
       }
     });
     return () => source.close();
-  }, [canUseChat, sessionUser?.userId, soundEnabled]);
+  }, [canUseChat, canUsePartnershipChat, sessionUser?.userId, soundEnabled]);
 
   const sendMessage = async (event) => {
     event.preventDefault();
@@ -961,26 +1046,43 @@ function FloatingChat({ sessionUser, seedAd, onSeedConsumed, navigate }) {
     <section className="floatingChat" aria-label="Conversas de parceria" onPointerDown={unlockChatAudio}>
       <header className="floatingChatHeader">
         <div>
-          <strong>{activeThread ? activeThread.otherCompanyName : "Conversas de anúncios"}</strong>
-          <small>{activeThread ? `${activeThread.tenderNumber} | ${activeThread.agency}` : "Negociações antes do match"}</small>
+          <strong>{activeThread ? (activeThread.contextType === "assembly_task" ? activeThread.contextTitle : activeThread.otherCompanyName) : "Conversas"}</strong>
+          <small>{activeThread ? (activeThread.contextType === "direct_user" ? "Conversa direta" : `${activeThread.contextType === "assembly_task" ? "Tarefa" : activeThread.tenderNumber} | ${activeThread.agency}`) : "Anúncios, tarefas e contatos"}</small>
         </div>
         <div className="floatingChatHeaderActions">
-          {activeThread?.evaluationAdId && activeThread.status === "open" && <button type="button" title="Avaliar candidata" onClick={() => navigate(`match-tinder?id=${activeThread.evaluationAdId}`)}>{"\u2713"}</button>}
+          {activeThread?.contextType === "partnership_ad" && activeThread?.evaluationAdId && activeThread.status === "open" && <button type="button" title="Avaliar candidata" onClick={() => navigate(`match-tinder?id=${activeThread.evaluationAdId}`)}>{"\u2713"}</button>}
           <button type="button" title={soundEnabled ? "Desligar som" : "Ligar som"} onClick={toggleSound}>{soundEnabled ? "\u266B" : "\u266A"}</button>
+          <button type="button" title={filtersOpen ? "Recolher filtros" : "Filtrar conversas e mensagens"} aria-label={filtersOpen ? "Recolher filtros" : "Filtrar conversas e mensagens"} onClick={() => setFiltersOpen((current) => !current)}>{"\u2630"}</button>
           {activeThreadId && <button type="button" title="Voltar para lista" onClick={() => { setActiveThreadId(""); setMessages([]); }}>{"\u2190"}</button>}
           <button type="button" title="Minimizar chat" onClick={() => setMinimized(true)}>{"\u2212"}</button>
         </div>
       </header>
       {error && <p className="chatError">{error}</p>}
+      {filtersOpen && (
+        <div className="chatFilterPanel">
+          {!activeThreadId ? <>
+            <label><span>Pesquisar</span><input value={threadFilters.search} onChange={(event) => setThreadFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Pessoa, empresa, tema ou edital" /></label>
+            <label><span>Tipo</span><select value={threadFilters.contextType} onChange={(event) => setThreadFilters((current) => ({ ...current, contextType: event.target.value }))}><option value="all">Todas as conversas</option><option value="partnership_ad">Parcerias</option><option value="assembly_task">Tarefas</option><option value="direct_user">Diretas</option></select></label>
+            <label><span>Data</span><input type="date" value={threadFilters.date} onChange={(event) => setThreadFilters((current) => ({ ...current, date: event.target.value }))} /></label>
+          </> : <>
+            <label><span>Pesquisar mensagens</span><input value={messageFilters.search} onChange={(event) => setMessageFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Texto ou assunto da conversa" /></label>
+            <label><span>Enviada por</span><select value={messageFilters.sender} onChange={(event) => setMessageFilters((current) => ({ ...current, sender: event.target.value }))}><option value="all">Todos os participantes</option>{messageSenders.map(([value, name]) => <option value={value} key={value}>{name}</option>)}</select></label>
+            <label><span>Data</span><input type="date" value={messageFilters.date} onChange={(event) => setMessageFilters((current) => ({ ...current, date: event.target.value }))} /></label>
+          </>}
+          <button type="button" className="chatFilterClear" onClick={clearChatFilters}>Limpar filtros</button>
+        </div>
+      )}
       {!activeThreadId ? (
         <div className="chatThreadList">
           {threads.length === 0 && <p className="emptyChat">Nenhuma conversa iniciada ainda.</p>}
-          {threads.map((thread) => (
+          {threads.length > 0 && filteredThreads.length === 0 && <p className="emptyChat">Nenhuma conversa encontrada com estes filtros.</p>}
+          {filteredThreads.map((thread) => (
             <button type="button" className="chatThreadItem" key={thread.id} onClick={() => openThread(thread.id)}>
               <LogoSlot initials={thread.otherCompanyName?.split(" ").map((word) => word[0]).join("").slice(0, 2) || "CH"} src={thread.otherCompanyLogoUrl} size="xs" label={`Logo da ${thread.otherCompanyName}`} />
               <span>
-                <strong>{thread.otherCompanyName}</strong>
-                <small>{thread.tenderNumber} | {thread.lastMessage || thread.tenderObject}</small>
+                <strong>{thread.contextType === "assembly_task" ? thread.contextTitle : thread.otherCompanyName}</strong>
+                <small>{thread.contextType === "direct_user" ? `Conversa direta | ${thread.lastMessage || "Sem mensagens"}` : thread.contextType === "assembly_task" ? `Tarefa | ${thread.lastMessage || thread.tenderObject}` : `${thread.tenderNumber} | ${thread.lastMessage || thread.tenderObject}`}</small>
+                <small className="chatThreadMeta">{contextLabel(thread)} · {thread.lastActivityAt ? new Date(thread.lastActivityAt).toLocaleDateString("pt-BR") : "Sem data"}</small>
                 {thread.isClosed && <small className="closedChatLabel">Encerrada</small>}
               </span>
               {thread.unreadCount > 0 && <em>{thread.unreadCount}</em>}
@@ -990,17 +1092,18 @@ function FloatingChat({ sessionUser, seedAd, onSeedConsumed, navigate }) {
       ) : (
         <>
           {activeThread?.closedReason && <div className={`chatNotice ${activeThread.isClosed ? "closed" : ""}`}>{activeThread.closedReason}</div>}
-          <div className="chatMessages">
+          <div className="chatMessages" ref={chatMessagesRef}>
             {loading && <p className="emptyChat">Carregando conversa...</p>}
             {!loading && messages.length === 0 && <p className="emptyChat">Conversa aberta. Envie a primeira mensagem.</p>}
-            {messages.map((message) => (
+            {!loading && messages.length > 0 && filteredMessages.length === 0 && <p className="emptyChat">Nenhuma mensagem encontrada com estes filtros.</p>}
+            {filteredMessages.map((message) => (
               <div className={`chatBubble ${message.mine ? "mine" : ""}`} key={message.id}>
                 <div className="chatSender">
                   {!message.mine && <LogoSlot initials={message.senderName?.split(" ").map((word) => word[0]).join("").slice(0, 2) || "US"} src={message.senderPhotoUrl} size="xs" label={`Foto de ${message.senderName}`} />}
                   <small>{message.mine ? "Você" : `${message.senderName}${message.senderJobTitle ? ` | ${message.senderJobTitle}` : ""}`}</small>
                 </div>
                 <p>{message.content}</p>
-                <time>{message.createdAt ? new Date(message.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""}</time>
+                <time>{message.createdAt ? new Date(message.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}</time>
               </div>
             ))}
           </div>
@@ -1014,7 +1117,7 @@ function FloatingChat({ sessionUser, seedAd, onSeedConsumed, navigate }) {
   );
 }
 
-function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAction, updateUserStatus, selectedUserProfile, openUserProfile, selectedPublicationId, openPublicationManager, selectedTenderId, openTenderInterestCompanies, selectedNews, openNewsDetail, refreshSession, sessionUser, openChatForAd }) {
+function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAction, updateUserStatus, selectedUserProfile, openUserProfile, selectedPublicationId, openPublicationManager, selectedTenderId, openTenderInterestCompanies, selectedNews, openNewsDetail, refreshSession, sessionUser, openChatForAd, openChatForTask, openChatForUser }) {
   const currentRole = frontendRole(sessionUser?.roleKey);
   if (!canAccessScreen(screen, currentRole)) {
     return <AccessDenied navigate={navigate} role={currentRole} />;
@@ -1028,14 +1131,15 @@ function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAc
     "company-review": <CompanyReview />,
     "my-profile": <MyProfile refreshSession={refreshSession} />,
     "company-dashboard": <CompanyDashboard navigate={navigate} sessionUser={sessionUser} />,
+    "my-assembly-tasks": <MyAssemblyTasks navigate={navigate} openChatForTask={openChatForTask} />,
     "company-profile-edit": <CompanyProfileEdit refreshSession={refreshSession} />,
     "company-users": <CompanyUsers navigate={navigate} openUserAction={openUserAction} openUserProfile={openUserProfile} sessionUser={sessionUser} />,
     "company-user-profile": <CompanyUserProfile selectedUserProfile={selectedUserProfile} navigate={navigate} />,
     "company-user-block": <CompanyUserAccessConfirm navigate={navigate} selectedUserAction={selectedUserAction} updateUserStatus={updateUserStatus} mode="block" />,
     "company-user-unblock": <CompanyUserAccessConfirm navigate={navigate} selectedUserAction={selectedUserAction} updateUserStatus={updateUserStatus} mode="unblock" />,
     "company-user-delete": <CompanyUserDelete navigate={navigate} selectedUserAction={selectedUserAction} />,
-    "community-home": <CommunityHome sessionUser={sessionUser} />,
-    "company-public-profile": <CompanyPublicProfile navigate={navigate} openPublicationManager={openPublicationManager} />,
+    "community-home": <CommunityHome sessionUser={sessionUser} navigate={navigate} />,
+    "company-public-profile": <CompanyPublicProfile navigate={navigate} openPublicationManager={openPublicationManager} sessionUser={sessionUser} openChatForUser={openChatForUser} />,
     "publication-new": <PublicationNew openPublicationManager={openPublicationManager} navigate={navigate} />,
     "publication-list": <PublicationList selectedPublicationId={selectedPublicationId} />,
     "radar-home": <RadarHomeConnected navigate={navigate} openNewsDetail={openNewsDetail} />,
@@ -1046,13 +1150,16 @@ function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAc
     "tender-new": <TenderNew navigate={navigate} />,
     "tender-list": <TenderList navigate={navigate} openTenderInterestCompanies={openTenderInterestCompanies} />,
     "tender-detail": <TenderDetail navigate={navigate} sessionUser={sessionUser} openTenderInterestCompanies={openTenderInterestCompanies} />,
+    "tender-challenge": <TenderChallenge navigate={navigate} />,
+	"tender-challenge-board": <TenderChallengeBoard navigate={navigate} />,
     "tender-interest": <TenderInterest navigate={navigate} />,
     "tender-interest-list": <TenderInterestList navigate={navigate} selectedTenderId={selectedTenderId} sessionUser={sessionUser} openChatForAd={openChatForAd} />,
     "match-partners": <MatchPartners navigate={navigate} sessionUser={sessionUser} openChatForAd={openChatForAd} />,
     "match-tinder": <MatchTinder navigate={navigate} sessionUser={sessionUser} />,
     "match-profile": <MatchProfile navigate={navigate} sessionUser={sessionUser} openChatForAd={openChatForAd} />,
     "match-success": <MatchSuccess />,
-    "match-list": <MatchList sessionUser={sessionUser} />
+    "match-list": <MatchList sessionUser={sessionUser} navigate={navigate} />,
+    "assembly-board": <AssemblyBoard sessionUser={sessionUser} navigate={navigate} openChatForTask={openChatForTask} />
   };
 
   return screens[screen] || <CompanyDashboard />;
@@ -1091,6 +1198,7 @@ function getPageHelp(title) {
     "Painel administrativo": "Acompanhe convites, empresas pendentes, editais e pontos que exigem ação da plataforma.",
     "Novo convite de empresa": "Cadastre a empresa que será convidada. CNPJ e nome fantasia identificam a empresa de forma única.",
     "Lista de convites": "Veja o andamento dos convites enviados, identifique pendências e acompanhe quem já iniciou cadastro.",
+    "Central de Montagem da Licitação": "Organize entregas, responsáveis, prazos, revisões e documentos do consórcio em fases permanentes.",
     "Análise e aprovação da empresa": "Revise os dados enviados pela empresa e decida se ela entra, ajusta informações ou será recusada.",
     "Dashboard da empresa": "Resumo operacional da empresa: oportunidades, matches, comunidade e próximos passos em um só lugar.",
     "Editar perfil da empresa": "Mantenha a vitrine institucional atualizada. Essas informações aparecem na comunidade e no match.",
@@ -2455,7 +2563,7 @@ function CompanyUserDelete({ navigate, selectedUserAction }) {
   );
 }
 
-function CommunityHome({ sessionUser }) {
+function CommunityHome({ sessionUser, navigate }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
@@ -2588,7 +2696,7 @@ function CommunityHome({ sessionUser }) {
           <div className="socialFeed">
             {loading && <Card><p>Carregando publicações...</p></Card>}
             {!loading && posts.length === 0 && <Card><p>Nenhuma publicação encontrada para estes filtros.</p></Card>}
-            {!loading && posts.map((post) => <PostCard key={post.id} {...post} onPostUpdated={replacePost} />)}
+            {!loading && posts.map((post) => <PostCard key={post.id} {...post} onPostUpdated={replacePost} onOpenCompany={(companyId) => navigate(`company-public-profile?companyId=${encodeURIComponent(companyId)}`)} />)}
           </div>
         </section>
 
@@ -2597,7 +2705,7 @@ function CommunityHome({ sessionUser }) {
   );
 }
 
-function PostCard({ id, category, company, region = "BR", companyLogoUrl = "", title, text = "Texto de exemplo da publicação com contexto empresarial, técnico e institucional.", likes = [], comments = [], imageLabel, imageUrl = "", liked = false, saved = false, likeCount = 0, commentCount = 0, onOpenPublication, onPostUpdated }) {
+function PostCard({ id, companyId = "", category, company, region = "BR", companyLogoUrl = "", title, text = "Texto de exemplo da publicação com contexto empresarial, técnico e institucional.", likes = [], comments = [], imageLabel, imageUrl = "", liked = false, saved = false, likeCount = 0, commentCount = 0, onOpenPublication, onOpenCompany, onPostUpdated }) {
   const [showLikes, setShowLikes] = useState(false);
   const [isLiked, setIsLiked] = useState(Boolean(liked));
   const [isSaved, setIsSaved] = useState(Boolean(saved));
@@ -2717,11 +2825,13 @@ function PostCard({ id, category, company, region = "BR", companyLogoUrl = "", t
   return (
     <Card className={`postCard ${onOpenPublication ? "clickablePostCard" : ""}`} onClick={onOpenPublication ? () => onOpenPublication(id) : undefined}>
       <div className="postHead">
-        <LogoSlot src={companyLogoUrl} initials={String(company || "EC").split(" ").map((word) => word[0]).join("").slice(0, 2)} size="sm" label={`Logo da ${company}`} />
-        <div>
-          <strong>{company}</strong>
-          <small>{category} | {region}</small>
-        </div>
+        <button type="button" className="postCompanyIdentity" disabled={!companyId || !onOpenCompany} title={companyId && onOpenCompany ? `Ver perfil público da ${company}` : undefined} onClick={(event) => { stopPostClick(event); if (companyId && onOpenCompany) onOpenCompany(companyId); }}>
+          <LogoSlot src={companyLogoUrl} initials={String(company || "EC").split(" ").map((word) => word[0]).join("").slice(0, 2)} size="sm" label={`Logo da ${company}`} />
+          <span>
+            <strong>{company}</strong>
+            <small>{category} | {region}</small>
+          </span>
+        </button>
       </div>
       <div className="postImage">
         {imageUrl ? <img src={imageUrl} alt={title || category} loading="lazy" decoding="async" /> : <><span>{imageLabel || category}</span><small>Imagem da publicação</small></>}
@@ -2787,15 +2897,24 @@ function CompanySuggestion({ name, area }) {
   );
 }
 
-function CompanyPublicProfile({ navigate, openPublicationManager }) {
+function CompanyPublicProfile({ navigate, openPublicationManager, sessionUser, openChatForUser }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [professionalsOpen, setProfessionalsOpen] = useState(false);
   const [selectedProfessionalId, setSelectedProfessionalId] = useState("");
+  const requestedCompanyId = currentHashParams().get("companyId") || "";
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/companies/me/public-profile`, { credentials: "include" })
+    setLoading(true);
+    setError("");
+    setProfile(null);
+    setProfessionalsOpen(false);
+    setSelectedProfessionalId("");
+    const profilePath = requestedCompanyId
+      ? `/api/companies/${encodeURIComponent(requestedCompanyId)}/public-profile`
+      : "/api/companies/me/public-profile";
+    fetch(`${API_BASE_URL}${profilePath}`, { credentials: "include" })
       .then(async (response) => {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Nao foi possivel carregar o perfil publico.");
@@ -2807,7 +2926,7 @@ function CompanyPublicProfile({ navigate, openPublicationManager }) {
       })
       .catch((err) => setError(err.message || "Nao foi possivel carregar o perfil publico."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [requestedCompanyId]);
 
   const companySizeLabel = {
     small: "Pequena empresa",
@@ -2817,9 +2936,10 @@ function CompanyPublicProfile({ navigate, openPublicationManager }) {
   const locationLabel = profile?.nationalCoverage ? "Atuação em todo o Brasil" : [profile?.city, profile?.state].filter(Boolean).join(" - ") || "Atuação não informada";
   const professionals = Array.isArray(profile?.professionals) ? profile.professionals : [];
   const posts = Array.isArray(profile?.posts) ? profile.posts : [];
+  const isOwnProfile = Boolean(profile?.id && profile.id === sessionUser?.companyId);
 
   return (
-    <Page label="Comunidade" title="Perfil público da empresa" actions={<Button onClick={() => navigate("publication-new")}>Criar publicação</Button>}>
+    <Page label="Comunidade" title="Perfil público da empresa" actions={isOwnProfile ? <Button onClick={() => navigate("publication-new")}>Criar publicação</Button> : null}>
       {loading && <Card className="formFeedback"><p>Carregando perfil público...</p></Card>}
       {error && <Card className="formFeedback dangerNotice"><p>{error}</p></Card>}
       {profile && (
@@ -2876,7 +2996,7 @@ function CompanyPublicProfile({ navigate, openPublicationManager }) {
                   return <div className="professionalDetail" key={`detail-${person.id}`}>
                     <span className="userAvatar large">{person.profilePhotoUrl ? <img src={person.profilePhotoUrl} alt="" /> : initialsFromName(person.fullName)}</span>
                     <div className="professionalDetailContent"><span className="eyebrow">Profissional vinculado</span><h3>{person.fullName}</h3><p>{person.jobTitle || "Cargo não informado"}</p><div className="professionalContactLinks">{person.email ? <a href={`mailto:${person.email}`}>{person.email}</a> : <span>E-mail não informado</span>}{person.phone ? <a href={`tel:${String(person.phone).replace(/\D/g, "")}`}>{person.phone}</a> : <span>Telefone não informado</span>}</div></div>
-                    <button type="button" className="iconButton secondaryIcon" title="Fechar informações do profissional" aria-label="Fechar informações do profissional" onClick={() => setSelectedProfessionalId("")}>×</button>
+                    <div className="professionalDetailActions">{person.id !== sessionUser?.userId && <button type="button" className="iconButton secondaryIcon" title={`Conversar com ${person.fullName}`} aria-label={`Conversar com ${person.fullName}`} onClick={() => openChatForUser(person)}><i className="taskChatIndicator" aria-hidden="true"><b /><b /><b /></i></button>}<button type="button" className="iconButton secondaryIcon" title="Fechar informações do profissional" aria-label="Fechar informações do profissional" onClick={() => setSelectedProfessionalId("")}>×</button></div>
                   </div>;
                 })()}
               </div>
@@ -2885,11 +3005,11 @@ function CompanyPublicProfile({ navigate, openPublicationManager }) {
 
           <div className="sectionTitleRow">
             <h3>Publicações da empresa</h3>
-            <Button variant="secondary" onClick={() => navigate("publication-list")}>Minhas publicações</Button>
+            {isOwnProfile && <Button variant="secondary" onClick={() => navigate("publication-list")}>Minhas publicações</Button>}
           </div>
           {posts.length === 0 && <Card><p>Esta empresa ainda não possui publicações no perfil público.</p></Card>}
           <div className="grid two">
-            {posts.map((post) => <PostCard key={post.id} {...post} onOpenPublication={openPublicationManager} />)}
+            {posts.map((post) => <PostCard key={post.id} {...post} onOpenPublication={isOwnProfile ? openPublicationManager : undefined} />)}
           </div>
         </>
       )}
@@ -3780,6 +3900,7 @@ function TenderNew({ navigate }) {
   const [form, setForm] = useState({ agency: "", number: "", object: "", modality: "", judgmentCriterion: "", estimatedValue: "", state: "", city: "", openingDate: "", status: "published", cloudFolderUrl: "", analysisDataUrl: "", analysisFileName: "", analysisMimeType: "" });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  const [documentFiles, setDocumentFiles] = useState([]);
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
   useEffect(() => {
     if (!editId) return;
@@ -3818,6 +3939,50 @@ function TenderNew({ navigate }) {
     reader.onload = () => setForm((current) => ({ ...current, analysisDataUrl: String(reader.result || ""), analysisFileName: file.name, analysisMimeType: "text/html" }));
     reader.readAsDataURL(file);
   };
+  const selectDocuments = (event) => {
+    const selected = Array.from(event.target.files || []);
+    const invalid = selected.find((file) => file.size > 25 * 1024 * 1024);
+    if (invalid) {
+      setMessage({ type: "error", text: `O arquivo ${invalid.name} ultrapassa o limite de 25MB.` });
+      event.target.value = "";
+      return;
+    }
+    setDocumentFiles((current) => {
+      const next = [...current];
+      selected.forEach((file) => {
+        const alreadyIncluded = next.some((item) => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified);
+        if (!alreadyIncluded) next.push(file);
+      });
+      return next;
+    });
+    event.target.value = "";
+  };
+  const uploadDocuments = async (tenderId) => {
+    const failures = [];
+    for (const file of documentFiles) {
+      try {
+        const fileDataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(new Error("Não foi possível ler o arquivo."));
+          reader.readAsDataURL(file);
+        });
+        const response = await fetch(`${API_BASE_URL}/api/tenders/${encodeURIComponent(tenderId)}/files`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ fileDataUrl, fileName: file.name, mimeType: file.type })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Falha ao enviar arquivo.");
+      } catch (error) {
+        failures.push(`${file.name}: ${error.message}`);
+      }
+    }
+    if (failures.length === 0) setDocumentFiles([]);
+    return failures;
+  };
+  const formatDocumentSize = (bytes) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
   const submit = async () => {
     setSaving(true);
     setMessage(null);
@@ -3830,7 +3995,12 @@ function TenderNew({ navigate }) {
       const response = await fetch(isEditing ? `${API_BASE_URL}/api/tenders/${editId}` : `${API_BASE_URL}/api/tenders`, { method: isEditing ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(payload) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível salvar o edital.");
-      setMessage({ type: "success", text: `Edital ${data.number} ${isEditing ? "atualizado" : "cadastrado"} no banco.` });
+      const uploadFailures = documentFiles.length ? await uploadDocuments(data.id) : [];
+      if (uploadFailures.length > 0) {
+        setMessage({ type: "error", text: `Edital salvo, mas ${uploadFailures.length} arquivo(s) não foram enviados. ${uploadFailures[0]}` });
+        return;
+      }
+      setMessage({ type: "success", text: `Edital ${data.number} ${isEditing ? "atualizado" : "cadastrado"} no banco.${documentFiles.length ? " Documentos anexados." : ""}` });
       if (isEditing) {
         setTimeout(() => navigate("tender-admin"), 500);
       } else {
@@ -3858,6 +4028,10 @@ function TenderNew({ navigate }) {
       </FormGrid>
       <Field label="Objeto"><textarea value={form.object} onChange={(e) => update("object", e.target.value)} required /></Field>
       <Field label="Link do diretório em nuvem"><input value={form.cloudFolderUrl} onChange={(e) => update("cloudFolderUrl", e.target.value)} placeholder="https://drive.google.com/..." /></Field>
+      <Field label="Arquivos do edital" hint="Selecione quantos documentos forem necessários. Cada arquivo pode ter até 25 MB.">
+        <input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.odt,.ods,.txt,.xml,.zip,.rar,.7z,.dwg,.dxf,.jpg,.jpeg,.png,.webp" onChange={selectDocuments} />
+        {documentFiles.length === 0 ? <small>Nenhum documento adicional selecionado.</small> : <div className="tenderDocumentQueue">{documentFiles.map((file, index) => <div key={`${file.name}-${file.lastModified}-${index}`}><span><strong>{file.name}</strong><small>{formatDocumentSize(file.size)}</small></span><button type="button" title="Retirar arquivo" aria-label={`Retirar ${file.name}`} onClick={() => setDocumentFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></div>)}</div>}
+      </Field>
       {!isEditing && <Field label="Análise do edital em HTML" hint="Será exibida no detalhe e poderá ser baixada."><input type="file" accept=".html,.htm,text/html" onChange={selectAnalysis} /><small>{form.analysisFileName || "Nenhum arquivo selecionado"}</small></Field>}
       {isEditing && <Card className="notice"><p>A análise HTML pode ser anexada ou substituída no detalhe do edital.</p></Card>}
       <div className="formActionBar"><Button onClick={submit} disabled={saving}>{saving ? "Salvando..." : isEditing ? "Salvar alterações" : "Cadastrar edital"}</Button></div>
@@ -3895,6 +4069,9 @@ function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
   const [error, setError] = useState("");
   const [analysisMessage, setAnalysisMessage] = useState(null);
   const [uploadingAnalysis, setUploadingAnalysis] = useState(false);
+  const [generatingAIAnalysis, setGeneratingAIAnalysis] = useState(false);
+  const [documentMessage, setDocumentMessage] = useState(null);
+  const [uploadingDocuments, setUploadingDocuments] = useState(false);
   const loadTender = () => {
     if (!id) {
       setError("Selecione um edital na lista.");
@@ -3906,6 +4083,30 @@ function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
       .catch((e)=>setError(e.message));
   };
   useEffect(loadTender, [id]);
+  useEffect(() => {
+    const status = tender?.aiAnalysis?.status;
+    if (status !== "queued" && status !== "processing") return undefined;
+    const timer = window.setTimeout(loadTender, 3500);
+    return () => window.clearTimeout(timer);
+  }, [tender?.aiAnalysis?.status, tender?.aiAnalysis?.id]);
+  const generateAIAnalysis = async () => {
+    setGeneratingAIAnalysis(true);
+    setAnalysisMessage(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tenders/${encodeURIComponent(id)}/ai-analysis`, {
+        method: "POST",
+        credentials: "include"
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível iniciar a pré-análise com IA.");
+      setAnalysisMessage({ type: "success", text: "Pré-análise iniciada. O sistema continuará atualizando esta tela até o HTML ficar pronto." });
+      loadTender();
+    } catch (err) {
+      setAnalysisMessage({ type: "error", text: err.message });
+    } finally {
+      setGeneratingAIAnalysis(false);
+    }
+  };
   const selectAnalysis = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -3940,28 +4141,95 @@ function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
     };
     reader.readAsDataURL(file);
   };
+  const uploadDocuments = async (event) => {
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+    const oversized = files.find((file) => file.size > 25 * 1024 * 1024);
+    if (oversized) {
+      setDocumentMessage({ type: "error", text: `O arquivo ${oversized.name} ultrapassa o limite de 25MB.` });
+      event.target.value = "";
+      return;
+    }
+    setUploadingDocuments(true);
+    setDocumentMessage(null);
+    const failures = [];
+    for (const file of files) {
+      try {
+        const fileDataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(new Error("Não foi possível ler o arquivo."));
+          reader.readAsDataURL(file);
+        });
+        const response = await fetch(`${API_BASE_URL}/api/tenders/${encodeURIComponent(id)}/files`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ fileDataUrl, fileName: file.name, mimeType: file.type })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Falha ao anexar arquivo.");
+      } catch (err) {
+        failures.push(`${file.name}: ${err.message}`);
+      }
+    }
+    event.target.value = "";
+    setUploadingDocuments(false);
+    if (failures.length) {
+      setDocumentMessage({ type: "error", text: `${failures.length} arquivo(s) não foram anexados. ${failures[0]}` });
+      return;
+    }
+    setDocumentMessage({ type: "success", text: `${files.length} arquivo(s) anexado(s) ao edital.` });
+    loadTender();
+  };
+  const deleteDocument = async (document) => {
+    if (!window.confirm(`Remover o arquivo ${document.title} deste edital?`)) return;
+    setDocumentMessage(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tenders/${encodeURIComponent(id)}/files?fileId=${encodeURIComponent(document.id)}`, { method: "DELETE", credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível remover o arquivo.");
+      setDocumentMessage({ type: "success", text: "Arquivo removido da lista do edital." });
+      loadTender();
+    } catch (err) {
+      setDocumentMessage({ type: "error", text: err.message });
+    }
+  };
   if (error) return <Page label="Editais" title="Detalhe do edital"><Card className="dangerNotice"><p>{error}</p></Card></Page>;
   if (!tender) return <Page label="Editais" title="Detalhe do edital"><Card><p>Carregando edital...</p></Card></Page>;
+  const documents = Array.isArray(tender.documents) ? tender.documents : [];
+  const aiAnalysis = tender.aiAnalysis || null;
+  const aiIsWorking = aiAnalysis?.status === "queued" || aiAnalysis?.status === "processing";
+  const canChallengeTender = ["company_admin", "commercial", "technical"].includes(sessionUser?.roleKey) && ["published", "under_review", "challenged"].includes(tender.status);
+  const formatDocumentSize = (bytes) => !bytes ? "Tamanho não informado" : bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
   const detailAction = tender.hasMyInterest
     ? <Button onClick={() => openTenderInterestCompanies(tender.id)}>Ver empresas interessadas</Button>
     : <Button onClick={() => navigate(`tender-interest?id=${tender.id}`)}>Registrar interesse</Button>;
   return (
-    <Page label="Editais" title="Detalhe do edital" actions={detailAction}>
+    <Page label="Editais" title="Detalhe do edital" actions={<>{detailAction}{canChallengeTender && <Button variant="secondary" onClick={() => navigate(`tender-challenge?id=${tender.id}`)}>{tender.myChallenge ? "Ver pedido de impugnação" : "Protocolar impugnação"}</Button>}</>}>
       <Card><h3>{tender.number} - {tender.agency}</h3><p>{tender.object}</p></Card>
       <div className="grid three">
         <Card><strong>Local</strong><p>{[tender.city,tender.state].filter(Boolean).join(" / ") || "Não informado"}</p></Card>
         <Card><strong>Critério</strong><p>{tender.judgmentCriterion || "Não informado"}</p></Card>
         <Card><strong>Status</strong><p>{tender.status}</p></Card>
       </div>
+      {tender.myChallenge && <Card className="challengeSummary"><div><strong>Pedido de impugnação da sua empresa</strong><p>{tender.myChallenge.subject}</p></div><span className={`statusPill ${tender.myChallenge.status}`}>{tender.myChallenge.status === "submitted" ? "Protocolado" : tender.myChallenge.status}</span></Card>}
       {tender.cloudFolderUrl && <Card><h3>Documentos do edital</h3><a className="downloadButton" href={tender.cloudFolderUrl} target="_blank" rel="noreferrer">Abrir diretório em nuvem</a></Card>}
+      <Card className="tenderDocumentsCard">
+        <div className="cardHeader"><div><h3>Arquivos do edital</h3><p>{documents.length ? `${documents.length} documento(s) disponível(is) para consulta e download.` : "Nenhum documento foi anexado diretamente ao edital."}</p></div></div>
+        {documentMessage && <div className={`inlineFeedback ${documentMessage.type === "success" ? "successText" : "dangerText"}`}>{documentMessage.text}</div>}
+        {documents.length > 0 && <div className="tenderDocumentList">{documents.map((document) => <div key={document.id}><span className="tenderDocumentIcon">▤</span><span className="tenderDocumentInfo"><strong>{document.title}</strong><small>{formatDocumentSize(Number(document.fileSize || 0))}{document.mimeType ? ` · ${document.mimeType}` : ""}</small></span><a className="iconButton secondaryIcon" href={document.fileUrl} download title="Baixar arquivo" aria-label={`Baixar ${document.title}`}>↓</a>{isPlatformAdmin && <button type="button" className="iconButton dangerIcon" title="Remover arquivo" aria-label={`Remover ${document.title}`} onClick={() => deleteDocument(document)}>×</button>}</div>)}</div>}
+        {isPlatformAdmin && <Field label="Anexar documentos" hint="Você pode incluir quantos arquivos forem necessários. Limite de 25 MB por arquivo."><input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.odt,.ods,.txt,.xml,.zip,.rar,.7z,.dwg,.dxf,.jpg,.jpeg,.png,.webp" onChange={uploadDocuments} disabled={uploadingDocuments} /><small>{uploadingDocuments ? "Enviando documentos..." : "PDF, Office, planilhas, compactados, imagens e arquivos técnicos."}</small></Field>}
+      </Card>
       <Card>
         <div className="cardHeader">
-          <h3>Análise do edital</h3>
+          <div><h3>Análise do edital</h3><p>Pré-análise técnica em HTML para leitura comercial.</p></div>
           {tender.analysisUrl && <a className="downloadButton" href={tender.analysisUrl} download>Baixar análise</a>}
         </div>
         {analysisMessage && <div className={`inlineFeedback ${analysisMessage.type === "success" ? "successText" : "dangerText"}`}>{analysisMessage.text}</div>}
+        {isPlatformAdmin && aiAnalysis && <div className={`aiAnalysisStatus ${aiAnalysis.status}`}><strong>{aiAnalysis.status === "queued" ? "Pré-análise aguardando início" : aiAnalysis.status === "processing" ? "Pré-análise em processamento" : aiAnalysis.status === "completed" ? "Pré-análise gerada pela IA" : "Não foi possível gerar a pré-análise"}</strong><span>{aiAnalysis.status === "failed" ? aiAnalysis.errorMessage || "Tente novamente após conferir os documentos." : aiAnalysis.status === "completed" ? "O HTML gerado está disponível abaixo e pode ser substituído manualmente." : `Analisando ${aiAnalysis.sourceFileCount || documents.length} documento(s) anexado(s).`}</span></div>}
         {tender.analysisUrl ? (
-          <iframe className="technicalSheetFrame" src={tender.analysisUrl} title={`Análise do edital ${tender.number}`}></iframe>
+          <iframe className="technicalSheetFrame" sandbox="allow-scripts" src={tender.analysisUrl} title={`Análise do edital ${tender.number}`}></iframe>
         ) : (
           <div className="emptyAnalysisBox">
             <strong>Edital ainda não analisado</strong>
@@ -3969,14 +4237,204 @@ function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
           </div>
         )}
         {isPlatformAdmin && (
-          <Field label={tender.analysisUrl ? "Substituir análise HTML" : "Anexar análise HTML"}>
-            <input type="file" accept=".html,.htm,text/html" onChange={selectAnalysis} disabled={uploadingAnalysis} />
-            <small>{uploadingAnalysis ? "Enviando análise..." : "Disponível para o administrador da plataforma."}</small>
-          </Field>
+          <div className="analysisAdminActions">
+            <Button onClick={generateAIAnalysis} disabled={!documents.length || generatingAIAnalysis || aiIsWorking}>{generatingAIAnalysis ? "Iniciando IA..." : aiIsWorking ? "IA analisando documentos..." : "Gerar pré-análise com IA"}</Button>
+            <small>{documents.length ? "Usa os documentos anexados ao edital e o roteiro técnico oficial da LicitaHub. Para esta etapa, cada arquivo deve ter até 22 MB." : "Anexe documentos ao edital antes de solicitar a análise."}</small>
+            <Field label={tender.analysisUrl ? "Substituir análise HTML manualmente" : "Anexar análise HTML manualmente"}>
+              <input type="file" accept=".html,.htm,text/html" onChange={selectAnalysis} disabled={uploadingAnalysis || aiIsWorking} />
+              <small>{uploadingAnalysis ? "Enviando análise..." : "A análise manual continua disponível mesmo com a IA."}</small>
+            </Field>
+          </div>
         )}
       </Card>
     </Page>
   );
+}
+
+function TenderChallenge({ navigate }) {
+  const id = currentHashParams().get("id") || "";
+  const [tender, setTender] = useState(null);
+  const [existing, setExisting] = useState(null);
+  const [form, setForm] = useState({ subject: "", rationale: "" });
+  const [documents, setDocuments] = useState([]);
+  const [message, setMessage] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const load = () => {
+    if (!id) return;
+    fetch(`${API_BASE_URL}/api/tenders/${encodeURIComponent(id)}`, { credentials: "include" })
+      .then(async (response) => { const data = await response.json(); if (!response.ok) throw new Error(data.error || "Não foi possível carregar o edital."); return data; })
+      .then((data) => {
+        setTender(data);
+        if (data.myChallenge) {
+          setExisting(data.myChallenge);
+          setForm({ subject: data.myChallenge.subject || "", rationale: data.myChallenge.rationale || "" });
+        }
+      })
+      .catch((error) => setMessage({ type: "error", text: error.message }));
+  };
+  useEffect(load, [id]);
+  const selectDocuments = (event) => {
+    const selected = Array.from(event.target.files || []);
+    const oversized = selected.find((file) => file.size > 25 * 1024 * 1024);
+    if (oversized) {
+      setMessage({ type: "error", text: `O arquivo ${oversized.name} ultrapassa o limite de 25 MB.` });
+      event.target.value = "";
+      return;
+    }
+    setDocuments((current) => [...current, ...selected.filter((file) => !current.some((item) => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified))]);
+    event.target.value = "";
+  };
+  const submit = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const encodedDocuments = await Promise.all(documents.map((file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ fileDataUrl: String(reader.result || ""), fileName: file.name, mimeType: file.type });
+        reader.onerror = () => reject(new Error(`Não foi possível ler ${file.name}.`));
+        reader.readAsDataURL(file);
+      })));
+      const response = await fetch(`${API_BASE_URL}/api/tenders/${encodeURIComponent(id)}/challenge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ...form, documents: encodedDocuments })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível protocolar a impugnação.");
+      setExisting(data);
+      setDocuments([]);
+      setMessage({ type: "success", text: "Pedido de impugnação protocolado. O administrador da plataforma foi avisado." });
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+  const locked = existing && !["draft", "submitted"].includes(existing.status);
+  const businessDaysBeforeSession = useMemo(() => {
+    if (!tender?.openingDate) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const opening = new Date(`${String(tender.openingDate).slice(0, 10)}T12:00:00`);
+    if (Number.isNaN(opening.getTime())) return null;
+    let count = 0;
+    const cursor = new Date(today);
+    cursor.setDate(cursor.getDate() + 1);
+    while (cursor < opening) {
+      const weekday = cursor.getDay();
+      if (weekday !== 0 && weekday !== 6) count += 1;
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return count;
+  }, [tender?.openingDate]);
+  const isUntimely = businessDaysBeforeSession !== null && businessDaysBeforeSession < 3;
+  const formatFileSize = (value) => !value ? "Tamanho não informado" : value < 1024 * 1024 ? `${Math.max(1, Math.round(value / 1024))} KB` : `${(value / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
+  if (!id) return <Page label="Editais" title="Pedido de impugnação"><Card className="dangerNotice"><p>Abra esta tela pelo detalhe de um edital.</p></Card></Page>;
+  if (!tender) return <Page label="Editais" title="Pedido de impugnação"><Card><p>Carregando edital...</p></Card></Page>;
+  return <Page label="Editais" title="Pedido de impugnação" actions={<Button variant="secondary" onClick={() => navigate(`tender-detail?id=${id}`)}>Voltar ao edital</Button>}>
+    <Card><h3>{tender.number} - {tender.agency}</h3><p>{tender.object}</p></Card>
+    {message && <Card className={message.type === "success" ? "formFeedback success" : "dangerNotice"}><p>{message.text}</p></Card>}
+    {isUntimely && <Card className="challengeLegalWarning"><strong>Licitação intempestiva</strong><p>Art. 164. Qualquer pessoa é parte legítima para impugnar edital de licitação por irregularidade na aplicação desta Lei ou para solicitar esclarecimento sobre os seus termos, devendo protocolar o pedido até 3 (três) dias úteis antes da data de abertura do certame.</p><small>Faltam {businessDaysBeforeSession} dia{businessDaysBeforeSession === 1 ? " útil" : "s úteis"} antes da sessão. O protocolo continuará disponível para registro.</small></Card>}
+    {existing && <Card className="challengeSummary"><div><strong>Protocolo da sua empresa</strong><p>Status: {existing.status === "submitted" ? "Protocolado e aguardando análise" : existing.status}</p></div></Card>}
+    <Card>
+      <FormGrid>
+        <Field label="Assunto do pedido"><input value={form.subject} maxLength="220" disabled={locked} placeholder="Ex.: Questionamento sobre exigência de habilitação técnica" onChange={(event) => setForm((current) => ({ ...current, subject: event.target.value }))} /></Field>
+      </FormGrid>
+      <Field label="Fundamentação da impugnação" hint="Explique objetivamente o item questionado, os motivos e a referência ao edital."><textarea rows="10" value={form.rationale} disabled={locked} placeholder="Descreva o entendimento da sua empresa e indique itens, cláusulas, páginas ou anexos aplicáveis." onChange={(event) => setForm((current) => ({ ...current, rationale: event.target.value }))} /></Field>
+      {!locked && <Field label="Documentos de apoio" hint="Opcional. Você pode anexar quantos documentos forem necessários, com até 25 MB por arquivo."><input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.odt,.ods,.txt,.xml,.zip,.rar,.7z,.jpg,.jpeg,.png,.webp" onChange={selectDocuments} /><small>Documentos jurídicos, técnicos, planilhas, imagens e arquivos de apoio.</small></Field>}
+      {documents.length > 0 && <div className="tenderDocumentQueue">{documents.map((file, index) => <div key={`${file.name}-${file.lastModified}`}><span className="tenderDocumentIcon">▤</span><span><strong>{file.name}</strong><small>{formatFileSize(file.size)}</small></span><button type="button" onClick={() => setDocuments((current) => current.filter((_, itemIndex) => itemIndex !== index))} title="Remover arquivo">×</button></div>)}</div>}
+      {Array.isArray(existing?.documents) && existing.documents.length > 0 && <div className="tenderDocumentList">{existing.documents.map((file) => <div key={file.id}><span className="tenderDocumentIcon">▤</span><span className="tenderDocumentInfo"><strong>{file.title}</strong><small>{formatFileSize(Number(file.fileSize || 0))}</small></span><a className="iconButton secondaryIcon" href={file.fileUrl} download title="Baixar anexo">↓</a></div>)}</div>}
+      {!locked && <div className="formActions"><Button onClick={submit} disabled={saving}>{saving ? "Protocolando..." : existing ? "Atualizar pedido" : "Protocolar pedido de impugnação"}</Button></div>}
+    </Card>
+  </Page>;
+}
+
+const tenderChallengeStatuses = [
+  ["submitted", "Protocolado"],
+  ["under_review", "Em análise"],
+  ["accepted", "Procedente"],
+  ["rejected", "Improcedente"],
+  ["withdrawn", "Retirado"]
+];
+
+const tenderChallengeStatusLabel = (value) => tenderChallengeStatuses.find(([key]) => key === value)?.[1] || value;
+
+function TenderChallengeBoard({ navigate }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filters, setFilters] = useState({ search: "", status: "", sort: "deadline_asc" });
+  const [savingId, setSavingId] = useState("");
+
+  const load = () => {
+    setLoading(true);
+    fetch(`${API_BASE_URL}/api/tender-challenges`, { credentials: "include" })
+      .then(async (response) => { const data = await response.json(); if (!response.ok) throw new Error(data.error || "Não foi possível carregar as impugnações."); return data; })
+      .then((data) => { setItems(Array.isArray(data) ? data : []); setError(""); })
+      .catch((loadError) => setError(loadError.message))
+      .finally(() => setLoading(false));
+  };
+  useEffect(load, []);
+
+  const updateStatus = async (item, status) => {
+    setSavingId(item.id);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tender-challenges/${encodeURIComponent(item.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível atualizar o pedido.");
+      setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status } : entry));
+    } catch (updateError) {
+      setError(updateError.message);
+    } finally {
+      setSavingId("");
+    }
+  };
+
+  const visible = useMemo(() => {
+    const term = filters.search.trim().toLocaleLowerCase("pt-BR");
+    return items.filter((item) => {
+      if (filters.status && item.status !== filters.status) return false;
+      return !term || [item.tenderNumber, item.tenderAgency, item.tenderObject, item.companyName, item.authorName, item.subject].join(" ").toLocaleLowerCase("pt-BR").includes(term);
+    }).sort((a, b) => {
+      if (filters.sort === "submitted_desc") return new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime();
+      if (filters.sort === "opening_asc") return new Date(a.openingDate || 0).getTime() - new Date(b.openingDate || 0).getTime();
+      return new Date(a.internalDeadline || 0).getTime() - new Date(b.internalDeadline || 0).getTime();
+    });
+  }, [items, filters]);
+  const columns = [
+    ["submitted", "Protocolados", (item) => item.status === "submitted"],
+    ["under_review", "Em análise", (item) => item.status === "under_review"],
+    ["completed", "Concluídos", (item) => ["accepted", "rejected", "withdrawn"].includes(item.status)]
+  ];
+  const formatDate = (value) => value ? new Date(value).toLocaleDateString("pt-BR") : "Não informado";
+
+  return <Page label="Editais" title="Central de impugnações">
+    <Card className="challengeBoardIntro"><div><strong>Pedidos protocolados pelas empresas</strong><p>Cada cartão representa uma tarefa de análise. O prazo interno é calculado para seis dias antes da sessão do edital.</p></div><span>{items.length} pedido{items.length === 1 ? "" : "s"}</span></Card>
+    <Card className="compactFilters challengeBoardFilters"><FormGrid>
+      <Field label="Buscar"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Empresa, edital, órgão ou assunto" /></Field>
+      <Field label="Status"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos</option>{tenderChallengeStatuses.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></Field>
+      <Field label="Ordenar por"><select value={filters.sort} onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value }))}><option value="deadline_asc">Prazo interno mais próximo</option><option value="opening_asc">Sessão mais próxima</option><option value="submitted_desc">Protocolo mais recente</option></select></Field>
+    </FormGrid></Card>
+    {loading && <Card><p>Carregando pedidos de impugnação...</p></Card>}
+    {error && <Card className="dangerNotice"><p>{error}</p></Card>}
+    {!loading && <div className="challengeKanban">{columns.map(([key, label, matches]) => {
+      const columnItems = visible.filter(matches);
+      return <section className={`challengeKanbanColumn ${key}`} key={key}><header><h3>{label}</h3><span>{columnItems.length}</span></header><div className="challengeKanbanCards">{columnItems.map((item) => <article className={`challengeKanbanCard ${item.isUntimely ? "is-untimely" : ""}`} key={item.id}>
+        <div className="challengeCardTop"><strong>{item.tenderNumber}</strong><span className={`statusPill ${item.status === "submitted" ? "review" : "open"}`}>{tenderChallengeStatusLabel(item.status)}</span></div>
+        <p className="challengeTender">{item.tenderAgency}</p><h4>{item.subject}</h4><p className="challengeCompany">{item.companyName} {item.authorName ? `· ${item.authorName}` : ""}</p>
+        <div className="challengeDates"><span>Sessão: <b>{formatDate(item.openingDate)}</b></span><span>Prazo interno: <b>{formatDate(item.internalDeadline)}</b></span></div>
+        {item.isUntimely && <p className="challengeLate">Intempestiva: {item.businessDaysBeforeOpening ?? 0} dia(s) útil(eis) antes da sessão.</p>}
+        <details><summary>Ver fundamentação e documentos ({item.documentCount || 0})</summary><p>{item.rationale}</p>{Array.isArray(item.documents) && item.documents.length > 0 && <div className="challengeFiles">{item.documents.map((file) => <a href={file.fileUrl} download key={file.id}>↓ {file.title}</a>)}</div>}<Button variant="secondary" onClick={() => navigate(`tender-detail?id=${item.tenderId}`)}>Abrir edital</Button></details>
+        <Field label="Andamento"><select value={item.status} disabled={savingId === item.id} onChange={(event) => updateStatus(item, event.target.value)}>{tenderChallengeStatuses.map(([value, statusLabel]) => <option value={value} key={value}>{statusLabel}</option>)}</select></Field>
+      </article>)}{columnItems.length === 0 && <p className="personalKanbanEmpty">Nenhum pedido nesta fase.</p>}</div></section>;
+    })}</div>}
+  </Page>;
 }
 
 const interestRequirementBlocks = [
@@ -4275,6 +4733,7 @@ function TenderInterestList({ navigate, selectedTenderId = "cp-004-2026", sessio
             interestStatusLabels[requirement("certifications")?.statusKey] || "-",
             ad.seekSummary || "-",
             <div className="rowActions compactRowActions" key={ad.id}>
+              {ad.companyId && <button className="iconButton secondaryIcon" title="Abrir perfil público da empresa" aria-label="Abrir perfil público da empresa" onClick={() => navigate(`company-public-profile?companyId=${encodeURIComponent(ad.companyId)}`)}>{"\u2197"}</button>}
               <button className="iconButton secondaryIcon" title="Ver detalhe do anúncio" aria-label="Ver detalhe do anúncio" onClick={() => navigate(`match-profile?id=${ad.id}`)}>{"\u25C9"}</button>
               {!isOwnAd && <button className="iconButton chatIcon" title="Conversar com a empresa" aria-label="Conversar com a empresa" onClick={() => openChatForAd(ad)}>{"\u2709"}</button>}
               {!isOwnAd && (alreadyLiked
@@ -4480,6 +4939,7 @@ function MatchPartners({ navigate, sessionUser, openChatForAd }) {
               {(ad.requirements || []).map((item) => <span key={item.requirementKey}>{item.name}: {interestStatusLabels[item.statusKey] || item.statusKey}</span>)}
             </div>
             <div className="actions">
+              {ad.companyId && <Button variant="secondary" onClick={() => navigate(`company-public-profile?companyId=${encodeURIComponent(ad.companyId)}`)}>Ver perfil da empresa</Button>}
               <Button onClick={() => navigate(`match-profile?id=${ad.id}`)}>Ver detalhe do anúncio</Button>
               {!isOwnAd && <Button variant="secondary" onClick={() => openChatForAd(ad)}>Conversar</Button>}
               {!isOwnAd && (canEvaluate
@@ -4704,7 +5164,7 @@ function MatchSuccess() {
   );
 }
 
-function MatchList({ sessionUser }) {
+function MatchList({ sessionUser, navigate }) {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -4720,6 +5180,7 @@ function MatchList({ sessionUser }) {
   const [withdrawingMatchId, setWithdrawingMatchId] = useState("");
   const [filters, setFilters] = useState({ search: "", participation: "all", sort: "matched_desc" });
   const joinedByReciprocalLike = currentHashParams().get("joined") === "1";
+  const canManageConsortium = sessionUser?.roleKey === "company_admin" || sessionUser?.roleKey === "commercial";
 
   const loadMatches = () => {
     setLoading(true);
@@ -4923,6 +5384,15 @@ function MatchList({ sessionUser }) {
                   <div className="wide consortiumCompanies"><small>Empresas consorciadas</small><strong>{members.map((company) => company.companyName).join(" • ")}</strong></div>
                   <div className="consortiumActions">
                     {isLeader && pendingApplications.length > 0 && <span className="statusPill review">{pendingApplications.length} candidata{pendingApplications.length > 1 ? "s" : ""} aguardando</span>}
+                    <button
+                      type="button"
+                      className="assemblyEntryButton"
+                      disabled={!match.leadCompanyId}
+                      title={match.leadCompanyId ? "Abrir a Central de Montagem desta licitação" : "Defina primeiro a empresa líder do consórcio"}
+                      onClick={() => match.leadCompanyId && navigate(`assembly-board?matchId=${match.id}`)}
+                    >
+                      {match.leadCompanyId ? (isLeader && ["company_admin", "commercial"].includes(sessionUser?.roleKey) ? "Seguir para montagem" : "Acompanhar montagem") : "Defina a liderança"}
+                    </button>
                     <button className="iconButton secondaryIcon" title="Gerenciar consórcio" aria-label="Gerenciar consórcio" onClick={() => setOpenMatchId(isOpen ? "" : match.id)}>{isOpen ? "\u2212" : "\u002B"}</button>
                   </div>
                 </div>
@@ -4934,7 +5404,7 @@ function MatchList({ sessionUser }) {
                       {match.leadCompanyName && <span className="statusPill open">Líder atual: {match.leadCompanyName}</span>}
                       <div className="consortiumMembersGroup"><small>Composição atual do consórcio</small><div className="consortiumMembersLine">{members.map((company) => <span key={`${match.id}-current-${company.companyId || company.companyName}`}>{company.companyName}</span>)}</div></div>
                     </div>
-                    <FormGrid>
+                    {canManageConsortium && <FormGrid>
                       <Field label="Empresa líder">
                         <select value={leaders[match.id] || ""} onChange={(event) => setLeaders((current) => ({ ...current, [match.id]: event.target.value }))}>
                           <option value="">Selecione</option>
@@ -4944,10 +5414,10 @@ function MatchList({ sessionUser }) {
                       <Field label="Observação do consórcio">
                         <textarea value={notes[match.id] || ""} onChange={(event) => setNotes((current) => ({ ...current, [match.id]: event.target.value }))} placeholder="Ex.: empresa líder cuidará da proposta comercial e integração documental." />
                       </Field>
-                    </FormGrid>
+                    </FormGrid>}
                     <div className="actions">
-                      <Button onClick={() => saveLeader(match)} disabled={savingId === match.id}>{savingId === match.id ? "Salvando..." : "Salvar liderança"}</Button>
-                      {isLeader && <Button variant="secondary" onClick={() => setAdFormsOpen((current) => ({ ...current, [match.id]: !current[match.id] }))}>{match.consortiumAdId ? "Editar anúncio de busca" : "Buscar nova consorciada"}</Button>}
+                      {canManageConsortium && <Button onClick={() => saveLeader(match)} disabled={savingId === match.id}>{savingId === match.id ? "Salvando..." : "Salvar liderança"}</Button>}
+                      {canManageConsortium && isLeader && <Button variant="secondary" onClick={() => setAdFormsOpen((current) => ({ ...current, [match.id]: !current[match.id] }))}>{match.consortiumAdId ? "Editar anúncio de busca" : "Buscar nova consorciada"}</Button>}
                       {sessionUser?.roleKey === "company_admin" && match.consortiumIntentionId && <Button variant="danger" onClick={() => withdrawFromConsortium(match, members)} disabled={withdrawingMatchId === match.id}>{withdrawingMatchId === match.id ? "Registrando desistência..." : "Desistir do consórcio"}</Button>}
                       <Button variant="secondary" onClick={() => setOpenMatchId("")}>Recolher</Button>
                     </div>
@@ -4971,7 +5441,7 @@ function MatchList({ sessionUser }) {
                         </div>
                       </Card>
                     )}
-                    {isLeader && applications.length > 0 && (
+                    {canManageConsortium && isLeader && applications.length > 0 && (
                       <Card className="nestedPanel">
                         <h3>Candidatas aguardando seu match</h3>
                         <p>Ao dar match, a empresa será incluída oficialmente no consórcio e passará a vê-lo em Meus consórcios.</p>
@@ -4991,6 +5461,739 @@ function MatchList({ sessionUser }) {
               </Card>
             );
           })}
+        </div>
+      )}
+    </Page>
+  );
+}
+
+const assemblyTaskStatuses = [
+  ["pending", "Pendente"],
+  ["in_progress", "Em andamento"],
+  ["waiting_information", "Aguardando informação"],
+  ["blocked", "Bloqueada"],
+  ["under_review", "Em revisão"],
+  ["returned_for_adjustment", "Devolvida para ajuste"],
+  ["completed", "Concluída"],
+  ["not_applicable", "Não se aplica"]
+];
+
+const assemblyPriorities = [
+  ["low", "Baixa"],
+  ["normal", "Normal"],
+  ["high", "Alta"],
+  ["urgent", "Urgente"]
+];
+
+const assemblyStatusLabel = (value) => assemblyTaskStatuses.find(([key]) => key === value)?.[1] || value;
+
+const personalTaskColumns = [
+  ["pending", "Pendentes"],
+  ["in_progress", "Em andamento"],
+  ["waiting_information", "Aguardando informação"],
+  ["blocked", "Bloqueadas"],
+  ["under_review", "Em revisão"],
+  ["returned_for_adjustment", "Para ajuste"],
+  ["completed", "Concluídas"]
+];
+
+const currentLocalISODate = () => {
+  const date = new Date();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+};
+
+const assemblyDateError = (value, openingDate, fieldLabel) => {
+  if (!value) return "";
+  const today = currentLocalISODate();
+  const opening = openingDate ? String(openingDate).slice(0, 10) : "";
+  if (!opening) return "Informe a data de abertura do edital antes de definir prazos da montagem.";
+  if (value < today) return `${fieldLabel} não pode ser anterior à data atual.`;
+  if (value > opening) return `${fieldLabel} não pode ser posterior à data de abertura do edital.`;
+  return "";
+};
+
+function MyAssemblyTasks({ navigate, openChatForTask }) {
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filters, setFilters] = useState({ search: "", sort: "due_asc" });
+  const [selected, setSelected] = useState(null);
+  const [panelLoading, setPanelLoading] = useState(false);
+  const [taskStatus, setTaskStatus] = useState("");
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [comment, setComment] = useState("");
+  const [savingComment, setSavingComment] = useState(false);
+  const [evidence, setEvidence] = useState({ evidenceType: "file", title: "", externalUrl: "", note: "", file: null });
+  const [savingEvidence, setSavingEvidence] = useState(false);
+
+  const request = async (url, options = {}) => {
+    const response = await fetch(`${API_BASE_URL}${url}`, { credentials: "include", ...options });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Não foi possível concluir esta operação.");
+    return data;
+  };
+
+  const loadTasks = async () => {
+    const data = await request("/api/my-assembly-tasks");
+    setTasks(Array.isArray(data) ? data : []);
+  };
+
+  useEffect(() => {
+    loadTasks()
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const deadline = (task) => {
+    if (!task.dueAt || task.status === "completed") return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(`${String(task.dueAt).slice(0, 10)}T00:00:00`);
+    const days = Math.ceil((due - today) / 86400000);
+    if (days < 0) return { className: "overdue", label: `${Math.abs(days)} dia${Math.abs(days) === 1 ? "" : "s"} em atraso` };
+    if (days <= 1) return { className: "soon", label: days === 0 ? "Vence hoje" : "Vence amanhã" };
+    return { className: "planned", label: due.toLocaleDateString("pt-BR") };
+  };
+
+  const visibleTasks = tasks.filter((task) => {
+    const term = filters.search.trim().toLocaleLowerCase("pt-BR");
+    if (!term) return true;
+    return [task.title, task.stageTitle, task.tenderNumber, task.agency, task.tenderObject].join(" ").toLocaleLowerCase("pt-BR").includes(term);
+  }).sort((a, b) => {
+    if (filters.sort === "updated_desc") return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
+    if (filters.sort === "tender_asc") return String(a.tenderNumber || "").localeCompare(String(b.tenderNumber || ""), "pt-BR", { numeric: true });
+    return new Date(a.dueAt || "9999-12-31").getTime() - new Date(b.dueAt || "9999-12-31").getTime();
+  });
+
+  const findTaskInAssembly = (assembly, taskId) => {
+    for (const stage of assembly.stages || []) {
+      const task = (stage.tasks || []).find((item) => item.id === taskId);
+      if (task) return { assembly, task, stageTitle: stage.title };
+    }
+    return null;
+  };
+
+  const openTask = async (task) => {
+    setPanelLoading(true);
+    setError("");
+    try {
+      const assembly = await request(`/api/assemblies/${task.assemblyId}`);
+      const detail = findTaskInAssembly(assembly, task.id);
+      if (!detail) throw new Error("A tarefa não foi encontrada nesta montagem.");
+      setSelected(detail);
+      setTaskStatus(detail.task.status || "pending");
+      setComment("");
+      setEvidence({ evidenceType: "file", title: "", externalUrl: "", note: "", file: null });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPanelLoading(false);
+    }
+  };
+
+  const refreshSelected = async () => {
+    if (!selected) return;
+    const assembly = await request(`/api/assemblies/${selected.assembly.id}`);
+    const detail = findTaskInAssembly(assembly, selected.task.id);
+    if (!detail) {
+      setSelected(null);
+      return;
+    }
+    setSelected(detail);
+    setTaskStatus(detail.task.status || "pending");
+  };
+
+  const saveStatus = async () => {
+    if (!selected) return;
+    setSavingStatus(true);
+    setError("");
+    try {
+      await request(`/api/assemblies/${selected.assembly.id}/tasks/${selected.task.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: taskStatus })
+      });
+      await Promise.all([refreshSelected(), loadTasks()]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingStatus(false);
+    }
+  };
+
+  const addComment = async () => {
+    if (!selected || !comment.trim()) return;
+    setSavingComment(true);
+    setError("");
+    try {
+      await request(`/api/assemblies/${selected.assembly.id}/tasks/${selected.task.id}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: comment.trim() })
+      });
+      setComment("");
+      await Promise.all([refreshSelected(), loadTasks()]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingComment(false);
+    }
+  };
+
+  const fileToDataURL = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const addEvidence = async () => {
+    if (!selected || !evidence.title.trim()) {
+      setError("Informe um título para o documento ou evidência.");
+      return;
+    }
+    setSavingEvidence(true);
+    setError("");
+    try {
+      const payload = { evidenceType: evidence.evidenceType, title: evidence.title.trim(), externalUrl: evidence.externalUrl.trim(), note: evidence.note.trim() };
+      if (evidence.evidenceType === "file" && evidence.file) {
+        payload.fileDataUrl = await fileToDataURL(evidence.file);
+        payload.fileName = evidence.file.name;
+        payload.mimeType = evidence.file.type;
+      }
+      await request(`/api/assemblies/${selected.assembly.id}/tasks/${selected.task.id}/evidences`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      setEvidence({ evidenceType: "file", title: "", externalUrl: "", note: "", file: null });
+      await Promise.all([refreshSelected(), loadTasks()]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingEvidence(false);
+    }
+  };
+  const overdueCount = visibleTasks.filter((task) => deadline(task)?.className === "overdue").length;
+  const dueSoonCount = visibleTasks.filter((task) => deadline(task)?.className === "soon").length;
+
+  if (loading) return <Page label="Empresa" title="Minhas tarefas"><div className="assemblyLoading"><span />Carregando suas tarefas...</div></Page>;
+
+  return (
+    <Page label="Empresa" title="Minhas tarefas">
+      {error && <Card className="dangerNotice"><p>{error}</p></Card>}
+      <section className="personalTasksSummary">
+        <div><strong>{visibleTasks.length}</strong><span>tarefas atribuídas a você</span></div>
+        <div className={overdueCount ? "danger" : "ok"}><strong>{overdueCount}</strong><span>em atraso</span></div>
+        <div className={dueSoonCount ? "attention" : "ok"}><strong>{dueSoonCount}</strong><span>vencem hoje ou amanhã</span></div>
+      </section>
+      <Card className="compactFilters personalTasksFilters">
+        <FormGrid>
+          <Field label="Buscar tarefa"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Tarefa, fase, edital ou órgão" /></Field>
+          <Field label="Ordenar por"><select value={filters.sort} onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value }))}><option value="due_asc">Prazo mais próximo</option><option value="updated_desc">Atualização mais recente</option><option value="tender_asc">Número do edital</option></select></Field>
+        </FormGrid>
+      </Card>
+      {visibleTasks.length === 0 ? <Card><p>Você ainda não possui tarefas de montagem atribuídas diretamente ao seu usuário.</p></Card> : (
+        <div className="personalKanban" aria-label="Kanban das minhas tarefas">
+          {personalTaskColumns.map(([status, label]) => {
+            const columnTasks = visibleTasks.filter((task) => task.status === status);
+            return (
+              <section className={`personalKanbanColumn status-${status}`} key={status}>
+                <header><h3>{label}</h3><span>{columnTasks.length}</span></header>
+                <div className="personalKanbanCards">
+                  {columnTasks.map((task) => {
+                    const taskDeadline = deadline(task);
+                    return (
+                      <button type="button" className={`personalTaskCard status-${task.status}${taskDeadline?.className === "overdue" ? " is-overdue" : ""}${taskDeadline?.className === "soon" ? " is-due-soon" : ""}`} key={task.id} onClick={() => openTask(task)} disabled={panelLoading}>
+                        <span className="personalTaskTender">{task.tenderNumber} · {task.agency}</span>
+                        <strong>{task.title}</strong>
+                        <span className="personalTaskStage">{task.stageTitle}</span>
+                        <div><span className={taskDeadline?.className || "planned"}>{taskDeadline?.label || "Sem prazo"}</span><span className="taskChatSummary" role="button" tabIndex="0" title="Abrir conversa da tarefa" onClick={(event) => { event.stopPropagation(); openChatForTask({ assemblyId: task.assemblyId, taskId: task.id }); }}><i className="taskChatIndicator" aria-hidden="true"><b /><b /><b /></i>Chat</span></div>
+                      </button>
+                    );
+                  })}
+                  {columnTasks.length === 0 && <p className="personalKanbanEmpty">Nenhuma tarefa.</p>}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+      {selected && (
+        <div className="assemblyPanelBackdrop" onMouseDown={(event) => event.target === event.currentTarget && setSelected(null)}>
+          <aside className="assemblyTaskPanel personalTaskPanel" aria-label="Atualizar tarefa">
+            <header><div><span>{selected.task.tenderNumber || selected.assembly.tenderNumber} · {selected.stageTitle}</span><h3>{selected.task.title}</h3></div><button type="button" onClick={() => setSelected(null)} aria-label="Fechar tarefa">×</button></header>
+            <div className="assemblyTaskPanelBody">
+              <section className="assemblyTaskSection">
+                <h4>Andamento</h4>
+                <p className="personalTaskDescription">{selected.task.description || "Sem descrição complementar."}</p>
+                <Field label="Status"><select value={taskStatus} onChange={(event) => setTaskStatus(event.target.value)}>{assemblyTaskStatuses.filter(([value]) => value !== "not_applicable").map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></Field>
+                {taskStatus === "completed" && <small>Ao concluir, a tarefa será enviada para revisão da empresa líder.</small>}
+                <Button onClick={saveStatus} disabled={savingStatus || taskStatus === selected.task.status}>{savingStatus ? "Salvando..." : "Atualizar andamento"}</Button>
+              </section>
+              <section className="assemblyTaskSection">
+                <h4>Comentários</h4>
+                <div className="assemblyComments">{(selected.task.comments || []).length === 0 ? <p>Nenhum comentário nesta tarefa.</p> : selected.task.comments.map((item) => <article key={item.id}><strong>{item.userName} · {item.companyName}</strong><p>{item.content}</p><time>{new Date(item.createdAt).toLocaleString("pt-BR")}</time></article>)}</div>
+                <div className="assemblyComposer"><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Registre uma orientação, pendência ou retorno" maxLength={2000} /><Button onClick={addComment} disabled={savingComment || !comment.trim()}>{savingComment ? "Enviando..." : "Comentar"}</Button></div>
+              </section>
+              <section className="assemblyTaskSection">
+                <h4>Documentos e evidências</h4>
+                <div className="assemblyEvidenceList">{(selected.task.evidences || []).length === 0 ? <p>Nenhum documento anexado.</p> : selected.task.evidences.map((item) => <article key={item.id}><div><strong>{item.title}</strong><small>Versão {item.versionNumber} · {item.userName || item.companyName}</small></div>{item.url ? <a href={item.url} target="_blank" rel="noreferrer">Abrir</a> : <span>{item.note}</span>}</article>)}</div>
+                <div className="assemblyEvidenceForm">
+                  <div className="assemblyFieldGrid"><Field label="Tipo"><select value={evidence.evidenceType} onChange={(event) => setEvidence((current) => ({ ...current, evidenceType: event.target.value }))}><option value="file">Arquivo</option><option value="link">Link externo</option><option value="note">Anotação</option></select></Field><Field label="Título"><input value={evidence.title} onChange={(event) => setEvidence((current) => ({ ...current, title: event.target.value }))} placeholder="Ex.: CAT do coordenador" /></Field></div>
+                  {evidence.evidenceType === "file" && <Field label="Arquivo"><input type="file" onChange={(event) => setEvidence((current) => ({ ...current, file: event.target.files?.[0] || null }))} /></Field>}
+                  {evidence.evidenceType === "link" && <Field label="Endereço do documento"><input type="url" value={evidence.externalUrl} onChange={(event) => setEvidence((current) => ({ ...current, externalUrl: event.target.value }))} placeholder="https://" /></Field>}
+                  {evidence.evidenceType === "note" && <Field label="Anotação"><textarea value={evidence.note} onChange={(event) => setEvidence((current) => ({ ...current, note: event.target.value }))} /></Field>}
+                  <Button onClick={addEvidence} disabled={savingEvidence}>{savingEvidence ? "Incluindo..." : "Incluir no dossiê"}</Button>
+                </div>
+              </section>
+            </div>
+          </aside>
+        </div>
+      )}
+    </Page>
+  );
+}
+
+function AssemblyBoard({ sessionUser, navigate, openChatForTask }) {
+  const matchId = currentHashParams().get("matchId") || "";
+  const requestedTaskId = currentHashParams().get("taskId") || "";
+  const [assembly, setAssembly] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [startForm, setStartForm] = useState({ title: "", dueDate: "" });
+  const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [taskDraft, setTaskDraft] = useState(null);
+  const [savingTask, setSavingTask] = useState(false);
+  const [deletingTask, setDeletingTask] = useState(false);
+  const [comment, setComment] = useState("");
+  const [savingComment, setSavingComment] = useState(false);
+  const [evidence, setEvidence] = useState({ evidenceType: "file", title: "", externalUrl: "", note: "", file: null });
+  const [savingEvidence, setSavingEvidence] = useState(false);
+  const [dossierOpen, setDossierOpen] = useState(false);
+  const [newStageOpen, setNewStageOpen] = useState(false);
+  const [newStage, setNewStage] = useState({ title: "", description: "" });
+  const [newTaskStageId, setNewTaskStageId] = useState("");
+  const [newTask, setNewTask] = useState({ title: "", description: "" });
+  const [savingStructure, setSavingStructure] = useState(false);
+  const todayISO = currentLocalISODate();
+  const openingDate = assembly?.openingDate ? String(assembly.openingDate).slice(0, 10) : "";
+  const canSchedule = Boolean(openingDate && openingDate >= todayISO);
+
+  const request = async (url, options = {}) => {
+    const response = await fetch(`${API_BASE_URL}${url}`, { credentials: "include", ...options });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Não foi possível concluir esta operação.");
+    return data;
+  };
+
+  const loadAssembly = async ({ quiet = false } = {}) => {
+    if (!matchId) {
+      setError("Abra a Central de Montagem por um consórcio em Meus consórcios.");
+      setLoading(false);
+      return;
+    }
+    if (!quiet) setLoading(true);
+    try {
+      const data = await request(`/api/assemblies?matchId=${encodeURIComponent(matchId)}`);
+      setAssembly(data);
+      setError("");
+      if (requestedTaskId && data.exists && Array.isArray(data.stages)) {
+        const requestedTaskExists = data.stages.some((stage) =>
+          (stage.tasks || []).some((task) => task.id === requestedTaskId)
+        );
+        if (requestedTaskExists) setSelectedTaskId(requestedTaskId);
+      }
+      if (data.exists === false && !startForm.title) {
+        setStartForm((current) => ({ ...current, title: `Montagem da licitação ${data.tenderNumber || ""}`.trim() }));
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAssembly();
+  }, [matchId, requestedTaskId]);
+
+  const stages = assembly?.stages || [];
+  const allTasks = stages.flatMap((stage) => (stage.tasks || []).map((task) => ({ ...task, stageId: stage.id, stageTitle: stage.title })));
+  const selectedTask = allTasks.find((task) => task.id === selectedTaskId) || null;
+
+  useEffect(() => {
+    if (!selectedTask) {
+      setTaskDraft(null);
+      return;
+    }
+    setTaskDraft({
+      title: selectedTask.title || "",
+      description: selectedTask.description || "",
+      status: selectedTask.status || "pending",
+      priority: selectedTask.priority || "normal",
+      responsibleCompanyId: selectedTask.responsibleCompanyId || "",
+      responsibleUserId: selectedTask.responsibleUserId || "",
+      dueDate: selectedTask.dueAt ? String(selectedTask.dueAt).slice(0, 10) : ""
+    });
+  }, [selectedTaskId, selectedTask?.status, selectedTask?.responsibleUserId, selectedTask?.dueAt]);
+
+  const beginAssembly = async () => {
+    const dateError = assemblyDateError(startForm.dueDate, openingDate, "Prazo geral");
+    if (dateError) {
+      setError(dateError);
+      return;
+    }
+    setCreating(true);
+    setError("");
+    try {
+      const data = await request("/api/assemblies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId, ...startForm })
+      });
+      setAssembly(data);
+      setNotice("Central de Montagem iniciada com as oito fases do Modelo LicitaHub.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const saveTask = async () => {
+    if (!selectedTask || !taskDraft) return;
+    const dateError = assemblyDateError(taskDraft.dueDate, openingDate, "Prazo da tarefa");
+    if (dateError) {
+      setError(dateError);
+      return;
+    }
+    setSavingTask(true);
+    setError("");
+    try {
+      await request(`/api/assemblies/${assembly.id}/tasks/${selectedTask.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(taskDraft)
+      });
+      await loadAssembly({ quiet: true });
+      setNotice(taskDraft.status === "completed" && !assembly.canManage ? "Tarefa enviada para revisão da empresa líder." : "Tarefa atualizada.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingTask(false);
+    }
+  };
+
+  const deleteTask = async () => {
+    if (!selectedTask || !assembly?.canManage) return;
+    const confirmed = window.confirm(`Excluir a tarefa "${selectedTask.title}"? Comentários e documentos vinculados a ela também serão removidos.`);
+    if (!confirmed) return;
+    setDeletingTask(true);
+    setError("");
+    try {
+      await request(`/api/assemblies/${assembly.id}/tasks/${selectedTask.id}`, { method: "DELETE" });
+      setSelectedTaskId("");
+      setTaskDraft(null);
+      await loadAssembly({ quiet: true });
+      setNotice("Tarefa excluída da montagem.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeletingTask(false);
+    }
+  };
+
+  const addComment = async () => {
+    if (!comment.trim() || !selectedTask) return;
+    setSavingComment(true);
+    try {
+      await request(`/api/assemblies/${assembly.id}/tasks/${selectedTask.id}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: comment.trim() })
+      });
+      setComment("");
+      await loadAssembly({ quiet: true });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingComment(false);
+    }
+  };
+
+  const fileToDataURL = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const addEvidence = async () => {
+    if (!selectedTask || !evidence.title.trim()) {
+      setError("Informe um título para o documento ou evidência.");
+      return;
+    }
+    setSavingEvidence(true);
+    setError("");
+    try {
+      const payload = {
+        evidenceType: evidence.evidenceType,
+        title: evidence.title.trim(),
+        externalUrl: evidence.externalUrl.trim(),
+        note: evidence.note.trim()
+      };
+      if (evidence.evidenceType === "file" && evidence.file) {
+        payload.fileDataUrl = await fileToDataURL(evidence.file);
+        payload.fileName = evidence.file.name;
+        payload.mimeType = evidence.file.type;
+      }
+      await request(`/api/assemblies/${assembly.id}/tasks/${selectedTask.id}/evidences`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      setEvidence({ evidenceType: "file", title: "", externalUrl: "", note: "", file: null });
+      await loadAssembly({ quiet: true });
+      setNotice("Documento ou evidência incluído no dossiê.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingEvidence(false);
+    }
+  };
+
+  const createStage = async () => {
+    if (!newStage.title.trim()) return;
+    setSavingStructure(true);
+    try {
+      await request(`/api/assemblies/${assembly.id}/stages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newStage)
+      });
+      setNewStage({ title: "", description: "" });
+      setNewStageOpen(false);
+      await loadAssembly({ quiet: true });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingStructure(false);
+    }
+  };
+
+  const createTask = async () => {
+    if (!newTaskStageId || !newTask.title.trim()) return;
+    setSavingStructure(true);
+    try {
+      await request(`/api/assemblies/${assembly.id}/stages/${newTaskStageId}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newTask)
+      });
+      setNewTask({ title: "", description: "" });
+      setNewTaskStageId("");
+      await loadAssembly({ quiet: true });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingStructure(false);
+    }
+  };
+
+  const dueState = (task) => {
+    if (!task.dueAt || task.status === "completed" || task.status === "not_applicable") return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(`${String(task.dueAt).slice(0, 10)}T00:00:00`);
+    const days = Math.ceil((due - today) / 86400000);
+    if (days < 0) return { className: "overdue", label: `${Math.abs(days)} dia${Math.abs(days) === 1 ? "" : "s"} em atraso` };
+    if (days <= 1) return { className: "soon", label: days === 0 ? "Vence hoje" : "Vence amanhã" };
+    return { className: "planned", label: new Date(`${String(task.dueAt).slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR") };
+  };
+
+  if (loading) return <Page label="Licitações" title="Central de Montagem da Licitação"><div className="assemblyLoading"><span />Carregando o plano de montagem...</div></Page>;
+
+  if (!matchId || (!assembly && error)) {
+    return <Page label="Licitações" title="Central de Montagem da Licitação"><Card className="dangerNotice"><p>{error || "Consórcio não informado."}</p><Button variant="secondary" onClick={() => navigate("match-list")}>Voltar para Meus consórcios</Button></Card></Page>;
+  }
+
+  if (assembly?.exists === false) {
+    return (
+      <Page label="Licitações" title="Central de Montagem da Licitação">
+        {error && <Card className="dangerNotice"><p>{error}</p></Card>}
+        <section className="assemblyWelcome">
+          <div className="assemblyWelcomeCopy">
+            <span className="assemblyKicker">Consórcio pronto para organizar</span>
+            <h3>{assembly.tenderNumber} · {assembly.agency}</h3>
+            <p>{assembly.tenderObject}</p>
+            <div className="assemblyLeadLine"><span>Empresa líder</span><strong>{assembly.leadCompanyName}</strong></div>
+          </div>
+          {assembly.canCreate ? (
+            <div className="assemblyStartForm">
+              <h3>Iniciar a montagem</h3>
+              <Field label="Nome do plano"><input value={startForm.title} onChange={(event) => setStartForm((current) => ({ ...current, title: event.target.value }))} maxLength={180} /></Field>
+              <Field label="Prazo geral"><input type="date" value={startForm.dueDate} min={todayISO} max={openingDate || undefined} disabled={!canSchedule} onChange={(event) => setStartForm((current) => ({ ...current, dueDate: event.target.value }))} />{!canSchedule && <small>{openingDate ? "A abertura do edital já ocorreu; não há prazo disponível para planejamento." : "Defina a data de abertura do edital para liberar os prazos."}</small>}</Field>
+              <Button onClick={beginAssembly} disabled={creating}>{creating ? "Preparando fases..." : "Iniciar com Modelo LicitaHub"}</Button>
+            </div>
+          ) : (
+            <div className="assemblyWaiting"><strong>Aguardando a empresa líder</strong><p>Assim que a líder iniciar a montagem, todas as consorciadas poderão acompanhar as fases e colaborar nas tarefas atribuídas.</p></div>
+          )}
+        </section>
+      </Page>
+    );
+  }
+
+  const applicableTasks = allTasks.filter((task) => task.status !== "not_applicable");
+  const completedTasks = applicableTasks.filter((task) => task.status === "completed").length;
+  const overallProgress = applicableTasks.length ? Math.round((completedTasks / applicableTasks.length) * 100) : 100;
+  const overdueCount = allTasks.filter((task) => dueState(task)?.className === "overdue").length;
+  const reviewCount = allTasks.filter((task) => task.status === "under_review").length;
+  const blockedCount = allTasks.filter((task) => task.status === "blocked").length;
+  const dossierItems = allTasks.flatMap((task) => (task.evidences || []).map((item) => ({ ...item, taskTitle: task.title, stageTitle: task.stageTitle })));
+  const availableProfessionals = (assembly.professionals || []).filter((professional) => !taskDraft?.responsibleCompanyId || professional.companyId === taskDraft.responsibleCompanyId);
+
+  return (
+    <Page label="Licitações" title="Central de Montagem da Licitação" actions={<Button variant="secondary" onClick={() => navigate("match-list")}>Meus consórcios</Button>}>
+      {error && <Card className="dangerNotice"><p>{error}</p></Card>}
+      {notice && <div className="assemblyNotice"><span>{notice}</span><button type="button" onClick={() => setNotice("")} aria-label="Fechar aviso">×</button></div>}
+
+      <section className="assemblyOverview">
+        <div className="assemblyTenderIdentity">
+          <span>{assembly.tenderNumber} · {assembly.agency}</span>
+          <h3>{assembly.title}</h3>
+          <p>{assembly.tenderObject}</p>
+          <div className="assemblyMemberList"><strong>Liderança: {assembly.leadCompanyName}</strong>{(assembly.members || []).map((member) => <span key={member.companyId}>{member.companyName}</span>)}</div>
+        </div>
+        <div className="assemblyProgressHero">
+          <div className="assemblyProgressNumber"><strong>{overallProgress}%</strong><span>concluído</span></div>
+          <div className="assemblyProgressTrack"><i style={{ width: `${overallProgress}%` }} /></div>
+          <small>{completedTasks} de {applicableTasks.length} tarefas aplicáveis concluídas</small>
+        </div>
+        <div className="assemblyHealth">
+          <div className={overdueCount ? "danger" : "ok"}><strong>{overdueCount}</strong><span>em atraso</span></div>
+          <div className={reviewCount ? "attention" : "ok"}><strong>{reviewCount}</strong><span>em revisão</span></div>
+          <div className={blockedCount ? "danger" : "ok"}><strong>{blockedCount}</strong><span>bloqueadas</span></div>
+        </div>
+      </section>
+
+      <div className="assemblyToolbar">
+        <div><strong>{stages.length} fases</strong><span>{allTasks.length} tarefas no plano</span></div>
+        <div className="actions">
+          <Button variant="secondary" onClick={() => setDossierOpen(true)}>Abrir dossiê ({dossierItems.length})</Button>
+          {assembly.canManage && <Button variant="secondary" onClick={() => setNewStageOpen((current) => !current)}>Nova fase</Button>}
+        </div>
+      </div>
+
+      {assembly.canManage && newStageOpen && (
+        <section className="assemblyInlineForm">
+          <div><h3>Criar fase complementar</h3><p>A fase será adicionada ao final deste plano e não altera o Modelo LicitaHub.</p></div>
+          <Field label="Nome da fase"><input value={newStage.title} onChange={(event) => setNewStage((current) => ({ ...current, title: event.target.value }))} /></Field>
+          <Field label="Objetivo"><input value={newStage.description} onChange={(event) => setNewStage((current) => ({ ...current, description: event.target.value }))} /></Field>
+          <Button onClick={createStage} disabled={savingStructure || !newStage.title.trim()}>Criar fase</Button>
+        </section>
+      )}
+
+      <div className="assemblyStageGrid">
+        {stages.map((stage, index) => (
+          <section className="assemblyStage" key={stage.id}>
+            <header>
+              <div className="assemblyStageNumber">{String(index + 1).padStart(2, "0")}</div>
+              <div><span>Fase {index + 1}</span><h3>{stage.title}</h3></div>
+              <strong>{stage.progress || 0}%</strong>
+            </header>
+            <p className="assemblyStageDescription">{stage.description}</p>
+            <div className="assemblyStageProgress"><i style={{ width: `${stage.progress || 0}%` }} /></div>
+            <div className="assemblyTaskList">
+              {(stage.tasks || []).map((task) => {
+                const deadline = dueState(task);
+                return (
+                  <button type="button" className={`assemblyTaskCard status-${task.status}${deadline?.className === "overdue" ? " is-overdue" : ""}${deadline?.className === "soon" ? " is-due-soon" : ""}`} key={task.id} onClick={() => setSelectedTaskId(task.id)}>
+                    <div className="assemblyTaskTop"><span className={`assemblyStatusDot ${task.status}`} /><strong>{task.title}</strong><em className={`priority-${task.priority}`}>{assemblyPriorities.find(([key]) => key === task.priority)?.[1]}</em></div>
+                    <div className="assemblyTaskMeta"><span>{assemblyStatusLabel(task.status)}</span>{task.responsibleCompanyName && <span>{task.responsibleCompanyName}</span>}</div>
+                    <div className="assemblyTaskFoot">{deadline ? <span className={deadline.className}>{deadline.label}</span> : <span>Sem prazo</span>}{task.responsibleUserId ? <span className="taskChatSummary" role="button" tabIndex="0" title="Conversar com o responsável" onClick={(event) => { event.stopPropagation(); openChatForTask({ assemblyId: assembly.id, taskId: task.id }); }}><i className="taskChatIndicator" aria-hidden="true"><b /><b /><b /></i>Chat</span> : <span>{(task.comments || []).length} comentários · {(task.evidences || []).length} arquivos</span>}</div>
+                  </button>
+                );
+              })}
+            </div>
+            {assembly.canManage && (
+              newTaskStageId === stage.id ? (
+                <div className="assemblyNewTaskForm">
+                  <input value={newTask.title} onChange={(event) => setNewTask((current) => ({ ...current, title: event.target.value }))} placeholder="Nome da nova tarefa" />
+                  <textarea value={newTask.description} onChange={(event) => setNewTask((current) => ({ ...current, description: event.target.value }))} placeholder="Descrição e critério de conclusão" />
+                  <div className="actions"><Button onClick={createTask} disabled={savingStructure || !newTask.title.trim()}>Adicionar</Button><Button variant="secondary" onClick={() => setNewTaskStageId("")}>Cancelar</Button></div>
+                </div>
+              ) : <button type="button" className="assemblyAddTask" onClick={() => setNewTaskStageId(stage.id)}>+ Adicionar tarefa nesta fase</button>
+            )}
+          </section>
+        ))}
+      </div>
+
+      {selectedTask && taskDraft && (
+        <div className="assemblyPanelBackdrop" onMouseDown={(event) => event.target === event.currentTarget && setSelectedTaskId("")}>
+          <aside className="assemblyTaskPanel" aria-label="Detalhes da tarefa">
+            <header><div><span>{selectedTask.stageTitle}</span><h3>{selectedTask.title}</h3></div><button type="button" onClick={() => setSelectedTaskId("")} aria-label="Fechar detalhes">×</button></header>
+            <div className="assemblyTaskPanelBody">
+              <section className="assemblyTaskSection">
+                <h4>Execução da tarefa</h4>
+                <Field label="Título"><input value={taskDraft.title} disabled={!assembly.canManage} onChange={(event) => setTaskDraft((current) => ({ ...current, title: event.target.value }))} /></Field>
+                <Field label="Descrição e critério de conclusão"><textarea value={taskDraft.description} disabled={!assembly.canManage} onChange={(event) => setTaskDraft((current) => ({ ...current, description: event.target.value }))} /></Field>
+                <div className="assemblyFieldGrid">
+                  <Field label="Status"><select value={taskDraft.status} disabled={!assembly.canWork} onChange={(event) => setTaskDraft((current) => ({ ...current, status: event.target.value }))}>{assemblyTaskStatuses.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></Field>
+                  <Field label="Prioridade"><select value={taskDraft.priority} disabled={!assembly.canManage} onChange={(event) => setTaskDraft((current) => ({ ...current, priority: event.target.value }))}>{assemblyPriorities.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></Field>
+                  <Field label="Empresa responsável"><select value={taskDraft.responsibleCompanyId} disabled={!assembly.canManage} onChange={(event) => setTaskDraft((current) => ({ ...current, responsibleCompanyId: event.target.value, responsibleUserId: "" }))}><option value="">Não definida</option>{(assembly.members || []).map((member) => <option value={member.companyId} key={member.companyId}>{member.companyName}</option>)}</select></Field>
+                  <Field label="Profissional responsável"><select value={taskDraft.responsibleUserId} disabled={!assembly.canManage} onChange={(event) => setTaskDraft((current) => ({ ...current, responsibleUserId: event.target.value }))}><option value="">Não definido</option>{availableProfessionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.fullName} · {professional.companyName}</option>)}</select></Field>
+                  <Field label="Prazo"><input type="date" value={taskDraft.dueDate} min={todayISO} max={openingDate || undefined} disabled={!assembly.canManage || !canSchedule} onChange={(event) => setTaskDraft((current) => ({ ...current, dueDate: event.target.value }))} />{assembly.canManage && !canSchedule && <small>{openingDate ? "A abertura do edital já ocorreu." : "Data de abertura do edital não informada."}</small>}</Field>
+                </div>
+                <div className="actions">
+                  {assembly.canWork && <Button onClick={saveTask} disabled={savingTask || deletingTask}>{savingTask ? "Salvando..." : assembly.canManage ? "Salvar tarefa" : "Atualizar andamento"}</Button>}
+                  {assembly.canManage && <Button variant="danger" onClick={deleteTask} disabled={deletingTask || savingTask}>{deletingTask ? "Excluindo..." : "Excluir tarefa"}</Button>}
+                </div>
+              </section>
+
+              <section className="assemblyTaskSection">
+                <h4>Comentários</h4>
+                <div className="assemblyComments">{(selectedTask.comments || []).length === 0 ? <p>Nenhum comentário nesta tarefa.</p> : selectedTask.comments.map((item) => <article key={item.id}><strong>{item.userName} · {item.companyName}</strong><p>{item.content}</p><time>{new Date(item.createdAt).toLocaleString("pt-BR")}</time></article>)}</div>
+                {assembly.canWork && <div className="assemblyComposer"><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Registre uma orientação, pendência ou retorno da revisão" maxLength={2000} /><Button onClick={addComment} disabled={savingComment || !comment.trim()}>{savingComment ? "Enviando..." : "Comentar"}</Button></div>}
+              </section>
+
+              <section className="assemblyTaskSection">
+                <h4>Documentos e evidências</h4>
+                <div className="assemblyEvidenceList">{(selectedTask.evidences || []).length === 0 ? <p>Nenhum documento anexado.</p> : selectedTask.evidences.map((item) => <article key={item.id}><div><strong>{item.title}</strong><small>Versão {item.versionNumber} · {item.userName || item.companyName}</small></div>{item.url ? <a href={item.url} target="_blank" rel="noreferrer">Abrir</a> : <span>{item.note}</span>}</article>)}</div>
+                {assembly.canWork && <div className="assemblyEvidenceForm">
+                  <div className="assemblyFieldGrid">
+                    <Field label="Tipo"><select value={evidence.evidenceType} onChange={(event) => setEvidence((current) => ({ ...current, evidenceType: event.target.value }))}><option value="file">Arquivo</option><option value="link">Link externo</option><option value="note">Anotação</option></select></Field>
+                    <Field label="Título"><input value={evidence.title} onChange={(event) => setEvidence((current) => ({ ...current, title: event.target.value }))} placeholder="Ex.: CAT do coordenador" /></Field>
+                  </div>
+                  {evidence.evidenceType === "file" && <Field label="Arquivo"><input type="file" onChange={(event) => setEvidence((current) => ({ ...current, file: event.target.files?.[0] || null }))} /></Field>}
+                  {evidence.evidenceType === "link" && <Field label="Endereço do documento"><input type="url" value={evidence.externalUrl} onChange={(event) => setEvidence((current) => ({ ...current, externalUrl: event.target.value }))} placeholder="https://" /></Field>}
+                  {evidence.evidenceType === "note" && <Field label="Anotação"><textarea value={evidence.note} onChange={(event) => setEvidence((current) => ({ ...current, note: event.target.value }))} /></Field>}
+                  <Button onClick={addEvidence} disabled={savingEvidence}>{savingEvidence ? "Incluindo..." : "Incluir no dossiê"}</Button>
+                </div>}
+              </section>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {dossierOpen && (
+        <div className="assemblyPanelBackdrop" onMouseDown={(event) => event.target === event.currentTarget && setDossierOpen(false)}>
+          <aside className="assemblyDossierPanel">
+            <header><div><span>Dossiê consolidado</span><h3>Documentos da montagem</h3></div><button type="button" onClick={() => setDossierOpen(false)} aria-label="Fechar dossiê">×</button></header>
+            <div className="assemblyDossierSummary"><strong>{dossierItems.length}</strong><span>documentos e evidências reunidos por fase e tarefa</span></div>
+            <div className="assemblyDossierBody">
+              {stages.map((stage) => {
+                const stageItems = (stage.tasks || []).flatMap((task) => (task.evidences || []).map((item) => ({ ...item, taskTitle: task.title })));
+                if (!stageItems.length) return null;
+                return <section key={stage.id}><h4>{stage.title}</h4>{stageItems.map((item) => <article key={item.id}><div><strong>{item.title}</strong><span>{item.taskTitle}</span><small>{item.companyName} · versão {item.versionNumber}</small></div>{item.url ? <a href={item.url} target="_blank" rel="noreferrer">Abrir documento</a> : <p>{item.note}</p>}</article>)}</section>;
+              })}
+              {!dossierItems.length && <div className="assemblyEmptyDossier"><strong>O dossiê ainda está vazio</strong><p>Os documentos incluídos nas tarefas aparecerão automaticamente aqui, organizados por fase.</p></div>}
+            </div>
+          </aside>
         </div>
       )}
     </Page>

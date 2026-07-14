@@ -31,7 +31,7 @@ O script:
 O `run-dev.cmd` aponta para:
 
 ```text
-licitahub-v44.exe
+licitahub-v46.exe
 ```
 
 Se o backend for recompilado, atualize o `run-dev.cmd` para apontar para a versao nova.
@@ -65,6 +65,10 @@ Se o backend for recompilado, atualize o `run-dev.cmd` para apontar para a versa
 - `/api/tenders`
 - `/api/partnership-ads`
 - `/api/matches`
+- `/api/assemblies`
+- `/api/assemblies/{id}`
+- `/api/assemblies/{id}/stages`
+- `/api/assemblies/{id}/tasks/{taskId}`
 - `/api/chat/threads`
 - `/api/chat/events`
 
@@ -80,6 +84,13 @@ Exemplos:
 - Edicao do perfil da empresa: administrador da empresa.
 - Gestao de usuarios vinculados: administrador da empresa.
 - Desistencia, lideranca e anuncio complementar do consorcio: administrador da empresa.
+- Inicio e estrutura da Central de Montagem: administrador ou comercial da empresa lider.
+- Andamento, comentarios e evidencias da montagem: profissionais autorizados das empresas consorciadas.
+- `GET /api/my-assembly-tasks`: Kanban pessoal com tarefas atribuidas ao usuario logado em todas as montagens de sua empresa.
+- `POST /api/task-chats`: abre no chat geral uma conversa privada vinculada a tarefa, entre o responsavel e a coordenacao da empresa lider.
+- `POST /api/direct-chats`: abre uma conversa direta e privada entre dois profissionais ativos.
+- `DELETE /api/assemblies/{assemblyId}/tasks/{taskId}`: exclui uma tarefa e seus registros vinculados; permitido somente para administrador ou comercial da empresa lider.
+- `PATCH /api/assemblies/{assemblyId}/tasks/{taskId}/status`: atualiza somente o andamento da tarefa atribuida ao profissional ou a sua empresa.
 
 ## Pendente para fase posterior
 

@@ -69,6 +69,7 @@ Regras principais:
 - Usuarios vinculados aparecem apenas dentro da propria empresa.
 - Lista de usuarios vinculados possui filtros fixos por busca, perfil e status.
 - O perfil publico apresenta profissionais ativos em area retratil. Ao selecionar um profissional, a comunidade ve foto, nome, cargo, e-mail e telefone institucionais; senha, perfil de acesso e dados internos nao sao exibidos.
+- Na comunidade, o nome e a logomarca de cada empresa nas publicacoes abrem o perfil publico daquela empresa. A vitrine de parceiros e a lista de empresas interessadas tambem oferecem acesso ao perfil da anunciante. Os comandos de criar e administrar publicacoes aparecem apenas no perfil da propria empresa logada.
 
 ## Modulo Comunidade
 
@@ -145,6 +146,8 @@ Regras principais:
 - Publicacao de noticia gera notificacao.
 
 ## Modulo Editais
+
+- O administrador da plataforma pode anexar quantidade livre de arquivos a cada edital, inclusive no cadastro inicial ou posteriormente no detalhe. Os documentos ficam disponíveis para download aos usuários da plataforma; o limite operacional é de 25 MB por arquivo.
 
 Uso principal: centralizar editais captados no mercado de licitacao publica.
 
@@ -329,7 +332,10 @@ Principais grupos:
 - Radar: categorias e noticias.
 - Comunidade: categorias, publicacoes, imagens, curtidas, comentarios e favoritos.
 - Editais: editais, arquivos, requisitos, interesses e requisitos do interesse.
+- Impugnacoes: pedido da empresa licitante, fundamentacao, anexos, protocolo e notificacao ao administrador da plataforma.
+- IA de editais: historico de pre-analises, documentos de origem, modelo utilizado, resposta e falhas de processamento.
 - Match/consorcio: anuncios, avaliacoes, matches, contatos, intencoes, membros, candidaturas e chat.
+- Central de Montagem: modelos, fases fixas, tarefas, responsaveis, comentarios, evidencias, prazos e historico operacional.
 - Notificacoes: alertas por usuario/empresa.
 - Auditoria: estrutura existe, mas uso completo fica para fase posterior.
 
@@ -343,8 +349,67 @@ Principais grupos:
 - Configuracao por ambiente.
 - Deploy externo.
 - Evolucao para aplicativo mobile.
-- Integracoes com IA/API.
-- Kanban de montagem da licitacao apos definicao do consorcio e da lider.
+- Integracao futura com outras IAs e automacoes avancadas.
+
+## Pre-analise de Editais com IA
+
+O administrador da plataforma pode anexar quantos documentos forem necessarios ao edital e, no detalhe do edital, solicitar a geracao da pre-analise tecnica em HTML.
+
+- O roteiro oficial esta em `backend/prompts/analise-primaria-edital.txt` e foi fornecido pela LicitaHub.
+- O HTML gerado aparece no proprio detalhe do edital, pode ser baixado e continua podendo ser substituido por um HTML manual.
+- Cada tentativa fica registrada com situacao: aguardando, em processamento, concluida ou falhou.
+- O processamento usa somente os documentos diretamente anexados ao edital. Arquivos compactados e arquivos tecnicos sem conteudo textual nao entram na analise automatica.
+- A analise deve receber arquivos de ate 22 MB cada e 50 MB somados em uma unica solicitacao. Para maior fidelidade de tabelas, imagens e diagramas, prefira documentos em PDF.
+- A chave da API fica apenas no arquivo local `backend/.env.openai`, que e ignorado pelo Git. Ela nunca deve ser adicionada ao frontend ou enviada ao repositorio.
+- Para configurar no computador local, abra `backend/CONFIGURAR-OPENAI.cmd` e depois reinicie `backend/run-dev.cmd`.
+
+## Pedido de Impugnacao de Edital
+
+No detalhe de um edital publicado, em analise ou ja marcado como impugnado, usuarios administrador, comercial ou tecnico da empresa podem abrir um pedido de impugnacao.
+
+- O pedido recebe assunto, fundamentacao e anexos de apoio.
+- Cada empresa possui um pedido por edital, que pode ser atualizado enquanto estiver protocolado.
+- O protocolo gera aviso para os administradores da plataforma.
+- Protocolar o pedido **nao** muda automaticamente o status do edital para `Impugnado`; essa decisao continua sendo administrativa.
+- O pedido e seus anexos ficam registrados no banco para consulta posterior.
+- Se o protocolo for feito com menos de tres dias uteis antes da sessao, o sistema mostra o alerta do Art. 164 e registra a marca de pedido intempestivo, sem bloquear a empresa.
+- O administrador da plataforma possui a tela `Impugnacoes`, organizada como Kanban em `Protocolados`, `Em analise` e `Concluidos`.
+- Cada cartao mostra empresa, edital, sessao, prazo interno calculado para seis dias antes da sessao, fundamentacao e anexos para download.
+- O administrador pode mudar o andamento para protocolado, em analise, procedente, improcedente ou retirado. A empresa solicitante recebe uma notificacao da atualizacao.
+
+## Central de Montagem da Licitacao
+
+A Central de Montagem nasce em `Meus consorcios`, depois que a empresa lider foi definida. Nao e um Kanban convencional: as tarefas nao mudam de fase. Cada tarefa permanece na fase a que pertence e evolui por status.
+
+O Modelo LicitaHub inicia cada montagem com oito fases:
+
+1. Planejamento da montagem.
+2. Concepcao consorcial.
+3. Montagem da peca qualitativa.
+4. Montagem do orcamento.
+5. Montagem da equipe tecnica.
+6. Montagem das declaracoes.
+7. Certificacoes e quesitos de pontuacao.
+8. Revisao e consolidacao.
+
+Regras principais:
+
+- O administrador ou comercial da empresa lider inicia a montagem.
+- Todas as empresas ativas do consorcio podem acompanhar o painel.
+- A lider cria fases complementares, tarefas, prazos e atribuicoes.
+- O responsavel pode atualizar a tarefa e envia-la para revisao; a conclusao definitiva fica sob validacao da lider.
+- Profissionais ativos de qualquer empresa consorciada podem ser responsaveis.
+- `Nao se aplica` retira o peso da tarefa do percentual da fase.
+- Todo prazo da montagem deve estar entre a data atual e a data de abertura do edital; sem data de abertura, o prazo fica indisponivel.
+- `Minhas tarefas` reune, em um Kanban pessoal, somente as tarefas atribuidas diretamente ao profissional em todas as montagens de que sua empresa participa. Cada cartao identifica o edital e abre a tarefa na Central de Montagem correspondente.
+- Ao clicar em um cartao de `Minhas tarefas`, o profissional abre uma divisao lateral na propria tela para atualizar o status, comentar e incluir documentos, links ou anotacoes. Ele nao altera a estrutura da tarefa nessa tela.
+- O chat flutuante atende conversas de anuncios e tarefas. A conversa de tarefa tem historico proprio e e acessivel apenas ao profissional responsavel e aos usuarios de coordenacao da empresa lider.
+- No perfil publico da empresa, um usuario pode abrir uma conversa direta com um profissional vinculado. O historico e privado e acessivel somente aos dois usuarios participantes.
+- Somente o administrador ou comercial da empresa lider pode criar, alterar a estrutura ou excluir tarefas. A exclusao remove tambem os comentarios e documentos vinculados a tarefa.
+- Comentarios, arquivos, links e anotacoes ficam vinculados a tarefa.
+- O dossie consolida automaticamente as evidencias por fase e tarefa.
+- Prazos vencidos ou proximos do vencimento geram alertas internos sem duplicacao diaria.
+- A saida de uma empresa do consorcio preserva o historico e permite redistribuir suas tarefas.
 
 ## Roteiro de teste manual
 
@@ -369,6 +434,12 @@ O teste manual deve passar por:
 17. Chat entre empresas antes do match.
 18. Notificacoes no sino.
 19. Tentativas de acesso indevido por usuario comum.
+20. Inicio da Central de Montagem pela empresa lider.
+21. Atribuicao de tarefas a empresas e profissionais consorciados.
+22. Atualizacao de status, revisao, comentarios, evidencias e dossie final.
+23. Protocolo de pedido de impugnacao com assunto, fundamentacao e anexos.
+24. Protocolo com menos de tres dias uteis antes da sessao, confirmando o alerta de intempestividade e o registro do pedido.
+25. Consulta, download de anexos e atualizacao de andamento na Central de Impugnacoes pelo administrador da plataforma.
 
 ## Situacao dos testes manuais
 

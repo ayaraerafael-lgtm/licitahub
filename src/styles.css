@@ -13,6 +13,513 @@
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+/* Central de Montagem da Licitacao */
+.assemblyLoading {
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.assemblyLoading span {
+  width: 22px;
+  height: 22px;
+  border: 3px solid #dbe3ea;
+  border-top-color: #14745d;
+  border-radius: 50%;
+  animation: assemblySpin 0.8s linear infinite;
+}
+
+@keyframes assemblySpin { to { transform: rotate(360deg); } }
+
+.assemblyWelcome {
+  min-height: 440px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  border: 1px solid #d8e1e6;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.assemblyWelcomeCopy {
+  padding: 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: #173d44;
+  color: #fff;
+}
+
+.assemblyWelcomeCopy h3 { margin: 12px 0; font-size: 30px; max-width: 680px; }
+.assemblyWelcomeCopy p { max-width: 720px; color: #d6e5e5; font-size: 16px; line-height: 1.65; }
+.assemblyKicker { color: #8ed8be; font-weight: 700; text-transform: uppercase; font-size: 12px; }
+.assemblyLeadLine { margin-top: 28px; padding-top: 20px; border-top: 1px solid #3d6267; display: flex; gap: 14px; align-items: center; }
+.assemblyLeadLine span { color: #a9c6c8; }
+.assemblyStartForm,
+.assemblyWaiting { padding: 40px; display: flex; flex-direction: column; justify-content: center; gap: 18px; }
+.assemblyStartForm h3 { margin: 0; }
+.assemblyWaiting { background: #f4f7f8; }
+.assemblyWaiting strong { font-size: 20px; color: #173d44; }
+
+.assemblyNotice {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #a8d7c7;
+  border-radius: 6px;
+  background: #edf8f3;
+  color: #155c49;
+}
+.assemblyNotice button { border: 0; background: transparent; color: inherit; font-size: 22px; cursor: pointer; }
+
+.assemblyOverview {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(250px, 0.7fr) minmax(230px, 0.55fr);
+  border: 1px solid #d7e0e5;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+.assemblyTenderIdentity,
+.assemblyProgressHero,
+.assemblyHealth { padding: 24px; }
+.assemblyTenderIdentity { border-right: 1px solid #e1e7ea; }
+.assemblyTenderIdentity > span { color: #14745d; font-size: 13px; font-weight: 750; }
+.assemblyTenderIdentity h3 { margin: 6px 0 8px; font-size: 21px; color: #173d44; }
+.assemblyTenderIdentity p { margin: 0; color: #5d6c72; line-height: 1.5; }
+.assemblyMemberList { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 16px; }
+.assemblyMemberList strong,
+.assemblyMemberList span { padding: 6px 9px; border-radius: 4px; font-size: 12px; }
+.assemblyMemberList strong { background: #dff2ea; color: #155f4b; }
+.assemblyMemberList span { background: #f0f3f5; color: #506067; }
+
+.assemblyProgressHero { display: flex; flex-direction: column; justify-content: center; border-right: 1px solid #e1e7ea; }
+.assemblyProgressNumber { display: flex; align-items: baseline; gap: 8px; }
+.assemblyProgressNumber strong { color: #173d44; font-size: 34px; }
+.assemblyProgressNumber span,
+.assemblyProgressHero small { color: #69787e; }
+.assemblyProgressTrack,
+.assemblyStageProgress { height: 7px; background: #e5ebed; border-radius: 4px; overflow: hidden; }
+.assemblyProgressTrack { margin: 12px 0 8px; }
+.assemblyProgressTrack i,
+.assemblyStageProgress i { display: block; height: 100%; background: #1a8b69; border-radius: inherit; transition: width 0.25s ease; }
+
+.assemblyHealth { display: grid; gap: 8px; align-content: center; background: #f8fafb; }
+.assemblyHealth div { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-left: 3px solid #9db0b7; }
+.assemblyHealth strong { font-size: 20px; }
+.assemblyHealth span { color: #5e6e74; font-size: 13px; }
+.assemblyHealth .danger { border-color: #c84c4c; color: #a02f2f; }
+.assemblyHealth .attention { border-color: #d0962a; color: #96650c; }
+.assemblyHealth .ok { border-color: #45a17e; color: #267457; }
+
+.assemblyToolbar {
+  margin: 14px 0;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #d9e1e5;
+  border-radius: 6px;
+  background: #fff;
+  position: sticky;
+  top: 72px;
+  z-index: 12;
+}
+.assemblyToolbar > div:first-child { display: flex; gap: 10px; align-items: baseline; }
+.assemblyToolbar span { color: #6b797e; font-size: 13px; }
+
+.assemblyInlineForm {
+  margin-bottom: 14px;
+  padding: 18px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 0.8fr) minmax(220px, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+  border: 1px solid #b8d8cd;
+  border-radius: 6px;
+  background: #f0f8f5;
+}
+.assemblyInlineForm h3,
+.assemblyInlineForm p { margin: 0; }
+.assemblyInlineForm p { margin-top: 4px; color: #60736d; font-size: 13px; }
+
+.assemblyStageGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.assemblyStage {
+  min-width: 0;
+  border: 1px solid #d6dfe3;
+  border-radius: 8px;
+  background: #f7f9fa;
+  overflow: hidden;
+}
+.assemblyStage > header { min-height: 78px; padding: 14px 16px; display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 12px; background: #fff; border-bottom: 1px solid #e0e6e9; }
+.assemblyStage > header span { display: block; color: #718087; font-size: 11px; text-transform: uppercase; }
+.assemblyStage > header h3 { margin: 3px 0 0; color: #173d44; font-size: 16px; line-height: 1.25; }
+.assemblyStage > header > strong { color: #14745d; }
+.assemblyStageNumber { width: 38px; height: 38px; display: grid; place-items: center; background: #173d44; color: #fff; border-radius: 6px; font-weight: 750; }
+.assemblyStageDescription { min-height: 42px; margin: 0; padding: 12px 16px 8px; color: #66767c; font-size: 13px; line-height: 1.45; }
+.assemblyStageProgress { margin: 0 16px 12px; height: 5px; }
+.assemblyTaskList { display: grid; gap: 8px; padding: 0 10px 10px; }
+
+.assemblyTaskCard {
+  width: 100%;
+  min-height: 96px;
+  padding: 12px;
+  display: grid;
+  gap: 9px;
+  text-align: left;
+  border: 1px solid #dce3e6;
+  border-left: 4px solid #9aa9ae;
+  border-radius: 6px;
+  background: #fff;
+  color: #28383e;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.assemblyTaskCard:hover { transform: translateY(-1px); border-color: #9bbcaf; box-shadow: 0 5px 14px rgba(25, 58, 64, 0.08); }
+.assemblyTaskCard.status-completed { border-color: #c8e3d7; border-left-color: #298361; background: #f2faf6; }
+.assemblyTaskCard.status-under_review { border-left-color: #d0962a; }
+.assemblyTaskCard.status-blocked,
+.assemblyTaskCard.status-returned_for_adjustment { border-left-color: #c84c4c; }
+.assemblyTaskCard.status-in_progress { border-left-color: #2879a8; }
+.assemblyTaskCard.status-not_applicable { opacity: 0.68; border-left-color: #a5afb3; }
+.assemblyTaskCard.is-overdue { border-color: #f0c8c5; border-left-color: #c84c4c; background: #fff7f6; }
+.assemblyTaskCard.is-overdue:hover { border-color: #df9994; }
+.assemblyTaskCard.is-due-soon { border-color: #e7d986; border-left-color: #c3a51b; background: #fffbe0; }
+.assemblyTaskCard.is-due-soon:hover { border-color: #d4bd49; }
+
+.assemblyTaskCard.status-waiting_information,
+.assemblyTaskCard.status-blocked,
+.assemblyTaskCard.status-returned_for_adjustment {
+  border-color: #26343d;
+  border-left-color: #111b21;
+  background: #26343d;
+  color: #fff;
+}
+
+.assemblyTaskCard.status-waiting_information:hover,
+.assemblyTaskCard.status-blocked:hover,
+.assemblyTaskCard.status-returned_for_adjustment:hover { border-color: #111b21; }
+.assemblyTaskCard.status-waiting_information .assemblyTaskMeta,
+.assemblyTaskCard.status-blocked .assemblyTaskMeta,
+.assemblyTaskCard.status-returned_for_adjustment .assemblyTaskMeta,
+.assemblyTaskCard.status-waiting_information .assemblyTaskFoot,
+.assemblyTaskCard.status-blocked .assemblyTaskFoot,
+.assemblyTaskCard.status-returned_for_adjustment .assemblyTaskFoot { color: #d6e0e5; }
+.assemblyTaskCard.status-waiting_information .assemblyTaskFoot .overdue,
+.assemblyTaskCard.status-blocked .assemblyTaskFoot .overdue,
+.assemblyTaskCard.status-returned_for_adjustment .assemblyTaskFoot .overdue,
+.assemblyTaskCard.status-waiting_information .assemblyTaskFoot .soon,
+.assemblyTaskCard.status-blocked .assemblyTaskFoot .soon,
+.assemblyTaskCard.status-returned_for_adjustment .assemblyTaskFoot .soon { color: #fff0a8; }
+
+.personalTasksSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.personalTasksSummary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 88px;
+  padding: 16px;
+  border: 1px solid #d9e1e6;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.personalTasksSummary strong { color: #153d55; font-size: 28px; line-height: 1; }
+.personalTasksSummary span { color: #60707b; font-size: 13px; }
+.personalTasksSummary .danger { border-left: 4px solid #c84c4c; }
+.personalTasksSummary .attention { border-left: 4px solid #c3a51b; }
+.personalTasksSummary .ok { border-left: 4px solid #298361; }
+
+.personalTasksFilters { position: sticky; top: 72px; z-index: 8; margin-bottom: 16px; }
+
+.personalKanban {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(226px, 1fr));
+  align-items: start;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 2px 2px 16px;
+}
+
+.personalKanbanColumn {
+  min-height: 330px;
+  border: 1px solid #dce4e8;
+  border-radius: 7px;
+  background: #f5f7f8;
+  overflow: hidden;
+}
+
+.personalKanbanColumn > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid #dce4e8;
+  background: #fff;
+}
+
+.personalKanbanColumn h3 { margin: 0; color: #244b61; font-size: 14px; }
+.personalKanbanColumn header span { display: grid; place-items: center; min-width: 24px; height: 24px; border-radius: 50%; background: #e7eef2; color: #36586b; font-size: 12px; font-weight: 700; }
+.personalKanbanCards { display: grid; gap: 9px; padding: 10px; }
+.personalKanbanEmpty { margin: 7px 3px; color: #77848c; font-size: 13px; }
+
+.challengeLegalWarning {
+  border-color: #e3b55c;
+  background: #fff8e9;
+  color: #684b16;
+}
+.challengeLegalWarning strong { display: block; color: #8a5a00; }
+.challengeLegalWarning p { margin: 8px 0; line-height: 1.55; }
+.challengeLegalWarning small { color: #765a25; font-weight: 700; }
+
+.challengeSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-left: 4px solid #1a8b69;
+}
+.challengeSummary p { margin: 5px 0 0; color: var(--muted); }
+
+.challengeBoardIntro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-left: 4px solid #0f766e;
+}
+.challengeBoardIntro p { margin: 5px 0 0; color: var(--muted); }
+.challengeBoardIntro > span { display: grid; place-items: center; min-width: 88px; min-height: 38px; padding: 5px 10px; border-radius: 6px; background: #e6f3f0; color: #155f4b; font-size: 13px; font-weight: 800; text-align: center; }
+.challengeBoardFilters { position: sticky; top: 72px; z-index: 10; margin-bottom: 16px; }
+
+.challengeKanban {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(285px, 1fr));
+  align-items: start;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 2px 2px 18px;
+}
+.challengeKanbanColumn { min-height: 340px; border: 1px solid #dce4e8; border-radius: 7px; overflow: hidden; background: #f5f7f8; }
+.challengeKanbanColumn > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 13px; border-bottom: 1px solid #dce4e8; background: #fff; }
+.challengeKanbanColumn > header h3 { margin: 0; color: #244b61; font-size: 14px; }
+.challengeKanbanColumn > header span { display: grid; place-items: center; min-width: 24px; height: 24px; border-radius: 50%; background: #e7eef2; color: #36586b; font-size: 12px; font-weight: 700; }
+.challengeKanbanColumn.under_review > header { border-top: 3px solid #c9972f; }
+.challengeKanbanColumn.completed > header { border-top: 3px solid #298361; }
+.challengeKanbanCards { display: grid; gap: 10px; padding: 10px; }
+.challengeKanbanCard { display: grid; gap: 9px; padding: 13px; border: 1px solid #d5e0e5; border-left: 4px solid #5a869c; border-radius: 6px; background: #fff; color: #203845; }
+.challengeKanbanCard:hover { border-color: #86aabb; box-shadow: 0 3px 10px rgba(25, 56, 72, .09); }
+.challengeKanbanCard.is-untimely { border-color: #ecc7c1; border-left-color: #c84c4c; background: #fff8f7; }
+.challengeCardTop { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.challengeCardTop strong { color: #174d61; font-size: 13px; }
+.challengeTender, .challengeCompany { margin: 0; color: #64747d; font-size: 12px; line-height: 1.35; }
+.challengeKanbanCard h4 { margin: 0; color: #203845; font-size: 14px; line-height: 1.4; }
+.challengeDates { display: grid; gap: 4px; padding: 8px; border-radius: 5px; background: #f2f6f7; color: #66777e; font-size: 12px; }
+.challengeDates b { color: #304d5b; }
+.challengeLate { margin: 0; color: #ad3f36; font-size: 12px; font-weight: 750; line-height: 1.35; }
+.challengeKanbanCard details { display: grid; gap: 8px; color: #52636d; font-size: 13px; }
+.challengeKanbanCard summary { cursor: pointer; color: #1c6170; font-weight: 750; }
+.challengeKanbanCard details p { margin: 0; white-space: pre-wrap; line-height: 1.5; }
+.challengeFiles { display: grid; gap: 5px; }
+.challengeFiles a { color: #176b75; font-size: 12px; overflow-wrap: anywhere; }
+.challengeKanbanCard .field { margin: 0; }
+.challengeKanbanCard .field label { font-size: 12px; }
+.challengeKanbanCard select { min-height: 36px; font-size: 13px; }
+
+.personalTaskCard {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #d5e0e5;
+  border-left: 4px solid #5a869c;
+  border-radius: 6px;
+  background: #fff;
+  color: #203845;
+  text-align: left;
+  cursor: pointer;
+}
+
+.personalTaskCard:hover { border-color: #86aabb; box-shadow: 0 3px 10px rgba(25, 56, 72, .09); }
+.personalTaskCard strong { font-size: 14px; line-height: 1.35; }
+.personalTaskTender, .personalTaskStage { color: #58717e; font-size: 12px; line-height: 1.35; }
+.personalTaskCard > div { display: flex; justify-content: space-between; gap: 7px; color: #6b7980; font-size: 11px; }
+.taskChatSummary { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; cursor: pointer; }
+.taskChatIndicator { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 2px; width: 18px; height: 15px; border: 1.5px solid currentColor; border-radius: 5px; font-style: normal; }
+.taskChatIndicator::after { content: ""; position: absolute; width: 4px; height: 4px; border-left: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translate(-4px, 8px) rotate(-20deg); }
+.taskChatIndicator b { width: 2px; height: 2px; border-radius: 50%; background: currentColor; }
+.personalTaskCard .overdue { color: #af3f3f; font-weight: 700; }
+.personalTaskCard .soon { color: #937d12; font-weight: 700; }
+.personalTaskCard .planned { color: #60717a; }
+.personalTaskCard.status-pending { border-left-color: #758891; }
+.personalTaskCard.status-in_progress { border-color: #bcdce9; border-left-color: #2879a8; background: #f2f9fc; }
+.personalTaskCard.status-under_review { border-color: #ead6a4; border-left-color: #d0962a; background: #fffaf0; }
+.personalTaskCard.is-overdue { border-color: #f0c8c5; border-left-color: #c84c4c; background: #fff7f6; }
+.personalTaskCard.is-due-soon { border-color: #e7d986; border-left-color: #c3a51b; background: #fffbe0; }
+.personalTaskCard.status-completed,
+.personalKanbanColumn.status-completed .personalTaskCard { border-color: #c8e3d7; border-left-color: #298361; background: #f2faf6; }
+.personalTaskCard.status-waiting_information,
+.personalTaskCard.status-blocked,
+.personalTaskCard.status-returned_for_adjustment {
+  border-color: #26343d;
+  border-left-color: #111b21;
+  background: #26343d;
+  color: #fff;
+}
+
+.personalTaskCard.status-waiting_information:hover,
+.personalTaskCard.status-blocked:hover,
+.personalTaskCard.status-returned_for_adjustment:hover { border-color: #111b21; }
+.personalTaskCard.status-waiting_information .personalTaskTender,
+.personalTaskCard.status-blocked .personalTaskTender,
+.personalTaskCard.status-returned_for_adjustment .personalTaskTender,
+.personalTaskCard.status-waiting_information .personalTaskStage,
+.personalTaskCard.status-blocked .personalTaskStage,
+.personalTaskCard.status-returned_for_adjustment .personalTaskStage,
+.personalTaskCard.status-waiting_information > div,
+.personalTaskCard.status-blocked > div,
+.personalTaskCard.status-returned_for_adjustment > div { color: #d6e0e5; }
+.personalTaskCard.status-waiting_information .overdue,
+.personalTaskCard.status-blocked .overdue,
+.personalTaskCard.status-returned_for_adjustment .overdue,
+.personalTaskCard.status-waiting_information .soon,
+.personalTaskCard.status-blocked .soon,
+.personalTaskCard.status-returned_for_adjustment .soon { color: #fff0a8; }
+.personalTaskDescription { margin: 0 0 14px; color: #52636d; line-height: 1.55; white-space: pre-wrap; }
+
+@media (max-width: 760px) {
+  .personalTasksSummary { grid-template-columns: 1fr; }
+  .personalTasksSummary > div { min-height: 70px; }
+  .personalTasksFilters { top: 58px; }
+}
+.assemblyTaskTop { min-width: 0; display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: start; gap: 8px; }
+.assemblyTaskTop strong { font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.assemblyTaskTop em { padding: 3px 5px; border-radius: 3px; background: #eef2f3; color: #637278; font-size: 9px; font-style: normal; text-transform: uppercase; }
+.assemblyTaskTop em.priority-high,
+.assemblyTaskTop em.priority-urgent { background: #fdebea; color: #a23a35; }
+.assemblyStatusDot { width: 8px; height: 8px; margin-top: 4px; border-radius: 50%; background: #9aa9ae; }
+.assemblyStatusDot.completed { background: #298361; }
+.assemblyStatusDot.in_progress { background: #2879a8; }
+.assemblyStatusDot.under_review { background: #d0962a; }
+.assemblyStatusDot.blocked,
+.assemblyStatusDot.returned_for_adjustment { background: #c84c4c; }
+.assemblyTaskMeta,
+.assemblyTaskFoot { display: flex; justify-content: space-between; gap: 8px; color: #6a787d; font-size: 11px; }
+.assemblyTaskMeta span:last-child { text-align: right; }
+.assemblyTaskFoot { padding-top: 7px; border-top: 1px solid #edf0f2; }
+.assemblyTaskFoot .overdue { color: #b53535; font-weight: 700; }
+.assemblyTaskFoot .soon { color: #95630a; font-weight: 700; }
+.assemblyTaskFoot .planned { color: #416a76; }
+.assemblyAddTask { width: calc(100% - 20px); margin: 0 10px 10px; padding: 10px; border: 1px dashed #a8b9bd; border-radius: 5px; background: transparent; color: #477078; cursor: pointer; }
+.assemblyAddTask:hover { border-color: #14745d; color: #14745d; background: #edf7f3; }
+.assemblyNewTaskForm { margin: 0 10px 10px; padding: 10px; display: grid; gap: 8px; border: 1px solid #b8d8cd; background: #fff; border-radius: 6px; }
+
+.assemblyPanelBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(18, 37, 42, 0.38);
+  backdrop-filter: blur(2px);
+}
+.assemblyTaskPanel,
+.assemblyDossierPanel { width: min(700px, 96vw); height: 100%; display: flex; flex-direction: column; background: #f6f8f9; box-shadow: -16px 0 38px rgba(14, 36, 41, 0.18); animation: assemblyPanelIn 0.2s ease-out; }
+.assemblyDossierPanel { width: min(760px, 96vw); }
+@keyframes assemblyPanelIn { from { transform: translateX(24px); opacity: 0; } }
+.assemblyTaskPanel > header,
+.assemblyDossierPanel > header { min-height: 78px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; background: #173d44; color: #fff; }
+.assemblyTaskPanel > header span,
+.assemblyDossierPanel > header span { color: #9fc9c3; font-size: 12px; }
+.assemblyTaskPanel > header h3,
+.assemblyDossierPanel > header h3 { margin: 4px 0 0; font-size: 18px; }
+.assemblyTaskPanel > header button,
+.assemblyDossierPanel > header button { width: 36px; height: 36px; border: 1px solid #5c797d; border-radius: 5px; background: transparent; color: #fff; font-size: 24px; cursor: pointer; }
+.assemblyTaskPanelBody,
+.assemblyDossierBody { padding: 16px; overflow-y: auto; display: grid; gap: 14px; }
+.assemblyTaskSection { padding: 18px; display: grid; gap: 13px; border: 1px solid #d7e0e4; border-radius: 7px; background: #fff; }
+.assemblyTaskSection h4 { margin: 0; color: #173d44; }
+.assemblyFieldGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.assemblyComments,
+.assemblyEvidenceList { display: grid; gap: 8px; }
+.assemblyComments > p,
+.assemblyEvidenceList > p { margin: 0; color: #728087; font-size: 13px; }
+.assemblyComments article { padding: 10px 12px; border-left: 3px solid #a7c8bd; background: #f5f8f8; }
+.assemblyComments article strong { color: #37535a; font-size: 12px; }
+.assemblyComments article p { margin: 5px 0; line-height: 1.45; }
+.assemblyComments article time { color: #849096; font-size: 10px; }
+.assemblyComposer,
+.assemblyEvidenceForm { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid #e3e8ea; }
+.assemblyEvidenceList article { padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #e0e6e8; border-radius: 5px; }
+.assemblyEvidenceList article div { display: grid; gap: 3px; }
+.assemblyEvidenceList small { color: #758288; }
+.assemblyEvidenceList a,
+.assemblyDossierBody a { color: #14745d; font-weight: 700; text-decoration: none; white-space: nowrap; }
+
+.assemblyDossierSummary { padding: 14px 20px; display: flex; gap: 10px; align-items: baseline; border-bottom: 1px solid #d9e1e4; background: #fff; }
+.assemblyDossierSummary strong { color: #14745d; font-size: 26px; }
+.assemblyDossierSummary span { color: #607078; }
+.assemblyDossierBody section { padding: 16px; border: 1px solid #d7e0e4; border-radius: 7px; background: #fff; }
+.assemblyDossierBody h4 { margin: 0 0 10px; color: #173d44; }
+.assemblyDossierBody article { padding: 10px 0; display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid #e7ebed; }
+.assemblyDossierBody article > div { display: grid; gap: 3px; }
+.assemblyDossierBody article span,
+.assemblyDossierBody article small { color: #6f7d82; font-size: 12px; }
+.assemblyDossierBody article p { margin: 0; color: #52646b; max-width: 45%; }
+.assemblyEmptyDossier { min-height: 240px; display: grid; place-content: center; text-align: center; color: #65757b; }
+.assemblyEmptyDossier strong { color: #173d44; font-size: 18px; }
+.assemblyEmptyDossier p { max-width: 420px; }
+
+@media (max-width: 1100px) {
+  .assemblyOverview { grid-template-columns: 1fr 1fr; }
+  .assemblyTenderIdentity { grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid #e1e7ea; }
+  .assemblyInlineForm { grid-template-columns: 1fr 1fr; }
+  .assemblyStageGrid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+  .assemblyWelcome { grid-template-columns: 1fr; }
+  .assemblyWelcomeCopy,
+  .assemblyStartForm,
+  .assemblyWaiting { padding: 24px 18px; }
+  .assemblyWelcomeCopy h3 { font-size: 23px; }
+  .assemblyOverview { grid-template-columns: 1fr; }
+  .assemblyTenderIdentity { grid-column: auto; }
+  .assemblyProgressHero { border-right: 0; border-bottom: 1px solid #e1e7ea; }
+  .assemblyToolbar { top: 58px; align-items: flex-start; }
+  .assemblyToolbar,
+  .assemblyToolbar > div:first-child { flex-direction: column; }
+  .assemblyInlineForm,
+  .assemblyFieldGrid { grid-template-columns: 1fr; }
+  .assemblyStage > header { grid-template-columns: 36px 1fr auto; }
+  .assemblyTaskFoot { flex-direction: column; }
+  .assemblyTaskPanel,
+  .assemblyDossierPanel { width: 100%; }
+  .assemblyTaskPanelBody,
+  .assemblyDossierBody { padding: 10px; }
+  .assemblyTaskSection { padding: 14px; }
+  .assemblyDossierBody article { flex-direction: column; }
+  .assemblyDossierBody article p { max-width: none; }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1243,6 +1750,32 @@ tbody tr:hover {
   gap: 8px;
 }
 
+.assemblyEntryButton {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid #14745d;
+  border-radius: 5px;
+  background: #14745d;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.assemblyEntryButton:hover:not(:disabled) {
+  background: #0f5f4c;
+  border-color: #0f5f4c;
+}
+
+.assemblyEntryButton:disabled {
+  border-color: #cbd5d9;
+  background: #edf1f2;
+  color: #77858a;
+  cursor: not-allowed;
+}
+
 .consortiumDrawer {
   display: grid;
   gap: 14px;
@@ -1337,6 +1870,49 @@ tbody tr:hover {
   background: #fff;
 }
 
+.analysisAdminActions {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.analysisAdminActions > small {
+  color: var(--muted);
+}
+
+.aiAnalysisStatus {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 16px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid #d6e5e2;
+  background: #f7fbfa;
+}
+
+.aiAnalysisStatus span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.aiAnalysisStatus.queued,
+.aiAnalysisStatus.processing {
+  border-color: #c7d9e8;
+  background: #f2f8fc;
+}
+
+.aiAnalysisStatus.completed {
+  border-color: #bfe2d1;
+  background: #f3fbf7;
+}
+
+.aiAnalysisStatus.failed {
+  border-color: #f0c8c2;
+  background: #fff7f6;
+}
+
 .emptyAnalysisBox {
   display: grid;
   gap: 8px;
@@ -1355,6 +1931,71 @@ tbody tr:hover {
 .emptyAnalysisBox p {
   margin: 0;
   color: var(--muted);
+}
+
+.tenderDocumentQueue,
+.tenderDocumentList {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.tenderDocumentQueue > div,
+.tenderDocumentList > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #d6e5e2;
+  border-radius: 8px;
+  background: #f8fcfb;
+}
+
+.tenderDocumentQueue span,
+.tenderDocumentInfo {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  flex: 1;
+}
+
+.tenderDocumentQueue strong,
+.tenderDocumentInfo strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tenderDocumentQueue small,
+.tenderDocumentInfo small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tenderDocumentQueue button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff1f2;
+  color: #be123c;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.tenderDocumentIcon {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  background: #e5f4f1;
+  color: #1f6f6a;
+  font-size: 18px;
+  font-weight: 900;
 }
 
 .inlineFeedback {
@@ -1571,6 +2212,8 @@ tbody tr:hover {
 .professionalDetailContent {
   min-width: 0;
 }
+.professionalDetailActions { display: flex; align-items: center; gap: 6px; }
+.professionalDetailActions .taskChatIndicator { width: 16px; height: 13px; }
 
 .professionalDetailContent h3,
 .professionalDetailContent p {
@@ -2107,6 +2750,33 @@ tbody tr:hover {
   display: flex;
   gap: 11px;
   align-items: center;
+}
+
+.postCompanyIdentity {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  display: flex;
+  gap: 11px;
+  align-items: center;
+}
+
+.postCompanyIdentity:not(:disabled) {
+  cursor: pointer;
+}
+
+.postCompanyIdentity:not(:disabled):hover strong,
+.postCompanyIdentity:not(:disabled):focus-visible strong {
+  color: var(--brand);
+  text-decoration: underline;
+}
+
+.postCompanyIdentity:disabled {
+  opacity: 1;
 }
 
 .postHead strong,
@@ -3669,15 +4339,15 @@ tbody tr:hover {
   right: 18px;
   bottom: 26px;
   z-index: 60;
-  width: min(420px, calc(100vw - 36px));
-  height: min(620px, calc(100vh - 64px));
-  border: 1px solid rgba(13, 41, 43, 0.14);
-  border-radius: 16px;
+  width: min(590px, calc(100vw - 36px));
+  height: min(760px, calc(100vh - 52px));
+  border: 1px solid rgba(13, 41, 43, 0.16);
+  border-radius: 18px;
   background: #ffffff;
-  box-shadow: 0 28px 80px rgba(13, 41, 43, 0.24);
+  box-shadow: 0 30px 90px rgba(13, 41, 43, 0.28);
   overflow: hidden;
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
 }
 
 .floatingChatHeader {
@@ -3685,7 +4355,7 @@ tbody tr:hover {
   justify-content: space-between;
   gap: 12px;
   align-items: center;
-  padding: 14px 14px 12px;
+  padding: 16px 18px 14px;
   color: #ffffff;
   background: linear-gradient(135deg, #0d292b, #1f6f6a);
 }
@@ -3717,6 +4387,12 @@ tbody tr:hover {
   font-weight: 900;
 }
 
+.floatingChatHeaderActions button:hover,
+.floatingChatHeaderActions button:focus-visible {
+  background: rgba(255, 255, 255, 0.24);
+  outline: none;
+}
+
 .chatError {
   margin: 10px 12px 0;
   padding: 9px 10px;
@@ -3728,9 +4404,69 @@ tbody tr:hover {
   font-weight: 700;
 }
 
+.chatFilterPanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(130px, 0.8fr) minmax(130px, 0.65fr) auto;
+  gap: 8px;
+  align-items: end;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: #f4faf8;
+}
+
+.chatFilterPanel label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.chatFilterPanel label span {
+  color: #557172;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.chatFilterPanel input,
+.chatFilterPanel select {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid #c9dcda;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #173d3f;
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.chatFilterPanel input:focus,
+.chatFilterPanel select:focus {
+  outline: none;
+  border-color: #2f9b8f;
+  box-shadow: 0 0 0 3px rgba(47, 155, 143, 0.12);
+}
+
+.chatFilterClear {
+  min-height: 36px;
+  border: 1px solid #b8d2cf;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f6f6a;
+  padding: 0 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.chatFilterClear:hover {
+  background: #e8f5f2;
+}
+
 .chatThreadList {
   overflow: auto;
-  padding: 10px;
+  min-height: 0;
+  padding: 14px;
   display: grid;
   align-content: start;
   gap: 8px;
@@ -3739,8 +4475,8 @@ tbody tr:hover {
 .chatThreadItem {
   width: 100%;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px;
+  border-radius: 14px;
+  padding: 12px;
   background: #ffffff;
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -3753,6 +4489,7 @@ tbody tr:hover {
 .chatThreadItem:hover {
   border-color: #8fc8c0;
   background: #f3fbf9;
+  transform: translateY(-1px);
 }
 
 .chatThreadItem span {
@@ -3762,6 +4499,12 @@ tbody tr:hover {
 .chatThreadItem strong,
 .chatThreadItem small {
   display: block;
+}
+
+.chatThreadItem .chatThreadMeta {
+  margin-top: 4px;
+  color: #6a8383;
+  font-size: 11px;
 }
 
 .chatThreadItem small {
@@ -3817,8 +4560,8 @@ tbody tr:hover {
 .chatMessages {
   min-height: 0;
   overflow: auto;
-  padding: 14px;
-  background: #f6faf9;
+  padding: 18px;
+  background: #f3f8f7;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -3832,11 +4575,11 @@ tbody tr:hover {
 }
 
 .chatBubble {
-  max-width: 86%;
+  max-width: 78%;
   align-self: flex-start;
   border: 1px solid var(--line);
   border-radius: 14px 14px 14px 4px;
-  padding: 9px 10px;
+  padding: 11px 12px;
   background: #ffffff;
   box-shadow: 0 10px 24px rgba(17, 24, 39, 0.06);
 }
@@ -3845,7 +4588,7 @@ tbody tr:hover {
   align-self: flex-end;
   border-radius: 14px 14px 4px 14px;
   border-color: rgba(31, 111, 106, 0.2);
-  background: #e7f7f4;
+  background: #dff4ef;
 }
 
 .chatBubble small,
@@ -3871,7 +4614,8 @@ tbody tr:hover {
 }
 
 .chatBubble p {
-  margin: 4px 0;
+  margin: 7px 0;
+  line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -3884,7 +4628,7 @@ tbody tr:hover {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
-  padding: 10px;
+  padding: 12px 14px;
   border-top: 1px solid var(--line);
   background: #ffffff;
 }
@@ -3893,7 +4637,7 @@ tbody tr:hover {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   outline: none;
 }
 
@@ -3907,7 +4651,7 @@ tbody tr:hover {
   border-radius: 999px;
   background: #0d292b;
   color: #ffffff;
-  padding: 0 14px;
+  padding: 0 18px;
   font-weight: 900;
   cursor: pointer;
 }
@@ -3964,6 +4708,7 @@ tbody tr:hover {
 
   .consortiumActions {
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .compactFilters .formGrid {
@@ -4044,7 +4789,19 @@ tbody tr:hover {
     right: 8px;
     bottom: 8px;
     width: calc(100vw - 16px);
-    height: min(620px, calc(100vh - 16px));
+    height: min(700px, calc(100vh - 16px));
+  }
+
+  .chatFilterPanel {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .chatFilterPanel label:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .chatFilterClear {
+    grid-column: 1 / -1;
   }
 
   .tinderStage {

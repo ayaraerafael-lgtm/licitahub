@@ -21,6 +21,10 @@ set "APP_PORT=8080"
 set "GOCACHE=C:\Users\Financeiro Hollus\Documents\Codex\2026-07-04\pre\outputs\licitahub-app\.go-cache"
 set "GOMODCACHE=C:\Users\Financeiro Hollus\Documents\Codex\2026-07-04\pre\outputs\licitahub-app\.go-mod-cache"
 
+if exist "%~dp0.env.openai" (
+  for /f "usebackq tokens=1,* delims==" %%A in ("%~dp0.env.openai") do set "%%A=%%B"
+)
+
 if "%PGPASSWORD%"=="" (
   set /p PGPASSWORD=Senha do usuario postgres: 
 )
@@ -43,7 +47,7 @@ echo Ligando backend em http://127.0.0.1:8080 ...
 echo Aguarde aparecer: LicitaHub API listening on :8080
 echo.
 
-"%~dp0licitahub-v44.exe"
+"%~dp0licitahub-v62.exe"
 
 echo.
 echo O backend foi encerrado.

@@ -12,5 +12,6 @@ backend/uploads/
 *~
 .env
 .env.local
+backend/.env.openai
 .DS_Store
 Thumbs.db

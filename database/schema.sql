@@ -339,8 +339,54 @@ CREATE TABLE IF NOT EXISTS tender_files (
   title varchar(220) NOT NULL,
   file_url text,
   mime_type varchar(120),
+  file_size bigint,
   is_downloadable boolean NOT NULL DEFAULT true,
   uploaded_by_user_id uuid REFERENCES users(id),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS tender_ai_analysis_jobs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
+  requested_by_user_id uuid REFERENCES users(id),
+  status varchar(30) NOT NULL DEFAULT 'queued',
+  model varchar(120),
+  prompt_version varchar(80) NOT NULL DEFAULT 'analise-primaria-v1',
+  source_file_count integer NOT NULL DEFAULT 0,
+  response_id varchar(160),
+  analysis_file_id uuid REFERENCES tender_files(id) ON DELETE SET NULL,
+  error_message text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  started_at timestamptz,
+  completed_at timestamptz,
+  CONSTRAINT tender_ai_analysis_jobs_status_chk CHECK (status IN ('queued', 'processing', 'completed', 'failed'))
+);
+
+CREATE TABLE IF NOT EXISTS tender_challenges (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
+  company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  subject varchar(220) NOT NULL,
+  rationale text NOT NULL,
+  status varchar(40) NOT NULL DEFAULT 'submitted',
+  business_days_before_opening integer,
+  is_untimely boolean NOT NULL DEFAULT false,
+  submitted_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT tender_challenges_status_chk CHECK (status IN ('draft', 'submitted', 'under_review', 'accepted', 'rejected', 'withdrawn')),
+  CONSTRAINT tender_challenges_tender_company_uk UNIQUE (tender_id, company_id)
+);
+
+CREATE TABLE IF NOT EXISTS tender_challenge_files (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tender_challenge_id uuid NOT NULL REFERENCES tender_challenges(id) ON DELETE CASCADE,
+  title varchar(220) NOT NULL,
+  file_url text NOT NULL,
+  mime_type varchar(120),
+  file_size bigint,
+  uploaded_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -560,6 +606,249 @@ CREATE TABLE IF NOT EXISTS consortium_applications (
 );
 
 -- =========================================================
+-- Central de montagem da licitacao
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS bid_assembly_templates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid REFERENCES companies(id) ON DELETE CASCADE,
+  name varchar(180) NOT NULL,
+  description text,
+  is_system boolean NOT NULL DEFAULT false,
+  is_active boolean NOT NULL DEFAULT true,
+  created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS bid_assembly_templates_system_name_uk
+  ON bid_assembly_templates(name) WHERE is_system = true;
+
+CREATE TABLE IF NOT EXISTS bid_assembly_template_stages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  template_id uuid NOT NULL REFERENCES bid_assembly_templates(id) ON DELETE CASCADE,
+  title varchar(180) NOT NULL,
+  description text,
+  position integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS bid_assembly_template_tasks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  template_stage_id uuid NOT NULL REFERENCES bid_assembly_template_stages(id) ON DELETE CASCADE,
+  title varchar(220) NOT NULL,
+  description text,
+  position integer NOT NULL DEFAULT 0,
+  default_weight numeric(8,2) NOT NULL DEFAULT 1,
+  default_days_offset integer,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS bid_assemblies (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  consortium_intention_id uuid NOT NULL REFERENCES consortium_intentions(id) ON DELETE RESTRICT,
+  tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE RESTRICT,
+  template_id uuid REFERENCES bid_assembly_templates(id) ON DELETE SET NULL,
+  lead_company_id uuid NOT NULL REFERENCES companies(id),
+  title varchar(220) NOT NULL,
+  status varchar(40) NOT NULL DEFAULT 'preparing',
+  start_date date NOT NULL DEFAULT CURRENT_DATE,
+  due_date date,
+  created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT bid_assemblies_status_chk CHECK (status IN ('preparing', 'in_progress', 'under_review', 'ready_to_submit', 'submitted', 'cancelled')),
+  CONSTRAINT bid_assemblies_consortium_uk UNIQUE (consortium_intention_id)
+);
+
+CREATE TABLE IF NOT EXISTS bid_assembly_participants (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  assembly_id uuid NOT NULL REFERENCES bid_assemblies(id) ON DELETE CASCADE,
+  company_id uuid NOT NULL REFERENCES companies(id),
+  user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  role varchar(40) NOT NULL DEFAULT 'collaborator',
+  status varchar(40) NOT NULL DEFAULT 'active',
+  joined_at timestamptz NOT NULL DEFAULT now(),
+  removed_at timestamptz,
+  CONSTRAINT bid_assembly_participants_role_chk CHECK (role IN ('coordinator', 'collaborator', 'viewer')),
+  CONSTRAINT bid_assembly_participants_status_chk CHECK (status IN ('active', 'removed'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS bid_assembly_participants_company_uk
+  ON bid_assembly_participants(assembly_id, company_id) WHERE user_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS bid_assembly_participants_user_uk
+  ON bid_assembly_participants(assembly_id, user_id) WHERE user_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS bid_assembly_stages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  assembly_id uuid NOT NULL REFERENCES bid_assemblies(id) ON DELETE CASCADE,
+  source_template_stage_id uuid REFERENCES bid_assembly_template_stages(id) ON DELETE SET NULL,
+  title varchar(180) NOT NULL,
+  description text,
+  position integer NOT NULL DEFAULT 0,
+  is_custom boolean NOT NULL DEFAULT false,
+  is_archived boolean NOT NULL DEFAULT false,
+  created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS bid_assembly_tasks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  stage_id uuid NOT NULL REFERENCES bid_assembly_stages(id) ON DELETE CASCADE,
+  source_template_task_id uuid REFERENCES bid_assembly_template_tasks(id) ON DELETE SET NULL,
+  title varchar(220) NOT NULL,
+  description text,
+  position integer NOT NULL DEFAULT 0,
+  status varchar(40) NOT NULL DEFAULT 'pending',
+  priority varchar(20) NOT NULL DEFAULT 'normal',
+  weight numeric(8,2) NOT NULL DEFAULT 1,
+  responsible_company_id uuid REFERENCES companies(id) ON DELETE SET NULL,
+  responsible_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  due_at timestamptz,
+  submitted_at timestamptz,
+  completed_at timestamptz,
+  created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  is_custom boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT bid_assembly_tasks_status_chk CHECK (status IN ('pending', 'in_progress', 'waiting_information', 'blocked', 'under_review', 'returned_for_adjustment', 'completed', 'not_applicable')),
+  CONSTRAINT bid_assembly_tasks_priority_chk CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
+  CONSTRAINT bid_assembly_tasks_weight_chk CHECK (weight > 0)
+);
+
+CREATE TABLE IF NOT EXISTS bid_assembly_task_comments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id uuid NOT NULL REFERENCES bid_assembly_tasks(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  company_id uuid REFERENCES companies(id) ON DELETE SET NULL,
+  content text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS bid_assembly_task_evidences (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id uuid NOT NULL REFERENCES bid_assembly_tasks(id) ON DELETE CASCADE,
+  media_file_id uuid REFERENCES media_files(id) ON DELETE SET NULL,
+  evidence_type varchar(30) NOT NULL,
+  title varchar(220) NOT NULL,
+  external_url text,
+  note text,
+  version_number integer NOT NULL DEFAULT 1,
+  status varchar(30) NOT NULL DEFAULT 'current',
+  uploaded_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  company_id uuid REFERENCES companies(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT bid_assembly_evidence_type_chk CHECK (evidence_type IN ('file', 'link', 'note')),
+  CONSTRAINT bid_assembly_evidence_status_chk CHECK (status IN ('current', 'superseded', 'approved'))
+);
+
+CREATE TABLE IF NOT EXISTS bid_assembly_deadline_alerts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id uuid NOT NULL REFERENCES bid_assembly_tasks(id) ON DELETE CASCADE,
+  recipient_user_id uuid REFERENCES users(id) ON DELETE CASCADE,
+  alert_type varchar(30) NOT NULL,
+  alert_date date NOT NULL DEFAULT CURRENT_DATE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT bid_assembly_deadline_alerts_type_chk CHECK (alert_type IN ('due_soon', 'due_today', 'overdue')),
+  CONSTRAINT bid_assembly_deadline_alerts_uk UNIQUE (task_id, recipient_user_id, alert_type, alert_date)
+);
+
+CREATE TABLE IF NOT EXISTS bid_assembly_activity_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  assembly_id uuid NOT NULL REFERENCES bid_assemblies(id) ON DELETE CASCADE,
+  task_id uuid REFERENCES bid_assembly_tasks(id) ON DELETE CASCADE,
+  actor_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  actor_company_id uuid REFERENCES companies(id) ON DELETE SET NULL,
+  action varchar(80) NOT NULL,
+  description text,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_bid_assembly_stages_assembly_position ON bid_assembly_stages(assembly_id, position);
+CREATE INDEX IF NOT EXISTS idx_bid_assembly_tasks_stage_position ON bid_assembly_tasks(stage_id, position);
+CREATE INDEX IF NOT EXISTS idx_bid_assembly_tasks_responsible_due ON bid_assembly_tasks(responsible_user_id, due_at, status);
+CREATE INDEX IF NOT EXISTS idx_bid_assembly_comments_task ON bid_assembly_task_comments(task_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_bid_assembly_evidences_task ON bid_assembly_task_evidences(task_id, created_at);
+
+INSERT INTO bid_assembly_templates (name, description, is_system, is_active)
+VALUES ('Modelo LicitaHub', 'Estrutura padrao de montagem colaborativa de licitacoes em oito fases.', true, true)
+ON CONFLICT DO NOTHING;
+
+WITH template AS (
+  SELECT id FROM bid_assembly_templates WHERE name = 'Modelo LicitaHub' AND is_system = true LIMIT 1
+), incoming(title, description, position) AS (
+  VALUES
+    ('Planejamento da montagem', 'Leitura do edital, estrategia, calendario e organizacao do trabalho.', 1),
+    ('Concepcao consorcial', 'Formalizacao, identidade e responsabilidades do consorcio.', 2),
+    ('Montagem da peca qualitativa', 'Desenvolvimento dos conteudos tecnicos e qualitativos da proposta.', 3),
+    ('Montagem do orcamento', 'Viabilidade, formacao de preco e planilhas comerciais.', 4),
+    ('Montagem da equipe tecnica', 'Definicao da equipe e consolidacao de comprovacoes profissionais.', 5),
+    ('Montagem das declaracoes', 'Preparacao e assinatura das declaracoes exigidas.', 6),
+    ('Certificacoes e quesitos de pontuacao', 'Organizacao de certificados e comprovacoes adicionais.', 7),
+    ('Revisao e consolidacao', 'Conferencia, consolidacao, assinatura e preparacao para envio.', 8)
+)
+INSERT INTO bid_assembly_template_stages (template_id, title, description, position)
+SELECT template.id, incoming.title, incoming.description, incoming.position
+FROM template CROSS JOIN incoming
+WHERE NOT EXISTS (
+  SELECT 1 FROM bid_assembly_template_stages existing
+  WHERE existing.template_id = template.id AND existing.title = incoming.title
+);
+
+WITH template AS (
+  SELECT id FROM bid_assembly_templates WHERE name = 'Modelo LicitaHub' AND is_system = true LIMIT 1
+), incoming(stage_title, title, description, position, weight) AS (
+  VALUES
+    ('Concepcao consorcial', 'Elaborar o termo de constituicao do consorcio', 'Consolidar participantes, objeto, compromissos e regras de representacao.', 1, 2),
+    ('Concepcao consorcial', 'Definir nome do consorcio', 'Registrar a denominacao que sera usada na proposta.', 2, 1),
+    ('Concepcao consorcial', 'Definir identidade visual do consorcio', 'Organizar logomarca, capa e padrao visual dos documentos.', 3, 1),
+    ('Concepcao consorcial', 'Definir papeis e responsabilidades das empresas', 'Registrar lideranca, entregas e pontos focais de cada consorciada.', 4, 2),
+    ('Planejamento da montagem', 'Realizar leitura orientada do edital', 'Mapear entregaveis, criterios, prazos e riscos da proposta.', 1, 2),
+    ('Planejamento da montagem', 'Montar calendario geral da proposta', 'Definir marcos internos anteriores a data oficial de entrega.', 2, 1),
+    ('Planejamento da montagem', 'Distribuir responsabilidades por fase', 'Atribuir empresas e profissionais responsaveis.', 3, 1),
+    ('Planejamento da montagem', 'Organizar repositorio compartilhado', 'Definir estrutura de pastas, nomes e controle de versoes.', 4, 1),
+    ('Montagem da peca qualitativa', 'Elaborar conhecimento do objeto', 'Descrever compreensao do contexto, desafios e objetivos do contrato.', 1, 3),
+    ('Montagem da peca qualitativa', 'Descrever produtos e entregaveis', 'Consolidar produtos, resultados e criterios de aceitacao.', 2, 2),
+    ('Montagem da peca qualitativa', 'Desenvolver metodologia', 'Detalhar abordagem, procedimentos, ferramentas e integracao das disciplinas.', 3, 4),
+    ('Montagem da peca qualitativa', 'Elaborar plano de trabalho', 'Organizar atividades, sequencia, interfaces e responsabilidades.', 4, 3),
+    ('Montagem da peca qualitativa', 'Revisar aderencia aos criterios tecnicos', 'Conferir atendimento e potencial de pontuacao da peca.', 5, 2),
+    ('Montagem do orcamento', 'Analisar viabilidade financeira', 'Avaliar custos, riscos, fluxo e condicoes comerciais.', 1, 2),
+    ('Montagem do orcamento', 'Definir preco da proposta', 'Consolidar estrategia de preco e premissas comerciais.', 2, 2),
+    ('Montagem do orcamento', 'Montar planilha orcamentaria', 'Preparar quantitativos, custos, encargos e composicoes.', 3, 3),
+    ('Montagem do orcamento', 'Revisar tributos, BDI e consistencia', 'Conferir calculos, incidencias e compatibilidade com o edital.', 4, 2),
+    ('Montagem da equipe tecnica', 'Analisar profissionais disponiveis', 'Verificar disponibilidade, vinculo e aderencia dos profissionais.', 1, 2),
+    ('Montagem da equipe tecnica', 'Montar quadro de experiencia profissional', 'Consolidar experiencias e pontuacoes por profissional.', 2, 2),
+    ('Montagem da equipe tecnica', 'Disponibilizar CATs dos profissionais', 'Anexar comprovacoes de responsabilidade e experiencia tecnica.', 3, 2),
+    ('Montagem da equipe tecnica', 'Disponibilizar documentos de formacao', 'Anexar diplomas, certificados e demais comprovacoes academicas.', 4, 1),
+    ('Montagem da equipe tecnica', 'Preparar declaracoes dos profissionais', 'Consolidar disponibilidade, compromisso e autorizacoes exigidas.', 5, 1),
+    ('Montagem da equipe tecnica', 'Disponibilizar registros profissionais', 'Anexar registros e certidoes dos conselhos de classe.', 6, 1),
+    ('Montagem da equipe tecnica', 'Revisar atendimento e pontuacao da equipe', 'Conferir lacunas, validade e potencial de pontuacao.', 7, 2),
+    ('Montagem das declaracoes', 'Mapear declaracoes exigidas', 'Criar lista completa conforme edital e anexos.', 1, 1),
+    ('Montagem das declaracoes', 'Elaborar declaracoes', 'Preencher os modelos e textos aplicaveis ao consorcio.', 2, 2),
+    ('Montagem das declaracoes', 'Coletar assinaturas e validar poderes', 'Conferir assinantes, procuracoes e versoes finais.', 3, 2),
+    ('Certificacoes e quesitos de pontuacao', 'Mapear certificacoes requeridas', 'Identificar certificados obrigatorios e pontuaveis.', 1, 1),
+    ('Certificacoes e quesitos de pontuacao', 'Disponibilizar documentos comprobatorios', 'Anexar certificacoes e demais evidencias de pontuacao.', 2, 2),
+    ('Certificacoes e quesitos de pontuacao', 'Conferir validade e aderencia', 'Verificar emissor, prazo, escopo e criterio atendido.', 3, 1),
+    ('Revisao e consolidacao', 'Consolidar documentos da proposta', 'Reunir somente versoes atuais e aprovadas.', 1, 3),
+    ('Revisao e consolidacao', 'Realizar revisao cruzada', 'Conferir coerencia entre tecnica, equipe, documentos e preco.', 2, 3),
+    ('Revisao e consolidacao', 'Conferir assinaturas e formatos', 'Validar assinaturas, extensoes, limites e nomenclaturas.', 3, 2),
+    ('Revisao e consolidacao', 'Validar dossie final', 'Confirmar que todas as evidencias obrigatorias estao presentes.', 4, 2),
+    ('Revisao e consolidacao', 'Registrar protocolo de envio', 'Guardar comprovante, data, horario e versao submetida.', 5, 1)
+)
+INSERT INTO bid_assembly_template_tasks (template_stage_id, title, description, position, default_weight)
+SELECT stage.id, incoming.title, incoming.description, incoming.position, incoming.weight
+FROM incoming
+JOIN template ON true
+JOIN bid_assembly_template_stages stage ON stage.template_id = template.id AND stage.title = incoming.stage_title
+WHERE NOT EXISTS (
+  SELECT 1 FROM bid_assembly_template_tasks existing
+  WHERE existing.template_stage_id = stage.id AND existing.title = incoming.title
+);
+
+-- =========================================================
 -- Notifications and audit
 -- =========================================================
 
@@ -739,6 +1028,10 @@ CREATE INDEX IF NOT EXISTS idx_auth_sessions_token ON auth_sessions(token_hash, 
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens ON password_reset_tokens(token_hash, expires_at) WHERE used_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_tenders_status_opening_date ON tenders(status, opening_date);
 CREATE INDEX IF NOT EXISTS idx_tender_files_tender_id ON tender_files(tender_id);
+CREATE INDEX IF NOT EXISTS idx_tender_files_tender_type_created ON tender_files(tender_id, file_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tender_ai_analysis_jobs_tender_created ON tender_ai_analysis_jobs(tender_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tender_challenges_tender_status ON tender_challenges(tender_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tender_challenge_files_challenge ON tender_challenge_files(tender_challenge_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tender_requirements_tender_id ON tender_requirements(tender_id);
 CREATE INDEX IF NOT EXISTS idx_tender_interests_tender_id ON tender_interests(tender_id);
 CREATE INDEX IF NOT EXISTS idx_tender_interests_company_id ON tender_interests(company_id);
@@ -757,6 +1050,23 @@ CREATE INDEX IF NOT EXISTS idx_match_contacts_match_company ON match_contacts(ma
 CREATE INDEX IF NOT EXISTS idx_chat_threads_company_a ON chat_threads(company_a_id, updated_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_chat_threads_company_b ON chat_threads(company_b_id, updated_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_created ON chat_messages(thread_id, created_at) WHERE deleted_at IS NULL;
+ALTER TABLE chat_threads ALTER COLUMN partnership_ad_id DROP NOT NULL;
+ALTER TABLE chat_threads ALTER COLUMN tender_id DROP NOT NULL;
+ALTER TABLE chat_threads DROP CONSTRAINT IF EXISTS chat_threads_not_same_company_chk;
+ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS context_type varchar(40) NOT NULL DEFAULT 'partnership_ad';
+ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS context_id uuid;
+ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS context_title varchar(220);
+ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS context_key varchar(160);
+CREATE UNIQUE INDEX IF NOT EXISTS chat_threads_context_uk ON chat_threads(context_type, context_id) WHERE context_id IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS chat_threads_context_key_uk ON chat_threads(context_type, context_key) WHERE context_key IS NOT NULL AND deleted_at IS NULL;
+CREATE TABLE IF NOT EXISTS chat_thread_participants (
+  thread_id uuid NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  participant_role varchar(40) NOT NULL DEFAULT 'member',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (thread_id, user_id)
+);
 CREATE INDEX IF NOT EXISTS idx_consortium_intentions_match ON consortium_intentions(match_id);
 CREATE INDEX IF NOT EXISTS idx_consortium_intentions_tender ON consortium_intentions(tender_id);
 CREATE INDEX IF NOT EXISTS idx_consortium_members_active ON consortium_members(consortium_intention_id, company_id) WHERE status = 'active';

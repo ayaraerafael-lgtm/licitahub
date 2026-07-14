@@ -73,6 +73,20 @@ licitahub_dev
 - `chat_messages`
 - `chat_thread_reads`
 
+### Central de Montagem
+
+- `bid_assembly_templates`
+- `bid_assembly_template_stages`
+- `bid_assembly_template_tasks`
+- `bid_assemblies`
+- `bid_assembly_participants`
+- `bid_assembly_stages`
+- `bid_assembly_tasks`
+- `bid_assembly_task_comments`
+- `bid_assembly_task_evidences`
+- `bid_assembly_deadline_alerts`
+- `bid_assembly_activity_logs`
+
 ### Notificacoes e auditoria
 
 - `notifications`
@@ -105,6 +119,7 @@ O schema inclui indices para melhorar:
 - vitrine de parceiros;
 - matches por empresa;
 - notificacoes por destinatario e entidade relacionada.
+- fases e tarefas da montagem por posicao, responsavel, prazo e status.
 
 ## Criacao local
 
