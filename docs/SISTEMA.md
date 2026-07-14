@@ -1,5 +1,7 @@
 # Documentacao funcional do LicitaHub
 
+O plano de preparacao para hospedagem e seguranca esta em `docs/SEGURANCA.md`.
+
 ## Objetivo
 
 O LicitaHub e uma aplicacao web para empresas de engenharia consultiva. A plataforma combina rede social empresarial, divulgacao institucional, noticias da plataforma, editais publicos e formacao de parcerias/consorcios.
@@ -38,6 +40,9 @@ Regras principais:
 - Ao concluir o aceite do convite com sucesso, a empresa retorna para o login com mensagem de cadastro concluido.
 - Somente administrador da plataforma gerencia convites e analise de empresas.
 - Telas que dependem de um registro especifico, como analise de empresa, nao ficam no menu lateral.
+- Empresas cadastradas: o administrador da plataforma pode filtrar empresas ativas ou bloqueadas e bloquear/desbloquear uma empresa inteira.
+- Ao bloquear uma empresa, todas as sessoes dos usuarios vinculados sao encerradas e nenhum deles volta a acessar enquanto a empresa permanecer bloqueada. Usuarios e historicos nao sao apagados.
+- Cada bloqueio ou desbloqueio registra o administrador responsavel, a data, o status aplicado e o motivo opcional na auditoria interna.
 
 ## Modulo Empresa
 
@@ -256,6 +261,7 @@ Conteudos:
 Regra principal:
 
 - Quando o anuncio pertence a empresa logada, o detalhe nao mostra acao para avaliar candidata.
+- Quando o anuncio pertence a outra empresa, o nome da anunciante ou da lider do consorcio exibe um icone de chat para abrir a conversa geral ja existente entre as empresas.
 
 ## Avaliacao, match e consorcio
 
@@ -289,6 +295,7 @@ Uso principal: permitir alinhamento entre empresas antes da avaliacao e do match
 Funcionalidades:
 
 - Botao **Conversar** em anuncios da vitrine e empresas interessadas.
+- Icone de chat no detalhe do anuncio para conversar diretamente com a empresa anunciante ou com a lider do anuncio de consorcio.
 - Janela flutuante que pode ser minimizada.
 - Mais de uma conversa simultanea.
 - Mensagens gravadas no banco e entregues em tempo real enquanto o backend estiver conectado.
@@ -418,28 +425,29 @@ O teste manual deve passar por:
 1. Login com todos os perfis.
 2. Convite e aprovacao de empresa.
 3. Edicao de perfil da empresa.
-4. Criacao e gestao de usuarios.
-5. Criacao e interacao na comunidade.
-6. Perfil publico da empresa.
-7. Cadastro e gerenciamento de noticias.
-8. Cadastro e detalhe de editais.
-9. Registro de interesse.
-10. Empresas interessadas por edital.
-11. Vitrine geral.
-12. Detalhe de anuncio.
-13. Avaliacao reciproca.
-14. Match, definicao de lider e anuncio para busca complementar.
-15. Inclusao de terceira empresa e encerramento dos anuncios envolvidos.
-16. Desistencia de empresa e troca de lider, quando aplicavel.
-17. Chat entre empresas antes do match.
-18. Notificacoes no sino.
-19. Tentativas de acesso indevido por usuario comum.
-20. Inicio da Central de Montagem pela empresa lider.
-21. Atribuicao de tarefas a empresas e profissionais consorciados.
-22. Atualizacao de status, revisao, comentarios, evidencias e dossie final.
-23. Protocolo de pedido de impugnacao com assunto, fundamentacao e anexos.
-24. Protocolo com menos de tres dias uteis antes da sessao, confirmando o alerta de intempestividade e o registro do pedido.
-25. Consulta, download de anexos e atualizacao de andamento na Central de Impugnacoes pelo administrador da plataforma.
+4. Criacao e gestao de usuarios, incluindo bloqueio, desbloqueio e desativacao de vinculo.
+5. Bloqueio e desbloqueio de empresa pelo administrador da plataforma, confirmando a perda e a restauracao de acesso para todos os usuarios vinculados.
+6. Criacao e interacao na comunidade.
+7. Perfil publico da empresa.
+8. Cadastro e gerenciamento de noticias.
+9. Cadastro e detalhe de editais.
+10. Registro de interesse.
+11. Empresas interessadas por edital.
+12. Vitrine geral.
+13. Detalhe de anuncio e abertura de conversa pelo icone de chat.
+14. Avaliacao reciproca.
+15. Match, definicao de lider e anuncio para busca complementar.
+16. Inclusao de terceira empresa e encerramento dos anuncios envolvidos.
+17. Desistencia de empresa e troca de lider, quando aplicavel.
+18. Chat entre empresas antes do match.
+19. Notificacoes no sino.
+20. Tentativas de acesso indevido por usuario comum.
+21. Inicio da Central de Montagem pela empresa lider.
+22. Atribuicao de tarefas a empresas e profissionais consorciados.
+23. Atualizacao de status, revisao, comentarios, evidencias e dossie final.
+24. Protocolo de pedido de impugnacao com assunto, fundamentacao e anexos.
+25. Protocolo com menos de tres dias uteis antes da sessao, confirmando o alerta de intempestividade e o registro do pedido.
+26. Consulta, download de anexos e atualizacao de andamento na Central de Impugnacoes pelo administrador da plataforma.
 
 ## Situacao dos testes manuais
 

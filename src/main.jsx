@@ -127,6 +127,7 @@ const modules = [
       { id: "my-profile", label: "Meu perfil", hidden: true },
       { id: "invite-new", label: "Novo convite" },
       { id: "invite-list", label: "Lista de convites" },
+	  { id: "company-manage", label: "Empresas cadastradas" },
       { id: "invite-accept", label: "Aceite do convite", hidden: true },
       { id: "company-review", label: "Análise de empresas", hidden: true }
     ]
@@ -1127,6 +1128,7 @@ function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAc
     "admin-dashboard": <AdminDashboard navigate={navigate} />,
     "invite-new": <InviteNew />,
     "invite-list": <InviteList navigate={navigate} />,
+	"company-manage": <CompanyManage />,
     "invite-accept": <InviteAccept navigate={navigate} />,
     "company-review": <CompanyReview />,
     "my-profile": <MyProfile refreshSession={refreshSession} />,
@@ -1904,6 +1906,103 @@ function CompanyReview() {
           {invitation.status === "pending_review" && <div className="actions"><Button onClick={() => submitReview("approved")} disabled={Boolean(saving)}>{saving === "approved" ? "Aprovando..." : "Aprovar e liberar acesso"}</Button><Button variant="danger" onClick={() => submitReview("rejected")} disabled={Boolean(saving)}>Recusar</Button></div>}
         </>
       )}
+    </Page>
+  );
+}
+
+function CompanyManage() {
+  const [companies, setCompanies] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState(null);
+  const [filters, setFilters] = useState({ search: "", status: "" });
+  const [selectedCompany, setSelectedCompany] = useState(null);
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const loadCompanies = () => {
+    setLoading(true);
+    fetch(`${API_BASE_URL}/api/companies`, { credentials: "include" })
+      .then(async (response) => {
+        const data = parseAPIResponseText(await response.text());
+        if (!response.ok || data?.error) throw new Error(data?.error || "Não foi possível carregar as empresas.");
+        return Array.isArray(data) ? data : [];
+      })
+      .then(setCompanies)
+      .catch((error) => setMessage({ type: "error", text: error.message }))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadCompanies(); }, []);
+
+  const filteredCompanies = useMemo(() => companies.filter((company) => {
+    const searchable = [company.tradeName, company.cnpj, company.mainContactName, company.mainContactEmail, company.city, company.state].join(" ").toLowerCase();
+    return (!filters.search || searchable.includes(filters.search.toLowerCase())) && (!filters.status || company.status === filters.status);
+  }), [companies, filters]);
+
+  const statusLabel = (status) => ({
+    active: "Ativa",
+    blocked: "Bloqueada",
+    pending_review: "Em análise",
+    invited: "Convidada",
+    inactive: "Inativa",
+    rejected: "Recusada"
+  }[status] || status);
+
+  const confirmStatus = async () => {
+    if (!selectedCompany) return;
+    const nextStatus = selectedCompany.status === "blocked" ? "active" : "blocked";
+    setSaving(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/companies/${encodeURIComponent(selectedCompany.id)}/status`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus, reason })
+      });
+      const data = parseAPIResponseText(await response.text());
+      if (!response.ok || data?.error) throw new Error(data?.error || "Não foi possível alterar o acesso da empresa.");
+      setCompanies((current) => current.map((company) => company.id === data.id ? { ...company, status: data.status } : company));
+      setMessage({ type: "success", text: nextStatus === "blocked" ? "Empresa bloqueada. Todos os usuários vinculados tiveram as sessões encerradas." : "Empresa desbloqueada. Seus usuários podem entrar novamente." });
+      setSelectedCompany(null);
+      setReason("");
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const activeCount = companies.filter((company) => company.status === "active").length;
+  const blockedCount = companies.filter((company) => company.status === "blocked").length;
+  const isBlocking = selectedCompany?.status !== "blocked";
+
+  return (
+    <Page label="Administração" title="Empresas cadastradas">
+      <Stats items={[["Ativas", String(activeCount)], ["Bloqueadas", String(blockedCount)], ["Total", String(companies.length)]]} />
+      {message && <Card className={`formFeedback ${message.type === "success" ? "success" : "dangerNotice"}`}><p>{message.text}</p></Card>}
+      <Card className="compactFilters companyManageFiltersSticky">
+        <FormGrid>
+          <Field label="Buscar empresa"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Empresa, CNPJ, contato ou local" /></Field>
+          <Field label="Status"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos</option><option value="active">Ativa</option><option value="blocked">Bloqueada</option><option value="pending_review">Em análise</option><option value="inactive">Inativa</option><option value="rejected">Recusada</option></select></Field>
+        </FormGrid>
+      </Card>
+      {loading && <Card><p>Carregando empresas...</p></Card>}
+      {!loading && filteredCompanies.length === 0 && <Card><p>Nenhuma empresa encontrada com estes filtros.</p></Card>}
+      {!loading && filteredCompanies.length > 0 && <Table columns={["Empresa", "CNPJ", "Contato", "Local", "Status", "Ação"]} rows={filteredCompanies.map((company) => [
+        <div key={`${company.id}-name`}><strong>{company.tradeName}</strong><small>{company.mainContactEmail || "Sem e-mail informado"}</small></div>,
+        company.cnpj || "-",
+        <div key={`${company.id}-contact`}><strong>{company.mainContactName || "-"}</strong><small>{company.mainContactPhone || "Sem telefone informado"}</small></div>,
+        [company.city, company.state].filter(Boolean).join(" / ") || "-",
+        <span className={`statusPill ${company.status === "blocked" ? "closed" : company.status === "active" ? "open" : "review"}`}>{statusLabel(company.status)}</span>,
+        ["active", "blocked"].includes(company.status) ? <button className={`iconButton ${company.status === "blocked" ? "successIcon" : "dangerIcon"}`} title={company.status === "blocked" ? "Desbloquear empresa" : "Bloquear empresa e todos os usuários"} aria-label={company.status === "blocked" ? "Desbloquear empresa" : "Bloquear empresa e todos os usuários"} onClick={() => { setSelectedCompany(company); setReason(""); }}>{company.status === "blocked" ? "✓" : "!"}</button> : "-"
+      ])} />}
+      {selectedCompany && <div className="modalBackdrop" role="presentation"><section className="modalCard" role="dialog" aria-modal="true" aria-labelledby="company-access-title">
+        <div className="modalHeader"><div><span className="eyebrow">Confirmação</span><h2 id="company-access-title">{isBlocking ? "Bloquear empresa" : "Desbloquear empresa"}</h2></div><button className="iconButton" title="Fechar" aria-label="Fechar" onClick={() => setSelectedCompany(null)}>×</button></div>
+        <p>{isBlocking ? <>Ao bloquear <strong>{selectedCompany.tradeName}</strong>, todos os usuários vinculados perderão o acesso imediatamente. Nenhum cadastro será apagado.</> : <>Ao desbloquear <strong>{selectedCompany.tradeName}</strong>, os usuários ativos poderão entrar novamente conforme seus perfis de acesso.</>}</p>
+        <Field label="Motivo da ação" hint="Opcional. Fica guardado apenas para auditoria administrativa."><textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder={isBlocking ? "Ex.: pendência cadastral em análise" : "Ex.: pendência regularizada"} /></Field>
+        <div className="actions"><Button variant={isBlocking ? "danger" : "primary"} onClick={confirmStatus} disabled={saving}>{saving ? "Salvando..." : isBlocking ? "Confirmar bloqueio" : "Confirmar desbloqueio"}</Button><Button variant="secondary" onClick={() => setSelectedCompany(null)} disabled={saving}>Cancelar</Button></div>
+      </section></div>}
     </Page>
   );
 }
@@ -3901,7 +4000,12 @@ function TenderNew({ navigate }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
   const [documentFiles, setDocumentFiles] = useState([]);
-  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const [originalOpeningDate, setOriginalOpeningDate] = useState("");
+  const update = (field, value) => setForm((current) => {
+    const next = { ...current, [field]: value };
+    if (field === "openingDate" && !isPastDateISO(value) && current.status === "occurred") next.status = "published";
+    return next;
+  });
   useEffect(() => {
     if (!editId) return;
     fetch(`${API_BASE_URL}/api/tenders/${editId}`, { credentials: "include" })
@@ -3910,22 +4014,26 @@ function TenderNew({ navigate }) {
         if (!response.ok) throw new Error(data.error || "Não foi possível carregar o edital.");
         return data;
       })
-      .then((data) => setForm({
-        agency: data.agency || "",
-        number: data.number || "",
-        object: data.object || "",
-        modality: data.modality || "",
-        judgmentCriterion: data.judgmentCriterion || "",
-        estimatedValue: formatCurrencyBRFromNumber(data.estimatedValue),
-        state: data.state || "",
-        city: data.city || "",
-        openingDate: data.openingDate ? String(data.openingDate).slice(0, 10) : "",
-        status: data.status || "published",
-        cloudFolderUrl: data.cloudFolderUrl || "",
-        analysisDataUrl: "",
-        analysisFileName: "",
-        analysisMimeType: ""
-      }))
+      .then((data) => {
+        const openingDate = data.openingDate ? String(data.openingDate).slice(0, 10) : "";
+        setOriginalOpeningDate(openingDate);
+        setForm({
+          agency: data.agency || "",
+          number: data.number || "",
+          object: data.object || "",
+          modality: data.modality || "",
+          judgmentCriterion: data.judgmentCriterion || "",
+          estimatedValue: formatCurrencyBRFromNumber(data.estimatedValue),
+          state: data.state || "",
+          city: data.city || "",
+          openingDate,
+          status: data.status || "published",
+          cloudFolderUrl: data.cloudFolderUrl || "",
+          analysisDataUrl: "",
+          analysisFileName: "",
+          analysisMimeType: ""
+        });
+      })
       .catch((err) => setMessage({ type: "error", text: err.message }));
   }, [editId]);
   const selectAnalysis = (event) => {
@@ -3987,6 +4095,9 @@ function TenderNew({ navigate }) {
     setSaving(true);
     setMessage(null);
     try {
+      if (form.openingDate && isPastDateISO(form.openingDate) && (!isEditing || form.openingDate !== originalOpeningDate)) {
+        throw new Error("A data de abertura deve ser hoje ou futura. Um edital histórico pode apenas manter a data já registrada.");
+      }
       const payload = {
         ...form,
         estimatedValue: parseCurrencyBR(form.estimatedValue),
@@ -4023,7 +4134,7 @@ function TenderNew({ navigate }) {
         <Field label="Valor estimado"><input value={form.estimatedValue} onChange={(e) => update("estimatedValue", formatCurrencyBR(e.target.value))} placeholder="R$ 0,00" inputMode="numeric" /></Field>
         <Field label="Estado"><StateSelect value={form.state} onChange={(e) => update("state", e.target.value)} /></Field>
         <Field label="Cidade"><CityField state={form.state} value={form.city} onChange={(e) => update("city", e.target.value)} /></Field>
-        <Field label="Data de abertura"><input type="date" value={form.openingDate} onChange={(e) => update("openingDate", e.target.value)} /></Field>
+        <Field label="Data de abertura"><input type="date" min={isEditing && form.openingDate === originalOpeningDate && isPastDateISO(form.openingDate) ? undefined : currentLocalISODate()} value={form.openingDate} onChange={(e) => update("openingDate", e.target.value)} /></Field>
         <Field label="Status"><select value={form.status} onChange={(e) => update("status", e.target.value)}><option value="draft">Rascunho</option><option value="published">Publicado</option><option value="under_review">Em análise</option><option value="suspended">Suspenso</option><option value="challenged">Impugnado</option><option value="occurred">Ocorrido</option><option value="closed">Encerrado</option><option value="cancelled">Cancelado</option></select></Field>
       </FormGrid>
       <Field label="Objeto"><textarea value={form.object} onChange={(e) => update("object", e.target.value)} required /></Field>
@@ -4366,6 +4477,7 @@ function TenderChallengeBoard({ navigate }) {
   const [error, setError] = useState("");
   const [filters, setFilters] = useState({ search: "", status: "", sort: "deadline_asc" });
   const [savingId, setSavingId] = useState("");
+  const [selectedStatuses, setSelectedStatuses] = useState({});
 
   const load = () => {
     setLoading(true);
@@ -4389,6 +4501,7 @@ function TenderChallengeBoard({ navigate }) {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível atualizar o pedido.");
       setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status } : entry));
+	  setSelectedStatuses((current) => { const next = { ...current }; delete next[item.id]; return next; });
     } catch (updateError) {
       setError(updateError.message);
     } finally {
@@ -4413,6 +4526,11 @@ function TenderChallengeBoard({ navigate }) {
     ["completed", "Concluídos", (item) => ["accepted", "rejected", "withdrawn"].includes(item.status)]
   ];
   const formatDate = (value) => value ? new Date(value).toLocaleDateString("pt-BR") : "Não informado";
+  const whatsappURL = (phone) => {
+    const digits = String(phone || "").replace(/\D/g, "");
+    if (!digits) return "";
+    return `https://wa.me/${digits.startsWith("55") ? digits : `55${digits}`}`;
+  };
 
   return <Page label="Editais" title="Central de impugnações">
     <Card className="challengeBoardIntro"><div><strong>Pedidos protocolados pelas empresas</strong><p>Cada cartão representa uma tarefa de análise. O prazo interno é calculado para seis dias antes da sessão do edital.</p></div><span>{items.length} pedido{items.length === 1 ? "" : "s"}</span></Card>
@@ -4427,11 +4545,11 @@ function TenderChallengeBoard({ navigate }) {
       const columnItems = visible.filter(matches);
       return <section className={`challengeKanbanColumn ${key}`} key={key}><header><h3>{label}</h3><span>{columnItems.length}</span></header><div className="challengeKanbanCards">{columnItems.map((item) => <article className={`challengeKanbanCard ${item.isUntimely ? "is-untimely" : ""}`} key={item.id}>
         <div className="challengeCardTop"><strong>{item.tenderNumber}</strong><span className={`statusPill ${item.status === "submitted" ? "review" : "open"}`}>{tenderChallengeStatusLabel(item.status)}</span></div>
-        <p className="challengeTender">{item.tenderAgency}</p><h4>{item.subject}</h4><p className="challengeCompany">{item.companyName} {item.authorName ? `· ${item.authorName}` : ""}</p>
+        <p className="challengeTender">{item.tenderAgency}</p><h4>{item.subject}</h4><div className="challengeCompanyLine"><p className="challengeCompany">{item.companyName} {item.authorName ? `· ${item.authorName}` : ""}</p>{whatsappURL(item.requesterPhone) && <a className="iconButton whatsappIcon" href={whatsappURL(item.requesterPhone)} target="_blank" rel="noreferrer" title={`Conversar com ${item.authorName || "o solicitante"} no WhatsApp`} aria-label={`Conversar com ${item.authorName || "o solicitante"} no WhatsApp`}>☎</a>}</div>
         <div className="challengeDates"><span>Sessão: <b>{formatDate(item.openingDate)}</b></span><span>Prazo interno: <b>{formatDate(item.internalDeadline)}</b></span></div>
         {item.isUntimely && <p className="challengeLate">Intempestiva: {item.businessDaysBeforeOpening ?? 0} dia(s) útil(eis) antes da sessão.</p>}
         <details><summary>Ver fundamentação e documentos ({item.documentCount || 0})</summary><p>{item.rationale}</p>{Array.isArray(item.documents) && item.documents.length > 0 && <div className="challengeFiles">{item.documents.map((file) => <a href={file.fileUrl} download key={file.id}>↓ {file.title}</a>)}</div>}<Button variant="secondary" onClick={() => navigate(`tender-detail?id=${item.tenderId}`)}>Abrir edital</Button></details>
-        <Field label="Andamento"><select value={item.status} disabled={savingId === item.id} onChange={(event) => updateStatus(item, event.target.value)}>{tenderChallengeStatuses.map(([value, statusLabel]) => <option value={value} key={value}>{statusLabel}</option>)}</select></Field>
+        <div className="challengeStatusActions"><Field label="Andamento"><select value={selectedStatuses[item.id] ?? item.status} disabled={savingId === item.id} onChange={(event) => setSelectedStatuses((current) => ({ ...current, [item.id]: event.target.value }))}>{tenderChallengeStatuses.map(([value, statusLabel]) => <option value={value} key={value}>{statusLabel}</option>)}</select></Field><Button onClick={() => updateStatus(item, selectedStatuses[item.id] ?? item.status)} disabled={savingId === item.id || (selectedStatuses[item.id] ?? item.status) === item.status}>{savingId === item.id ? "Atualizando..." : "Atualizar andamento"}</Button></div>
       </article>)}{columnItems.length === 0 && <p className="personalKanbanEmpty">Nenhum pedido nesta fase.</p>}</div></section>;
     })}</div>}
   </Page>;
@@ -4796,6 +4914,8 @@ function MatchPartners({ navigate, sessionUser, openChatForAd }) {
     return new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime();
   });
   const updateFilter = (field, value) => setFilters((current) => ({ ...current, [field]: value }));
+  const clearFilters = () => setFilters({ search: "", agency: "Todos", criterion: "Todos", type: "Todos", need: "Todas", sort: "published_desc" });
+  const activeFilterCount = [filters.search, filters.agency !== "Todos", filters.criterion !== "Todos", filters.type !== "Todos", filters.need !== "Todas", filters.sort !== "published_desc"].filter(Boolean).length;
   const hasOwnPublishedPositionForTender = (tenderId) => ads.some((candidate) => (
     candidate.companyId === sessionUser?.companyId
     && candidate.tenderId === tenderId
@@ -4859,27 +4979,20 @@ function MatchPartners({ navigate, sessionUser, openChatForAd }) {
         </div>
       </section>
 
-      <Card className="compactFilters partnerFiltersSticky">
-        <FormGrid>
-          <Field label="Buscar por empresa, edital ou objeto">
-            <input value={filters.search} onChange={(event) => updateFilter("search", event.target.value)} placeholder="Digite para localizar um anúncio" />
+      <Card className="partnerFiltersSticky partnerFilterBar">
+        <div className="partnerFilterPrimary">
+          <Field label="Buscar oportunidades">
+            <input value={filters.search} onChange={(event) => updateFilter("search", event.target.value)} placeholder="Empresa, edital, órgão ou objeto" />
           </Field>
-          <Field label="Órgão">
-            <select value={filters.agency} onChange={(event) => updateFilter("agency", event.target.value)}>{agencies.map((agency) => <option key={agency}>{agency}</option>)}</select>
-          </Field>
-          <Field label="Critério">
-            <select value={filters.criterion} onChange={(event) => updateFilter("criterion", event.target.value)}>{criteria.map((criterion) => <option key={criterion}>{criterion}</option>)}</select>
-          </Field>
-          <Field label="Tipo de anúncio">
-            <select value={filters.type} onChange={(event) => updateFilter("type", event.target.value)}><option>Todos</option><option>Empresa</option><option>Consórcio</option></select>
-          </Field>
-          <Field label="Necessidade">
-            <select value={filters.need} onChange={(event) => updateFilter("need", event.target.value)}><option>Todas</option><option>operacional</option><option>equipe</option><option>peça técnica</option><option>certificações</option></select>
-          </Field>
-          <Field label="Ordenar por">
-            <select value={filters.sort} onChange={(event) => updateFilter("sort", event.target.value)}><option value="published_desc">Mais recentes</option><option value="tender_asc">Número do edital</option><option value="company_asc">Empresa A-Z</option></select>
-          </Field>
-        </FormGrid>
+          <div className="partnerFilterSummary"><span>{orderedAds.length} anúncio{orderedAds.length === 1 ? "" : "s"} encontrado{orderedAds.length === 1 ? "" : "s"}</span>{activeFilterCount > 0 && <button type="button" className="iconButton secondaryIcon" title="Limpar filtros" aria-label="Limpar filtros" onClick={clearFilters}>×</button>}</div>
+        </div>
+        <div className="partnerFilterSecondary" aria-label="Filtros da vitrine">
+          <Field label="Órgão"><select value={filters.agency} onChange={(event) => updateFilter("agency", event.target.value)}>{agencies.map((agency) => <option key={agency}>{agency}</option>)}</select></Field>
+          <Field label="Critério"><select value={filters.criterion} onChange={(event) => updateFilter("criterion", event.target.value)}>{criteria.map((criterion) => <option key={criterion}>{criterion}</option>)}</select></Field>
+          <Field label="Tipo de anúncio"><select value={filters.type} onChange={(event) => updateFilter("type", event.target.value)}><option>Todos</option><option>Empresa</option><option>Consórcio</option></select></Field>
+          <Field label="Necessidade"><select value={filters.need} onChange={(event) => updateFilter("need", event.target.value)}><option>Todas</option><option>operacional</option><option>equipe</option><option>peça técnica</option><option>certificações</option></select></Field>
+          <Field label="Ordenar por"><select value={filters.sort} onChange={(event) => updateFilter("sort", event.target.value)}><option value="published_desc">Mais recentes</option><option value="tender_asc">Número do edital</option><option value="company_asc">Empresa A-Z</option></select></Field>
+        </div>
       </Card>
 
       {!loading && !error && (
@@ -5076,7 +5189,7 @@ function MatchProfile({ navigate, sessionUser, openChatForAd }) {
   const applicationSent = currentHashParams().get("application") === "sent";
 
   return (
-    <Page label="Match e consórcios" title="Detalhe do anúncio" actions={!isOwnAd ? <><Button variant="secondary" onClick={() => openChatForAd(ad)}>Conversar</Button><Button onClick={() => navigate(`match-tinder?id=${ad.id}`)}>Ir para avaliar candidata</Button></> : null}>
+    <Page label="Match e consórcios" title="Detalhe do anúncio" actions={!isOwnAd ? <Button onClick={() => navigate(`match-tinder?id=${ad.id}`)}>Ir para avaliar candidata</Button> : null}>
       {applicationSent && isConsortiumAd && <Card className="successNotice"><strong>Interesse enviado para a líder do consórcio.</strong><p>A empresa líder receberá a candidata em Meus consórcios e poderá dar o match final para incluí-la na composição.</p></Card>}
       <section className="partnerAdHero">
         <div>
@@ -5088,36 +5201,24 @@ function MatchProfile({ navigate, sessionUser, openChatForAd }) {
         </div>
         <div className="partnerAdCompany">
           <LogoSlot initials={ad.companyName.split(" ").map((word) => word[0]).join("").slice(0, 2)} src={ad.companyLogoUrl} size="lg" label={`Logo da ${ad.companyName}`} />
-          <strong>{isConsortiumAd ? "Líder: " + (ad.leaderCompanyName || ad.companyName) : ad.companyName}</strong>
+          <div className="partnerAdCompanyName"><strong>{isConsortiumAd ? "Líder: " + (ad.leaderCompanyName || ad.companyName) : ad.companyName}</strong>{!isOwnAd && <button className="iconButton chatIcon" title="Abrir conversa geral com o anunciante" aria-label="Abrir conversa geral com o anunciante" onClick={() => openChatForAd(ad)}>{"\u2709"}</button>}</div>
           <small>{[ad.city, ad.state].filter(Boolean).join(" / ") || ad.agency} | {isConsortiumAd ? "Anúncio do consórcio" : "Anúncio de parceria"}</small>
         </div>
       </section>
 
-      <div className="partnerAdColumns">
-        <Card>
-          <h3>O que oferece</h3>
-          <ul className="cleanList">
-            <li>{ad.offerSummary || "Não informado"}</li>
-          </ul>
-        </Card>
-        <Card>
-          <h3>O que busca</h3>
-          <ul className="cleanList">
-            <li>{ad.seekSummary || "Não informado"}</li>
-          </ul>
-        </Card>
-      </div>
-
-      <div className="partnerAdRequirements">
-        {(ad.requirements || []).map((item) => (
-          <Card className="partnerAdRequirement" key={item.requirementKey}>
-            <span className="statusPill review">{interestStatusLabels[item.statusKey] || item.statusKey}</span>
-            <h3>{item.name}</h3>
-            <p><strong>Tem:</strong> {item.whatWeHave || "Não informado"}</p>
-            <p><strong>Busca:</strong> {item.whatWeSeek || "Não informado"}</p>
-          </Card>
-        ))}
-      </div>
+      <section className="partnerRequirementSection">
+        <div className="sectionHeading"><div><span className="eyebrow">Posicionamento na licitação</span><h3>Atendimento por requisito</h3><p>Veja separadamente o nível de atendimento, o que a empresa possui e o que deseja complementar.</p></div></div>
+        <div className="partnerAdRequirements">
+          {(ad.requirements || []).map((item) => (
+            <Card className="partnerAdRequirement" key={item.requirementKey}>
+              <div className="partnerRequirementHead"><div><span>Requisito</span><h3>{item.name}</h3></div><span className="statusPill review">{interestStatusLabels[item.statusKey] || item.statusKey}</span></div>
+              <div className="partnerRequirementDetail"><strong>O que possui ou atende</strong><p>{item.whatWeHave || "Não informado"}</p></div>
+              <div className="partnerRequirementDetail"><strong>O que busca complementar</strong><p>{item.whatWeSeek || "Não informado"}</p></div>
+            </Card>
+          ))}
+        </div>
+        {!(ad.requirements || []).length && <Card><p>Este anúncio ainda não possui o detalhamento por requisito.</p></Card>}
+      </section>
     </Page>
   );
 }

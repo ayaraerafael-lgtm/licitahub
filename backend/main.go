@@ -168,6 +168,11 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
+type changeCompanyStatusRequest struct {
+	Status string `json:"status"`
+	Reason string `json:"reason"`
+}
+
 type forgotPasswordRequest struct {
 	Email string `json:"email"`
 }
@@ -1635,6 +1640,14 @@ func (a *app) handleCompanies(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) handleCompanyByPath(w http.ResponseWriter, r *http.Request) {
 	id, action := splitResourcePath(r.URL.Path, "/api/companies/")
+	if action == "status" {
+		if r.Method != http.MethodPatch {
+			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+			return
+		}
+		a.changeCompanyStatus(w, r, id)
+		return
+	}
 	if action == "public-profile" {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
@@ -1661,6 +1674,84 @@ func (a *app) handleCompanyByPath(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
 	}
+}
+
+func (a *app) changeCompanyStatus(w http.ResponseWriter, r *http.Request, companyID string) {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if !session.canManagePlatform() {
+		writeError(w, http.StatusForbidden, "somente administrador da plataforma pode alterar o acesso da empresa")
+		return
+	}
+
+	var req changeCompanyStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "json invalido")
+		return
+	}
+	req.Status = strings.TrimSpace(strings.ToLower(req.Status))
+	req.Reason = strings.TrimSpace(req.Reason)
+	if req.Status != "active" && req.Status != "blocked" {
+		writeError(w, http.StatusBadRequest, "status de empresa invalido")
+		return
+	}
+
+	action := "empresa_desbloqueada"
+	description := "Acesso da empresa foi liberado pelo administrador da plataforma."
+	if req.Status == "blocked" {
+		action = "empresa_bloqueada"
+		description = "Acesso da empresa e de todos os seus usuarios foi bloqueado pelo administrador da plataforma."
+	}
+
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		WITH updated_company AS (
+			UPDATE companies
+			SET status = %s
+			WHERE id = %s::uuid
+			  AND deleted_at IS NULL
+			RETURNING id, trade_name, status
+		), revoked_sessions AS (
+			UPDATE auth_sessions s
+			SET revoked_at = now()
+			FROM users u, updated_company c
+			WHERE s.user_id = u.id
+			  AND u.company_id = c.id
+			  AND s.revoked_at IS NULL
+			RETURNING s.id
+		), created_audit AS (
+			INSERT INTO audit_logs (
+				actor_user_id, company_id, module, action, entity_type, entity_id, description, metadata
+			)
+			SELECT
+				%s::uuid, c.id, 'acesso_administracao', %s, 'company', c.id,
+				%s, jsonb_build_object('status', c.status, 'reason', NULLIF(%s, ''))
+			FROM updated_company c
+			RETURNING id
+		)
+		SELECT row_to_json(item)
+		FROM (
+			SELECT id::text AS id, trade_name AS "tradeName", status
+			FROM updated_company
+		) item;
+	`,
+		sqlQuote(req.Status),
+		sqlQuote(companyID),
+		sqlQuote(session.UserID),
+		sqlQuote(action),
+		sqlQuote(description),
+		sqlQuote(req.Reason),
+	))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel alterar o acesso da empresa")
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusNotFound, "empresa nao encontrada")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
 }
 
 func (a *app) getMyCompanyProfile(w http.ResponseWriter, r *http.Request) {
@@ -2417,7 +2508,7 @@ func (a *app) listTenderChallenges(w http.ResponseWriter, r *http.Request) {
 				t.id::text AS "tenderId", t.number AS "tenderNumber", t.agency AS "tenderAgency",
 				t.object AS "tenderObject", t.opening_date AS "openingDate",
 				(t.opening_date::date - 6) AS "internalDeadline",
-				c.trade_name AS "companyName", u.full_name AS "authorName",
+				c.trade_name AS "companyName", u.full_name AS "authorName", COALESCE(u.phone, '') AS "requesterPhone",
 				(SELECT COUNT(*) FROM tender_challenge_files tcf WHERE tcf.tender_challenge_id = tc.id) AS "documentCount",
 				COALESCE((
 					SELECT json_agg(row_to_json(file_item) ORDER BY file_item."createdAt" DESC)
@@ -2468,24 +2559,10 @@ func (a *app) updateTenderChallengeStatus(w http.ResponseWriter, r *http.Request
 			UPDATE tender_challenges
 			SET status=%s, updated_at=now()
 			WHERE id=%s::uuid
-			RETURNING id, tender_id, company_id, subject
-		), notified AS (
-			INSERT INTO notifications (
-				recipient_user_id, recipient_company_id, type, title, message,
-				destination_screen, related_entity_type, related_entity_id
-			)
-			SELECT u.id, u.company_id, 'system', 'Atualizacao do pedido de impugnacao',
-				'O pedido "' || updated.subject || '" foi atualizado para: %s.',
-				'tender-detail', 'tender', updated.tender_id
-			FROM updated
-			JOIN users u ON u.company_id=updated.company_id
-			WHERE u.status='active' AND u.deleted_at IS NULL
-			RETURNING id
+			RETURNING id::text AS id, %s AS status
 		)
-		SELECT row_to_json(item) FROM (
-			SELECT id::text AS id, %s AS status FROM updated
-		) item;
-	`, sqlQuote(req.Status), sqlQuote(challengeID), sqlQuote(labels[req.Status]), sqlQuote(req.Status)))
+		SELECT row_to_json(updated) FROM updated;
+	`, sqlQuote(req.Status), sqlQuote(challengeID), sqlQuote(req.Status)))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "nao foi possivel atualizar a impugnacao")
 		return
@@ -2493,6 +2570,20 @@ func (a *app) updateTenderChallengeStatus(w http.ResponseWriter, r *http.Request
 	if strings.TrimSpace(string(payload)) == "null" {
 		writeError(w, http.StatusNotFound, "pedido de impugnacao nao encontrado")
 		return
+	}
+	if _, notificationErr := a.runPSQL(r.Context(), fmt.Sprintf(`
+		INSERT INTO notifications (
+			recipient_user_id, recipient_company_id, type, title, message,
+			destination_screen, related_entity_type, related_entity_id
+		)
+		SELECT u.id, u.company_id, 'system', 'Atualizacao do pedido de impugnacao',
+			'O pedido "' || tc.subject || '" foi atualizado para: %s.',
+			'tender-detail', 'tender', tc.tender_id
+		FROM tender_challenges tc
+		JOIN users u ON u.company_id=tc.company_id
+		WHERE tc.id=%s::uuid AND u.status='active' AND u.deleted_at IS NULL;
+	`, sqlQuote(labels[req.Status]), sqlQuote(challengeID))); notificationErr != nil {
+		log.Printf("nao foi possivel notificar atualizacao da impugnacao %s: %v", challengeID, notificationErr)
 	}
 	writeRawJSON(w, http.StatusOK, payload)
 }
@@ -2910,6 +3001,7 @@ func (a *app) createTender(w http.ResponseWriter, r *http.Request) {
 	req.City = strings.TrimSpace(req.City)
 	req.OpeningDate = strings.TrimSpace(req.OpeningDate)
 	req.Status = normalizeTenderStatus(req.Status)
+	req.Status = normalizeTenderStatusForOpeningDate(req.Status, req.OpeningDate)
 	req.CloudFolderURL = strings.TrimSpace(req.CloudFolderURL)
 	if req.Agency == "" || req.Number == "" || req.Object == "" {
 		writeError(w, http.StatusBadRequest, "orgao, numero e objeto sao obrigatorios")
@@ -2920,6 +3012,10 @@ func (a *app) createTender(w http.ResponseWriter, r *http.Request) {
 	}
 	if !isValidTenderStatus(req.Status) {
 		writeError(w, http.StatusBadRequest, "status do edital invalido")
+		return
+	}
+	if err := a.validateTenderOpeningDate(r.Context(), "", req.OpeningDate); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	analysisURL := ""
@@ -3021,6 +3117,7 @@ func (a *app) updateTender(w http.ResponseWriter, r *http.Request, tenderID stri
 	req.City = strings.TrimSpace(req.City)
 	req.OpeningDate = strings.TrimSpace(req.OpeningDate)
 	req.Status = normalizeTenderStatus(req.Status)
+	req.Status = normalizeTenderStatusForOpeningDate(req.Status, req.OpeningDate)
 	req.CloudFolderURL = strings.TrimSpace(req.CloudFolderURL)
 	if req.Agency == "" || req.Number == "" || req.Object == "" {
 		writeError(w, http.StatusBadRequest, "orgao, numero e objeto sao obrigatorios")
@@ -3031,6 +3128,10 @@ func (a *app) updateTender(w http.ResponseWriter, r *http.Request, tenderID stri
 	}
 	if !isValidTenderStatus(req.Status) {
 		writeError(w, http.StatusBadRequest, "status do edital invalido")
+		return
+	}
+	if err := a.validateTenderOpeningDate(r.Context(), tenderID, req.OpeningDate); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	valueSQL := "NULL"
@@ -3119,6 +3220,12 @@ func (a *app) deleteTender(w http.ResponseWriter, r *http.Request, tenderID stri
 
 func (a *app) refreshOccurredTenders(ctx context.Context) error {
 	_, err := a.runPSQL(ctx, `
+		UPDATE tenders
+		SET status = 'published', updated_at = now()
+		WHERE status = 'occurred'
+		  AND opening_date IS NOT NULL
+		  AND opening_date::date >= current_date
+		  AND deleted_at IS NULL;
 		UPDATE tenders
 		SET status = 'occurred', updated_at = now()
 		WHERE status IN ('published', 'under_review', 'suspended', 'challenged')
@@ -3249,8 +3356,18 @@ func (a *app) createTenderInterest(w http.ResponseWriter, r *http.Request, tende
 	req.DesiredRole = normalizeInterestDesiredRole(req.DesiredRole)
 	req.PublicSummary = strings.TrimSpace(req.PublicSummary)
 	req.InternalNote = strings.TrimSpace(req.InternalNote)
+	for index := range req.Requirements {
+		req.Requirements[index].RequirementKey = strings.TrimSpace(req.Requirements[index].RequirementKey)
+		req.Requirements[index].StatusKey = strings.TrimSpace(req.Requirements[index].StatusKey)
+		req.Requirements[index].WhatWeHave = strings.TrimSpace(req.Requirements[index].WhatWeHave)
+		req.Requirements[index].WhatWeSeek = strings.TrimSpace(req.Requirements[index].WhatWeSeek)
+	}
 	if req.PublicSummary == "" {
 		writeError(w, http.StatusBadRequest, "resumo do anuncio e obrigatorio")
+		return
+	}
+	if err := validateTenderInterestRequirements(req.Requirements); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -3264,7 +3381,47 @@ func (a *app) createTenderInterest(w http.ResponseWriter, r *http.Request, tende
 		writeError(w, http.StatusInternalServerError, "nao foi possivel registrar interesse: "+err.Error())
 		return
 	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusBadRequest, a.tenderInterestUnavailableReason(r.Context(), tenderID))
+		return
+	}
 	writeRawJSON(w, http.StatusCreated, payload)
+}
+
+func (a *app) tenderInterestUnavailableReason(ctx context.Context, tenderID string) string {
+	payload, err := a.queryJSON(ctx, fmt.Sprintf(`
+		SELECT COALESCE(row_to_json(item), 'null'::json)
+		FROM (
+			SELECT status, number, opening_date AS "openingDate"
+			FROM tenders
+			WHERE id=%s::uuid AND deleted_at IS NULL
+			LIMIT 1
+		) item;
+	`, sqlQuote(tenderID)))
+	if err != nil || strings.TrimSpace(string(payload)) == "null" {
+		return "edital nao encontrado ou indisponivel para manifestacao de interesse"
+	}
+	var tender struct {
+		Status string `json:"status"`
+		Number string `json:"number"`
+	}
+	if json.Unmarshal(payload, &tender) != nil {
+		return "nao foi possivel registrar interesse para este edital"
+	}
+	switch tender.Status {
+	case "occurred":
+		return "este edital ja ocorreu e nao aceita novas manifestacoes de interesse"
+	case "closed":
+		return "este edital esta encerrado e nao aceita novas manifestacoes de interesse"
+	case "cancelled":
+		return "este edital foi cancelado e nao aceita novas manifestacoes de interesse"
+	case "suspended":
+		return "este edital esta suspenso; aguarde a retomada antes de registrar interesse"
+	case "draft":
+		return "este edital ainda nao foi publicado para as empresas"
+	default:
+		return "nao foi possivel concluir a manifestacao para este edital; atualize a pagina e tente novamente"
+	}
 }
 
 func (a *app) handlePartnershipAds(w http.ResponseWriter, r *http.Request) {
@@ -5973,7 +6130,7 @@ func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req crea
 	return fmt.Sprintf(`
 		WITH selected_tender AS (
 			SELECT id, number, object FROM tenders
-			WHERE id = %s::uuid AND deleted_at IS NULL AND status IN ('published', 'under_review')
+			WHERE id = %s::uuid AND deleted_at IS NULL AND status IN ('published', 'under_review', 'challenged')
 			LIMIT 1
 		),
 		ensured_requirements AS (
@@ -5994,7 +6151,7 @@ func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req crea
 				'operational_qualification', 'professional_qualification', 'technical_proposal', 'certifications'
 			)
 			ON CONFLICT (tender_id, requirement_type_id) DO NOTHING
-			RETURNING id
+			RETURNING id, tender_id, requirement_type_id
 		),
 		updated_interest AS (
 			UPDATE tender_interests
@@ -6037,10 +6194,13 @@ func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req crea
 			SELECT * FROM inserted_interest
 			LIMIT 1
 		),
-		clear_requirements AS (
-			DELETE FROM tender_interest_requirements
-			WHERE tender_interest_id = (SELECT id FROM selected_interest)
-			RETURNING id
+		resolved_requirements AS (
+			SELECT tr.id, tr.tender_id, tr.requirement_type_id
+			FROM tender_requirements tr
+			JOIN selected_tender st ON st.id = tr.tender_id
+			UNION ALL
+			SELECT er.id, er.tender_id, er.requirement_type_id
+			FROM ensured_requirements er
 		),
 		incoming AS (
 			SELECT *
@@ -6064,7 +6224,12 @@ func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req crea
 			FROM selected_interest si
 			JOIN incoming i ON true
 			JOIN tender_requirement_types rt ON rt.key = i."requirementKey"
-			JOIN tender_requirements tr ON tr.tender_id = si.tender_id AND tr.requirement_type_id = rt.id
+			JOIN resolved_requirements tr ON tr.tender_id = si.tender_id AND tr.requirement_type_id = rt.id
+			ON CONFLICT (tender_interest_id, tender_requirement_id) DO UPDATE
+			SET status_key = EXCLUDED.status_key,
+				what_we_have = EXCLUDED.what_we_have,
+				what_we_seek = EXCLUDED.what_we_seek,
+				updated_at = now()
 			RETURNING id
 		),
 		updated_ad AS (
@@ -8350,6 +8515,95 @@ func normalizeInterestDesiredRole(value string) string {
 	default:
 		return "seeks_partner"
 	}
+}
+
+func normalizeTenderStatusForOpeningDate(status, openingDate string) string {
+	if status != "occurred" || strings.TrimSpace(openingDate) == "" {
+		return status
+	}
+	date, err := time.Parse("2006-01-02", openingDate)
+	if err != nil {
+		return status
+	}
+	location, err := time.LoadLocation("America/Sao_Paulo")
+	if err != nil {
+		location = time.Local
+	}
+	now := time.Now().In(location)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location)
+	if !date.Before(today) {
+		return "published"
+	}
+	return status
+}
+
+func (a *app) validateTenderOpeningDate(ctx context.Context, tenderID, openingDate string) error {
+	openingDate = strings.TrimSpace(openingDate)
+	if openingDate == "" {
+		return nil
+	}
+	parsedDate, err := time.Parse("2006-01-02", openingDate)
+	if err != nil {
+		return errors.New("data de abertura invalida")
+	}
+	location, err := time.LoadLocation("America/Sao_Paulo")
+	if err != nil {
+		location = time.Local
+	}
+	now := time.Now().In(location)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location)
+	if !parsedDate.Before(today) {
+		return nil
+	}
+	if tenderID == "" {
+		return errors.New("a data de abertura deve ser hoje ou futura")
+	}
+	payload, queryErr := a.queryJSON(ctx, fmt.Sprintf(`
+		SELECT COALESCE(row_to_json(item), 'null'::json)
+		FROM (
+			SELECT to_char(opening_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') AS "openingDate"
+			FROM tenders
+			WHERE id=%s::uuid AND deleted_at IS NULL
+			LIMIT 1
+		) item;
+	`, sqlQuote(tenderID)))
+	if queryErr != nil {
+		return errors.New("nao foi possivel validar a data de abertura")
+	}
+	var current struct {
+		OpeningDate string `json:"openingDate"`
+	}
+	if json.Unmarshal(payload, &current) == nil && current.OpeningDate == openingDate {
+		return nil
+	}
+	return errors.New("nao e permitido alterar a data de abertura para uma data passada")
+}
+
+func validateTenderInterestRequirements(requirements []tenderInterestRequirementRequest) error {
+	expected := map[string]bool{
+		"operational_qualification":  true,
+		"professional_qualification": true,
+		"technical_proposal":         true,
+		"certifications":             true,
+	}
+	allowedStatus := map[string]bool{
+		"fully_meets": true, "partially_meets": true, "does_not_meet": true,
+		"low_score": true, "seeks_partner": true, "not_applicable": true, "under_review": true,
+	}
+	if len(requirements) != len(expected) {
+		return errors.New("informe os quatro requisitos do edital antes de salvar")
+	}
+	seen := make(map[string]bool)
+	for _, requirement := range requirements {
+		if !expected[requirement.RequirementKey] || seen[requirement.RequirementKey] {
+			return errors.New("requisitos do interesse invalidos")
+		}
+		if !allowedStatus[requirement.StatusKey] {
+			return errors.New("situacao de requisito invalida")
+		}
+		seen[requirement.RequirementKey] = true
+	}
+	return nil
 }
 
 func parseNewsExpiresAt(value string) (time.Time, error) {
