@@ -581,8 +581,13 @@ textarea::placeholder {
 .menuCollapsed .brand div,
 .menuCollapsed .roleSwitch,
 .menuCollapsed .signedRole,
-.menuCollapsed .navGroup span,
-.menuCollapsed .navGroup a {
+.menuCollapsed .navGroupHeader span,
+.menuCollapsed .navGroupHeader b,
+.menuCollapsed .navGroupLinks {
+  display: none;
+}
+
+.menuCollapsed .navGroup.isOpen .navGroupLinks {
   display: none;
 }
 
@@ -621,21 +626,21 @@ textarea::placeholder {
 }
 
 .menuToggle {
-  width: 100%;
+  width: 38px;
+  height: 38px;
   margin: 14px 0 0;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.08);
   color: #eaf4f3;
-  padding: 9px 10px;
   cursor: pointer;
-  font-weight: 800;
+  font-size: 24px;
+  line-height: 1;
 }
 
 .menuCollapsed .menuToggle {
-  writing-mode: vertical-rl;
-  min-height: 118px;
-  padding: 10px 6px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .roleSwitch select {
@@ -648,18 +653,62 @@ textarea::placeholder {
 }
 
 .navGroup {
-  padding-top: 16px;
-  margin-top: 16px;
+  padding-top: 10px;
+  margin-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-.navGroup span {
-  display: block;
+.navGroupHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  background: transparent;
+  color: #e6b84a;
+  padding: 8px 7px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.navGroupHeader:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+}
+
+.navGroupHeader svg {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  color: #e6b84a;
+}
+
+.navGroupHeader span {
+  flex: 1;
   color: #e6b84a;
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
-  margin-bottom: 8px;
+}
+
+.navGroupHeader b {
+  color: #a9c8c4;
+  font-size: 18px;
+  font-weight: 400;
+  transition: transform 160ms ease;
+}
+
+.navGroup.isOpen .navGroupHeader b {
+  transform: rotate(180deg);
+}
+
+.navGroupLinks {
+  display: none;
+  padding-top: 2px;
+}
+
+.navGroup.isOpen .navGroupLinks {
+  display: block;
 }
 
 .navGroup a {
@@ -677,8 +726,246 @@ textarea::placeholder {
   color: #fff;
 }
 
+.menuCollapsed .navGroup {
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.menuCollapsed .navGroupHeader {
+  width: 100%;
+  justify-content: center;
+  padding: 10px 4px;
+}
+
+.menuCollapsed .navGroupHeader svg {
+  width: 23px;
+  height: 23px;
+}
+
 .main {
   min-width: 0;
+}
+
+.calendarNavigation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.assemblyCalendarHero {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 4px 2px 18px;
+}
+
+.assemblyCalendarHero h3 {
+  margin: 4px 0 6px;
+  font-size: 24px;
+}
+
+.assemblyCalendarHero p {
+  max-width: 680px;
+  margin: 0;
+  color: var(--muted);
+}
+
+.assemblyCalendarLegend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.assemblyCalendarLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.assemblyCalendarLegend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.progressCritical { background: #c9453d; }
+.progressAttention { background: #d39a1b; }
+.progressGood { background: #23845b; }
+
+.assemblyCalendarFilters {
+  position: sticky;
+  top: 82px;
+  z-index: 20;
+  margin-bottom: 18px;
+}
+
+.assemblyCalendarWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.assemblyCalendarGrid {
+  min-width: 920px;
+}
+
+.assemblyCalendarWeekdays,
+.assemblyCalendarDays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.assemblyCalendarWeekdays {
+  border-bottom: 1px solid var(--line);
+  background: #f3f7f6;
+}
+
+.assemblyCalendarWeekdays span {
+  padding: 11px 12px;
+  color: #456168;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.assemblyCalendarDay,
+.assemblyCalendarBlank {
+  min-height: 176px;
+  padding: 9px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.assemblyCalendarDay:nth-child(7n),
+.assemblyCalendarBlank:nth-child(7n) {
+  border-right: 0;
+}
+
+.assemblyCalendarDay.isToday {
+  background: #f7fbfa;
+}
+
+.assemblyCalendarDay header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 22px;
+  margin-bottom: 8px;
+}
+
+.assemblyCalendarDay header strong {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  color: #183c40;
+  font-size: 13px;
+}
+
+.assemblyCalendarDay.isToday header strong {
+  border-radius: 50%;
+  background: #0d5658;
+  color: #ffffff;
+}
+
+.assemblyCalendarDay header span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.assemblyCalendarCards {
+  display: grid;
+  gap: 7px;
+}
+
+.assemblyCalendarCard {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  border: 1px solid #d9e4e2;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 8px;
+  color: #23363b;
+  cursor: pointer;
+  text-align: left;
+}
+
+.assemblyCalendarCard:hover {
+  border-color: #7fa9a5;
+  box-shadow: 0 7px 16px rgba(18, 64, 66, 0.12);
+}
+
+.assemblyCalendarCard small {
+  color: #49646a;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.assemblyCalendarCard strong {
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assemblyCalendarCard > span {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 30px;
+  color: #64757a;
+  font-size: 11px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.calendarProgress > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.calendarProgress em {
+  display: block;
+  flex: 1;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #e6eeee;
+}
+
+.calendarProgress em i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: currentColor;
+}
+
+.calendarProgress em.progressCritical { color: #c9453d; }
+.calendarProgress em.progressAttention { color: #d39a1b; }
+.calendarProgress em.progressGood { color: #23845b; }
+
+.calendarProgress b {
+  color: #42565b;
+  font-size: 11px;
+}
+
+.assemblyCalendarEmpty {
+  margin-top: 18px;
+  color: var(--muted);
+  text-align: center;
 }
 
 .topbar {
@@ -822,12 +1109,25 @@ textarea::placeholder {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
+  color: #7c8990;
   cursor: pointer;
   box-shadow: 0 10px 22px rgba(17, 24, 39, 0.08);
 }
 
-.alertBell span {
-  font-size: 20px;
+.alertBell:hover {
+  color: #37555a;
+  border-color: #b9c8c9;
+}
+
+.alertBell.hasUnread {
+  color: #d49a17;
+  border-color: rgba(212, 154, 23, 0.38);
+  background: #fffaf0;
+}
+
+.alertBell svg {
+  width: 21px;
+  height: 21px;
 }
 
 .alertBell strong {
@@ -4241,6 +4541,118 @@ tbody tr:hover {
   color: #cce1df;
 }
 
+.companyPanelHero {
+  grid-template-columns: minmax(0, 1fr) 190px;
+}
+
+.dashboardFiltersSticky {
+  position: sticky;
+  top: 76px;
+  z-index: 20;
+  margin-bottom: 18px;
+}
+
+.dashboardCounter {
+  display: inline-grid;
+  min-width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e6f3f1;
+  color: var(--brand-dark);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.textAction {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--brand);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.dashboardEmpty {
+  margin: 4px 0 !important;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.dashboardPriority,
+.dashboardActivity,
+.dashboardRow {
+  font: inherit;
+  cursor: pointer;
+}
+
+.dashboardPriority {
+  width: 100%;
+  border: 1px solid var(--line);
+  text-align: left;
+}
+
+.dashboardPriority small {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.dashboardPriority.attention { border-left: 3px solid #d59a22; }
+.dashboardPriority.danger { border-left: 3px solid #bd3e3a; }
+
+.dashboardActivity {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  padding: 11px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  text-align: left;
+}
+
+.dashboardActivity:last-child { border-bottom: 0; }
+.dashboardActivity:hover strong { color: var(--brand); }
+.dashboardActivity strong { color: var(--text); }
+.dashboardActivity span,
+.dashboardActivity small { color: var(--muted); line-height: 1.4; }
+.dashboardActivity small { font-size: 11px; }
+
+.dashboardSection { margin-top: 16px; }
+
+.dashboardRows {
+  display: grid;
+  border-top: 1px solid var(--line);
+}
+
+.dashboardRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  text-align: left;
+}
+
+.dashboardRow:last-child { border-bottom: 0; }
+.dashboardRow:hover strong { color: var(--brand); }
+.dashboardRow > span { min-width: 0; display: grid; gap: 4px; }
+.dashboardRow strong { overflow-wrap: anywhere; color: var(--text); }
+.dashboardRow small { color: var(--muted); line-height: 1.4; }
+.dashboardRow em { flex: 0 0 auto; color: var(--brand-dark); font-size: 12px; font-style: normal; font-weight: 800; text-align: right; }
+.dashboardRow.taskTone.danger em { color: var(--danger); }
+.dashboardRow.taskTone.attention em { color: #99630c; }
+
 .profileScore {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -4829,6 +5241,10 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
+  .app.menuCollapsed {
+    grid-template-columns: 1fr;
+  }
+
   .sidebar {
     position: static;
     height: auto;
@@ -4867,6 +5283,15 @@ tbody tr:hover {
   .consortiumRow,
   .consortiumDrawer .formGrid {
     grid-template-columns: 1fr;
+  }
+
+  .assemblyCalendarHero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .assemblyCalendarLegend {
+    justify-content: flex-start;
   }
 
   .consortiumActions {

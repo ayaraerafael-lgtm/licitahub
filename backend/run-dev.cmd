@@ -47,7 +47,7 @@ echo Ligando backend em http://127.0.0.1:8080 ...
 echo Aguarde aparecer: LicitaHub API listening on :8080
 echo.
 
-"%~dp0licitahub-v71.exe"
+"%~dp0licitahub-v77.exe"
 
 echo.
 echo O backend foi encerrado.

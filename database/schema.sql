@@ -420,6 +420,7 @@ CREATE TABLE IF NOT EXISTS tender_interests (
   created_by_user_id uuid REFERENCES users(id),
   general_position varchar(60) NOT NULL DEFAULT 'interested',
   desired_role varchar(80) NOT NULL DEFAULT 'seeks_partner',
+  participation_mode varchar(40) NOT NULL DEFAULT 'seeking_partners',
   public_summary text,
   internal_note text,
   visibility varchar(60) NOT NULL DEFAULT 'visible_to_interested',
@@ -433,6 +434,9 @@ CREATE TABLE IF NOT EXISTS tender_interests (
   CONSTRAINT tender_interests_desired_role_chk CHECK (desired_role IN (
     'seeks_partner', 'can_lead_consortium', 'complementary_partner',
     'seeks_lead_company', 'evaluating_role'
+  )),
+  CONSTRAINT tender_interests_participation_mode_chk CHECK (participation_mode IN (
+    'individual', 'seeking_partners', 'undecided'
   )),
   CONSTRAINT tender_interests_visibility_chk CHECK (visibility IN (
     'private', 'visible_to_interested', 'public_showcase'
@@ -646,9 +650,11 @@ CREATE TABLE IF NOT EXISTS bid_assembly_template_tasks (
 
 CREATE TABLE IF NOT EXISTS bid_assemblies (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  consortium_intention_id uuid NOT NULL REFERENCES consortium_intentions(id) ON DELETE RESTRICT,
+  consortium_intention_id uuid REFERENCES consortium_intentions(id) ON DELETE RESTRICT,
   tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE RESTRICT,
   template_id uuid REFERENCES bid_assembly_templates(id) ON DELETE SET NULL,
+  assembly_type varchar(30) NOT NULL DEFAULT 'consortium',
+  owner_company_id uuid REFERENCES companies(id),
   lead_company_id uuid NOT NULL REFERENCES companies(id),
   title varchar(220) NOT NULL,
   status varchar(40) NOT NULL DEFAULT 'preparing',
@@ -658,8 +664,12 @@ CREATE TABLE IF NOT EXISTS bid_assemblies (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT bid_assemblies_status_chk CHECK (status IN ('preparing', 'in_progress', 'under_review', 'ready_to_submit', 'submitted', 'cancelled')),
+  CONSTRAINT bid_assemblies_type_chk CHECK (assembly_type IN ('consortium', 'individual')),
   CONSTRAINT bid_assemblies_consortium_uk UNIQUE (consortium_intention_id)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS bid_assemblies_individual_company_tender_uk
+  ON bid_assemblies(tender_id, owner_company_id)
+  WHERE assembly_type = 'individual' AND status <> 'cancelled';
 
 CREATE TABLE IF NOT EXISTS bid_assembly_participants (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

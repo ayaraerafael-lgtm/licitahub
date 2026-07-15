@@ -6,6 +6,20 @@ O plano de preparacao para hospedagem e seguranca esta em `docs/SEGURANCA.md`.
 
 O LicitaHub e uma aplicacao web para empresas de engenharia consultiva. A plataforma combina rede social empresarial, divulgacao institucional, noticias da plataforma, editais publicos e formacao de parcerias/consorcios.
 
+## Atualizacao desta entrega
+
+Esta versao consolida os recursos mais recentes do produto:
+
+- Participacao individual ou busca de parceiros em cada edital.
+- Central de Montagem para participacoes individuais e consorciais.
+- Calendario mensal de montagens, com progresso e acesso direto ao trabalho relacionado.
+- Menu lateral recolhido por modulos e sino de alertas com destaque apenas quando houver novidade.
+- Regra de lideranca para consorcios com duas ou tres empresas.
+- Aviso automatico quando um edital suspenso volta a ser publicado, destinado as empresas que ja possuem relacao com ele.
+- Roteiro manual completo de validacao em `docs/ROTEIRO-DE-TESTES.md`.
+
+Antes de uma liberacao para usuarios externos, os cenarios de ciclo de vida do edital, acessos por perfil, match, consorcio e montagem devem ser executados conforme esse roteiro.
+
 ## Papeis de acesso
 
 - Administrador da plataforma: administra convites, empresas, noticias e editais.
@@ -47,6 +61,16 @@ Regras principais:
 ## Modulo Empresa
 
 Uso principal: manter a presenca institucional da empresa.
+
+### Painel da empresa
+
+Uso principal: concentrar o acompanhamento diario sem criar ou alterar registros.
+
+- Indicadores de editais acompanhados, anuncios ativos, consorcios ativos e tarefas abertas.
+- Prioridades: tarefas atrasadas, proximas do prazo, aguardando informacao, devolvidas para ajuste, editais com sessao proxima e novidades ainda nao lidas.
+- Listas clicaveis de editais com interesse, consorcios ativos, tarefas sob responsabilidade da empresa e atividade recente.
+- Filtros fixos por area do painel e periodo das novidades: 7, 30 ou 90 dias.
+- Cada item leva para sua tela de origem; o painel funciona como consulta e navegacao, sem alterar dados operacionais.
 
 Telas principais:
 
@@ -176,9 +200,11 @@ Fluxo da empresa:
 2. Empresa abre detalhe do edital.
 3. Empresa le a pre-analise HTML, se existir.
 4. Empresa acessa link da pasta do edital.
-5. Empresa registra interesse.
+5. Empresa registra interesse e define sua estrategia: participar sozinha, buscar parceiros ou apenas acompanhar.
 6. Empresa informa o que tem, o que atende parcialmente, o que nao se aplica e o que busca em parceiros.
-7. Interesse gera anuncio para empresas interessadas e vitrine.
+7. Apenas a estrategia de buscar parceiros gera anuncio para empresas interessadas e vitrine.
+8. A participacao individual permanece privada e pode iniciar a Central de Montagem com os profissionais da propria empresa.
+9. Enquanto nao houver consorcio fechado, a empresa pode trocar a estrategia para buscar parceiros ou desistir da participacao. Ao sair da participacao individual, a montagem e as tarefas ficam bloqueadas, encerradas e fora da operacao; o historico permanece guardado. A desistência encerra o anuncio e a montagem individual associada.
 
 Regras principais:
 
@@ -191,6 +217,16 @@ Regras principais:
 - Editais com data de sessao passada podem mudar para status ocorrido.
 - Lista de editais indica quando a empresa ja registrou interesse e deixa de exibir o botao de registrar novamente.
 - Tela de detalhe/interesse precisa receber um edital especifico; por isso nao deve ser usada como item direto de menu.
+- Quando edital suspenso volta para publicado, usuarios ativos das empresas com interesse, anuncio, consorcio ou montagem relacionada recebem notificacao com atalho para o detalhe do edital.
+
+### Calendario de montagens
+
+Uso principal: acompanhar, por mes, todas as licitacoes que a empresa esta montando sozinha ou em consorcio.
+
+- Cada card fica no dia da sessao do edital e abre a Central de Montagem correspondente.
+- O card mostra numero, orgao, objeto resumido, tipo de participacao e percentual concluido.
+- A barra de percentual usa vermelho ate 30%, amarelo entre 31% e 70% e verde acima de 70%.
+- O filtro permite ver todas as montagens, somente individuais ou somente consorcios.
 
 ## Empresas interessadas
 
@@ -284,7 +320,7 @@ Regras principais:
 - Uma empresa nao pode gerar consorcio consigo mesma.
 - A composicao e registrada por membros ativos, permitindo mais de duas empresas na estrutura de dados.
 - Na regra atual do produto, a busca complementar e encerrada quando o consorcio alcanca tres empresas. A expansao para quarta ou mais empresas podera ser liberada futuramente pela lider.
-- Apenas administrador da empresa pode definir lider, criar anuncio complementar, aceitar candidatura pendente ou desistir do consorcio.
+- Administrador ou comercial de qualquer empresa consorciada ativa pode definir a lideranca. A criacao de anuncio complementar e o aceite de candidatura permanecem centralizados na empresa lider; a desistencia do consorcio e exclusiva do administrador da empresa.
 - Ao desistir, a empresa fica marcada como retirada, com data e usuario responsavel. Ela deixa de ver o consorcio ativo.
 - Se a lider desistir e permanecerem pelo menos duas empresas, outra lider deve ser definida antes da saida. Se restar menos de duas empresas, o consorcio e encerrado.
 
@@ -386,7 +422,7 @@ No detalhe de um edital publicado, em analise ou ja marcado como impugnado, usua
 
 ## Central de Montagem da Licitacao
 
-A Central de Montagem nasce em `Meus consorcios`, depois que a empresa lider foi definida. Nao e um Kanban convencional: as tarefas nao mudam de fase. Cada tarefa permanece na fase a que pertence e evolui por status.
+A Central de Montagem nasce em `Meus consorcios`, depois que a empresa lider foi definida, ou pela participacao individual da empresa no detalhe do edital. Nao e um Kanban convencional: as tarefas nao mudam de fase. Cada tarefa permanece na fase a que pertence e evolui por status.
 
 O Modelo LicitaHub inicia cada montagem com oito fases:
 
@@ -401,11 +437,11 @@ O Modelo LicitaHub inicia cada montagem com oito fases:
 
 Regras principais:
 
-- O administrador ou comercial da empresa lider inicia a montagem.
+- O administrador ou comercial da empresa lider inicia a montagem do consorcio. Na participacao individual, o administrador ou comercial da propria empresa inicia e coordena a montagem.
 - Todas as empresas ativas do consorcio podem acompanhar o painel.
 - A lider cria fases complementares, tarefas, prazos e atribuicoes.
 - O responsavel pode atualizar a tarefa e envia-la para revisao; a conclusao definitiva fica sob validacao da lider.
-- Profissionais ativos de qualquer empresa consorciada podem ser responsaveis.
+- Profissionais ativos de qualquer empresa consorciada podem ser responsaveis. Na montagem individual, somente profissionais ativos da propria empresa aparecem para atribuicao.
 - `Nao se aplica` retira o peso da tarefa do percentual da fase.
 - Todo prazo da montagem deve estar entre a data atual e a data de abertura do edital; sem data de abertura, o prazo fica indisponivel.
 - `Minhas tarefas` reune, em um Kanban pessoal, somente as tarefas atribuidas diretamente ao profissional em todas as montagens de que sua empresa participa. Cada cartao identifica o edital e abre a tarefa na Central de Montagem correspondente.

@@ -166,8 +166,9 @@ const modules = [
     items: [
       { id: "tender-admin", label: "Admin editais", roles: ["platformAdmin"] },
       { id: "tender-new", label: "Cadastro de edital", roles: ["platformAdmin"] },
-	  { id: "tender-challenge-board", label: "Impugnações", roles: ["platformAdmin"] },
+      { id: "tender-challenge-board", label: "Impugnações", roles: ["platformAdmin"] },
       { id: "tender-list", label: "Lista de editais", roles: ["companyAdmin", "commercial", "technical", "reader"] },
+	  { id: "tender-calendar", label: "Calendário", roles: ["companyAdmin", "commercial", "technical", "reader"] },
       { id: "match-partners", label: "Vitrine de parceiros", roles: ["companyAdmin", "commercial"] },
       { id: "match-list", label: "Meus consórcios", roles: ["companyAdmin", "commercial", "technical", "reader"] },
       { id: "assembly-board", label: "Central de Montagem", roles: ["companyAdmin", "commercial", "technical", "reader"], hidden: true },
@@ -199,6 +200,16 @@ const modules = [
     ]
   }
 ];
+
+function ModuleIcon({ moduleId }) {
+  const props = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };
+  if (moduleId === "access") return <svg {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-4" /></svg>;
+  if (moduleId === "company") return <svg {...props}><path d="M3 21h18" /><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" /><path d="M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1" /></svg>;
+  if (moduleId === "community") return <svg {...props}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
+  if (moduleId === "tenders") return <svg {...props}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6M8 13h8M8 17h6" /></svg>;
+  if (moduleId === "radar") return <svg {...props}><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9" /><path d="M7.8 16.2a6 6 0 0 1 0-8.4" /><circle cx="12" cy="12" r="2" /><path d="M16.2 7.8a6 6 0 0 1 0 8.4M19.1 4.9c3.9 3.9 3.9 10.3 0 14.2" /></svg>;
+  return <svg {...props}><path d="m7 7 5-5 5 5" /><path d="M12 2v15" /><path d="m17 17-5 5-5-5" /><path d="M2 12h20" /></svg>;
+}
 
 const stats = [
   ["Editais compatíveis", "9"],
@@ -323,6 +334,7 @@ function App() {
   const [sessionUser, setSessionUser] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const [menuCollapsed, setMenuCollapsed] = useState(false);
+  const [openModuleId, setOpenModuleId] = useState("company");
   const sidebarRef = React.useRef(null);
   const [userStatuses, setUserStatuses] = useState({ marina: "Ativo", renato: "Ativo", paula: "Convite pendente" });
   const [selectedUserAction, setSelectedUserAction] = useState(null);
@@ -340,6 +352,11 @@ function App() {
   ), [role]);
   const isPublicInvitation = screen === "invite-accept";
   const isPasswordReset = screen === "reset-password";
+
+  useEffect(() => {
+    const activeModule = modules.find((group) => group.items.some((item) => item.id === screen));
+    if (activeModule) setOpenModuleId(activeModule.id);
+  }, [screen]);
 
   const refreshSession = async () => {
     const response = await fetch(`${API_BASE_URL}/api/auth/session`, { credentials: "include" });
@@ -453,19 +470,25 @@ function App() {
           </div>
         </div>
 
-        <button className="menuToggle" onClick={() => setMenuCollapsed(!menuCollapsed)}>
-          {menuCollapsed ? "Expandir menu" : "Recolher menu"}
+        <button className="menuToggle" type="button" title={menuCollapsed ? "Abrir menu" : "Recolher menu"} aria-label={menuCollapsed ? "Abrir menu" : "Recolher menu"} onClick={() => setMenuCollapsed(!menuCollapsed)}>
+          {menuCollapsed ? "›" : "‹"}
         </button>
 
         <nav>
           {visibleModules.map((group) => (
-            <div className="navGroup" key={group.id}>
-              <span>{group.label}</span>
-              {group.items.filter((item) => canSee(item, role) && !item.hidden).map((item) => (
-                <a className={screen === item.id ? "active" : ""} href={`#${item.id}`} key={item.id} onClick={(event) => { event.preventDefault(); navigateTo(item.id); }}>
-                  {item.label}
-                </a>
-              ))}
+            <div className={`navGroup ${openModuleId === group.id ? "isOpen" : ""}`} key={group.id}>
+              <button className="navGroupHeader" type="button" title={group.label} aria-label={group.label} onClick={() => { setOpenModuleId(group.id); if (menuCollapsed) setMenuCollapsed(false); }}>
+                <ModuleIcon moduleId={group.id} />
+                <span>{group.label}</span>
+                <b aria-hidden="true">⌄</b>
+              </button>
+              <div className="navGroupLinks">
+                {group.items.filter((item) => canSee(item, role) && !item.hidden).map((item) => (
+                  <a className={screen === item.id ? "active" : ""} href={`#${item.id}`} key={item.id} onClick={(event) => { event.preventDefault(); navigateTo(item.id); }}>
+                    {item.label}
+                  </a>
+                ))}
+              </div>
             </div>
           ))}
         </nav>
@@ -683,9 +706,9 @@ function Topbar({ navigate, openPublicationManager, openTenderInterestCompanies,
         </div>
       </div>
       <div className="alertCenter">
-        <button className="alertBell" type="button" title="Ver alertas importantes" aria-label="Ver alertas importantes" onClick={toggleAlerts}>
-          <span>{"\uD83D\uDD14"}</span>
-          <strong>{unreadCount}</strong>
+        <button className={`alertBell ${unreadCount > 0 ? "hasUnread" : ""}`} type="button" title="Ver alertas importantes" aria-label={unreadCount > 0 ? `${unreadCount} alertas novos` : "Ver alertas importantes"} onClick={toggleAlerts}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+          {unreadCount > 0 && <strong>{unreadCount}</strong>}
         </button>
         {alertsOpen && (
           <div className="alertDropdown">
@@ -1151,6 +1174,7 @@ function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAc
     "tender-admin": <TenderAdmin navigate={navigate} />,
     "tender-new": <TenderNew navigate={navigate} />,
     "tender-list": <TenderList navigate={navigate} openTenderInterestCompanies={openTenderInterestCompanies} />,
+	"tender-calendar": <AssemblyCalendar navigate={navigate} />,
     "tender-detail": <TenderDetail navigate={navigate} sessionUser={sessionUser} openTenderInterestCompanies={openTenderInterestCompanies} />,
     "tender-challenge": <TenderChallenge navigate={navigate} />,
 	"tender-challenge-board": <TenderChallengeBoard navigate={navigate} />,
@@ -2009,14 +2033,84 @@ function CompanyManage() {
 
 function CompanyDashboard({ navigate, sessionUser }) {
   const isCompanyAdmin = sessionUser?.roleKey === "company_admin";
+  const [dashboard, setDashboard] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filters, setFilters] = useState({ focus: "all", period: "30" });
+
+  const loadDashboard = () => {
+    setLoading(true);
+    setError("");
+    fetch(`${API_BASE_URL}/api/company-dashboard`, { credentials: "include" })
+      .then(async (response) => {
+        const data = parseAPIResponseText(await response.text());
+        if (!response.ok || data?.error) throw new Error(data?.error || "Não foi possível carregar o painel da empresa.");
+        return data;
+      })
+      .then(setDashboard)
+      .catch((loadError) => setError(loadError.message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadDashboard(); }, []);
+
+  const statsData = dashboard?.stats || {};
+  const tenders = Array.isArray(dashboard?.tenders) ? dashboard.tenders : [];
+  const tasks = Array.isArray(dashboard?.tasks) ? dashboard.tasks : [];
+  const consortia = Array.isArray(dashboard?.consortia) ? dashboard.consortia : [];
+  const notifications = Array.isArray(dashboard?.notifications) ? dashboard.notifications : [];
+  const formatDate = (value) => value ? new Date(value).toLocaleDateString("pt-BR") : "Sem data definida";
+  const deadlineState = (task) => {
+    if (!task.dueAt) return { label: "Sem prazo", tone: "neutral" };
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(`${String(task.dueAt).slice(0, 10)}T00:00:00`);
+    const days = Math.ceil((due - today) / 86400000);
+    if (days < 0) return { label: `${Math.abs(days)} dia${Math.abs(days) === 1 ? "" : "s"} em atraso`, tone: "danger" };
+    if (days <= 1) return { label: days === 0 ? "Vence hoje" : "Vence amanhã", tone: "attention" };
+    return { label: `Prazo ${due.toLocaleDateString("pt-BR")}`, tone: "neutral" };
+  };
+  const priorityItems = useMemo(() => {
+    const taskItems = tasks.filter((task) => {
+      const state = deadlineState(task);
+      return state.tone === "danger" || state.tone === "attention" || ["waiting_information", "blocked", "returned_for_adjustment"].includes(task.status);
+    }).map((task) => {
+      const state = deadlineState(task);
+      return { id: `task-${task.id}`, kind: "Tarefa", title: task.title, description: `${task.tenderNumber || "Edital"} · ${task.stageTitle || "Montagem"}`, badge: state.label, tone: state.tone, destination: `assembly-board?assemblyId=${encodeURIComponent(task.assemblyId)}&taskId=${encodeURIComponent(task.id)}` };
+    });
+    const tenderItems = tenders.filter((tender) => {
+      if (!tender.openingDate) return false;
+      const days = Math.ceil((new Date(tender.openingDate).getTime() - Date.now()) / 86400000);
+      return days >= 0 && days <= 7;
+    }).map((tender) => ({ id: `tender-${tender.id}`, kind: "Edital", title: `${tender.agency} · ${tender.number}`, description: "Sessão próxima. Revise a participação e os parceiros.", badge: `Abertura ${formatDate(tender.openingDate)}`, tone: "attention", destination: `tender-detail?id=${encodeURIComponent(tender.id)}` }));
+    const maxDays = Number(filters.period || 30);
+    const notificationItems = notifications.filter((notification) => !notification.createdAt || (Date.now() - new Date(notification.createdAt).getTime()) <= maxDays * 86400000).map((notification) => ({ id: `notice-${notification.id}`, kind: "Novidade", title: notification.title, description: notification.message || "Há uma atualização para acompanhar.", badge: notification.createdAt ? new Date(notification.createdAt).toLocaleDateString("pt-BR") : "Agora", tone: "neutral", destination: notification.destinationScreen || "company-dashboard", relatedId: notification.relatedEntityId }));
+    return [...taskItems, ...tenderItems, ...notificationItems].slice(0, 8);
+  }, [tasks, tenders, notifications, filters.period]);
+
+  const openNotification = (item) => {
+    if (item.destination === "tender-detail" && item.relatedId) navigate(`tender-detail?id=${encodeURIComponent(item.relatedId)}`);
+    else if (item.destination === "tender-interest-list" && item.relatedId) navigate(`tender-interest-list?id=${encodeURIComponent(item.relatedId)}`);
+    else navigate(item.destination || "company-dashboard");
+  };
+  const show = (section) => filters.focus === "all" || filters.focus === section;
+
   return (
-    <Page label="Empresa" title="Dashboard da empresa" actions={<Button onClick={() => navigate(isCompanyAdmin ? "company-profile-edit" : "my-profile")}>{isCompanyAdmin ? "Atualizar perfil da empresa" : "Meu perfil"}</Button>}>
-      <Stats items={stats} />
-      <div className="grid three">
-        <Card><h3>Próximos editais</h3><p>3 oportunidades têm aderência alta com o perfil da empresa.</p></Card>
-        <Card><h3>Comunidade</h3><p>Novas publicações de empresas de saneamento e supervisão ambiental.</p></Card>
-        <Card><h3>Matches</h3><p>2 conversas aguardam atualização de status.</p></Card>
-      </div>
+    <Page label="Empresa" title="Painel da empresa" actions={<Button variant="secondary" onClick={loadDashboard}>Atualizar dados</Button>}>
+      <section className="dashboardHero companyPanelHero">
+        <div><span className="eyebrow">Visão de operação</span><h3>{sessionUser?.companyName || "Sua empresa"}</h3><p>Prioridades, oportunidades e andamento dos consórcios reunidos em um único lugar.</p></div>
+        <div className="profileScore"><strong>{statsData.unreadNotifications || 0}</strong><span>novidades para olhar</span></div>
+      </section>
+      <Card className="compactFilters dashboardFiltersSticky"><FormGrid><Field label="Exibir"><select value={filters.focus} onChange={(event) => setFilters((current) => ({ ...current, focus: event.target.value }))}><option value="all">Visão completa</option><option value="priorities">Prioridades</option><option value="tenders">Editais</option><option value="consortia">Consórcios</option><option value="tasks">Tarefas</option></select></Field><Field label="Novidades dos últimos"><select value={filters.period} onChange={(event) => setFilters((current) => ({ ...current, period: event.target.value }))}><option value="7">7 dias</option><option value="30">30 dias</option><option value="90">90 dias</option></select></Field></FormGrid></Card>
+      {loading && <Card><p>Carregando o painel da empresa...</p></Card>}
+      {error && <Card className="dangerNotice"><p>{error}</p><Button variant="secondary" onClick={loadDashboard}>Tentar novamente</Button></Card>}
+      {!loading && !error && <>
+        <Stats items={[["Editais acompanhados", String(statsData.interestedTenders || 0)], ["Anúncios ativos", String(statsData.activeAds || 0)], ["Consórcios ativos", String(statsData.activeConsortia || 0)], ["Tarefas abertas", String(statsData.openTasks || 0)]]} />
+        {show("priorities") && <div className="dashboardGrid"><Card><div className="cardHeader"><h3>Prioridades</h3><span className="dashboardCounter">{priorityItems.length}</span></div><div className="priorityList">{priorityItems.length === 0 && <p className="dashboardEmpty">Nenhuma prioridade imediata. Bom momento para acompanhar os editais e a comunidade.</p>}{priorityItems.map((item) => <button className={`priorityItem dashboardPriority ${item.tone}`} key={item.id} onClick={() => item.relatedId ? openNotification(item) : navigate(item.destination)}><span><small>{item.kind}</small><strong>{item.title}</strong><span>{item.description}</span></span><em>{item.badge}</em></button>)}</div></Card><Card><div className="cardHeader"><h3>Atividade recente</h3><button className="textAction" onClick={() => navigate("community-home")}>Comunidade</button></div><div className="activityList">{notifications.length === 0 && <p className="dashboardEmpty">Nenhuma novidade pendente no momento.</p>}{notifications.slice(0, 5).map((notification) => <button className="dashboardActivity" key={notification.id} onClick={() => openNotification({ destination: notification.destinationScreen, relatedId: notification.relatedEntityId })}><strong>{notification.title}</strong><span>{notification.message || "Atualização disponível"}</span><small>{notification.createdAt ? new Date(notification.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "Agora"}</small></button>)}</div></Card></div>}
+        {show("tenders") && <Card className="dashboardSection"><div className="cardHeader"><div><span className="eyebrow">Editais</span><h3>Participações em acompanhamento</h3></div><Button variant="secondary" onClick={() => navigate("tender-list")}>Ver lista</Button></div><div className="dashboardRows">{tenders.length === 0 && <p className="dashboardEmpty">Sua empresa ainda não possui interesses registrados em editais abertos.</p>}{tenders.map((tender) => <button className="dashboardRow" key={tender.id} onClick={() => navigate(`tender-detail?id=${encodeURIComponent(tender.id)}`)}><span><strong>{tender.agency} · {tender.number}</strong><small>{tender.object}</small></span><em>{formatDate(tender.openingDate)}</em></button>)}</div></Card>}
+        {show("consortia") && <Card className="dashboardSection"><div className="cardHeader"><div><span className="eyebrow">Consórcios</span><h3>Composições em andamento</h3></div><Button variant="secondary" onClick={() => navigate("match-list")}>Meus consórcios</Button></div><div className="dashboardRows">{consortia.length === 0 && <p className="dashboardEmpty">Nenhum consórcio ativo para acompanhar.</p>}{consortia.map((consortium) => <button className="dashboardRow" key={consortium.id} onClick={() => navigate("match-list")}><span><strong>{consortium.tenderNumber} · {consortium.agency}</strong><small>{consortium.tenderObject}</small></span><em>{consortium.memberCount} empresa{Number(consortium.memberCount) === 1 ? "" : "s"}</em></button>)}</div></Card>}
+        {show("tasks") && <Card className="dashboardSection"><div className="cardHeader"><div><span className="eyebrow">Montagem</span><h3>Tarefas sob responsabilidade da empresa</h3></div><Button variant="secondary" onClick={() => navigate("my-assembly-tasks")}>Minhas tarefas</Button></div><div className="dashboardRows">{tasks.length === 0 && <p className="dashboardEmpty">Não há tarefas abertas atribuídas à sua empresa.</p>}{tasks.map((task) => { const deadline = deadlineState(task); return <button className={`dashboardRow taskTone ${deadline.tone}`} key={task.id} onClick={() => navigate(`assembly-board?assemblyId=${encodeURIComponent(task.assemblyId)}&taskId=${encodeURIComponent(task.id)}`)}><span><strong>{task.title}</strong><small>{task.tenderNumber} · {task.stageTitle}</small></span><em>{deadline.label}</em></button>; })}</div></Card>}
+      </>}
     </Page>
   );
 }
@@ -4150,6 +4244,76 @@ function TenderNew({ navigate }) {
   );
 }
 
+function AssemblyCalendar({ navigate }) {
+  const localMonth = () => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  };
+  const [month, setMonth] = useState(localMonth);
+  const [items, setItems] = useState([]);
+  const [filter, setFilter] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    setError("");
+    fetch(`${API_BASE_URL}/api/assembly-calendar?month=${encodeURIComponent(month)}`, { credentials: "include" })
+      .then(async (response) => {
+        const data = await response.json().catch(() => []);
+        if (!response.ok) throw new Error(data.error || "Não foi possível carregar o calendário.");
+        return data;
+      })
+      .then((data) => setItems(Array.isArray(data) ? data : []))
+      .catch((loadError) => setError(loadError.message))
+      .finally(() => setLoading(false));
+  }, [month]);
+
+  const calendarDate = new Date(`${month}-01T12:00:00`);
+  const year = calendarDate.getFullYear();
+  const monthIndex = calendarDate.getMonth();
+  const monthTitle = calendarDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }).replace(/^./, (letter) => letter.toUpperCase());
+  const firstWeekday = (new Date(year, monthIndex, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const currentMonth = localMonth();
+  const visibleItems = items.filter((item) => !filter || item.assemblyType === filter);
+  const itemsByDay = visibleItems.reduce((map, item) => {
+    const dateKey = String(item.openingDate || "").slice(0, 10);
+    if (!dateKey) return map;
+    if (!map[dateKey]) map[dateKey] = [];
+    map[dateKey].push(item);
+    return map;
+  }, {});
+  const changeMonth = (offset) => {
+    const next = new Date(year, monthIndex + offset, 1);
+    setMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
+  };
+  const progressTone = (value) => {
+    const progress = Number(value || 0);
+    if (progress > 70) return "progressGood";
+    if (progress > 30) return "progressAttention";
+    return "progressCritical";
+  };
+  const weekDays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+  const calendarCells = Array.from({ length: firstWeekday + daysInMonth }, (_, index) => index < firstWeekday ? null : index - firstWeekday + 1);
+
+  return <Page label="Editais" title="Calendário de montagens" actions={<div className="calendarNavigation"><button type="button" className="iconButton secondaryIcon" title="Mês anterior" aria-label="Mês anterior" onClick={() => changeMonth(-1)}>‹</button><Button variant="secondary" onClick={() => setMonth(currentMonth)}>Hoje</Button><button type="button" className="iconButton secondaryIcon" title="Próximo mês" aria-label="Próximo mês" onClick={() => changeMonth(1)}>›</button></div>}>
+    <section className="assemblyCalendarHero">
+      <div><span className="eyebrow">Agenda operacional</span><h3>{monthTitle}</h3><p>Veja as licitações em montagem pela sua empresa, individualmente ou em consórcio, organizadas pela data da sessão.</p></div>
+      <div className="assemblyCalendarLegend"><span><i className="progressCritical" />Até 30%</span><span><i className="progressAttention" />31% a 70%</span><span><i className="progressGood" />Acima de 70%</span></div>
+    </section>
+    <Card className="compactFilters assemblyCalendarFilters"><FormGrid><Field label="Exibir"><select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="">Todas as montagens</option><option value="individual">Participação individual</option><option value="consortium">Consórcios</option></select></Field></FormGrid></Card>
+    {error && <Card className="dangerNotice"><p>{error}</p></Card>}
+    {loading ? <Card><p>Carregando calendário de montagens...</p></Card> : <section className="assemblyCalendarWrap"><div className="assemblyCalendarGrid"><div className="assemblyCalendarWeekdays">{weekDays.map((day) => <span key={day}>{day}</span>)}</div><div className="assemblyCalendarDays">{calendarCells.map((day, index) => {
+      if (!day) return <div className="assemblyCalendarBlank" key={`blank-${index}`} />;
+      const dateKey = `${month}-${String(day).padStart(2, "0")}`;
+      const dayItems = itemsByDay[dateKey] || [];
+      return <section className={`assemblyCalendarDay ${dateKey === currentLocalISODate() ? "isToday" : ""}`} key={dateKey}><header><strong>{day}</strong><span>{dayItems.length ? `${dayItems.length} montagem${dayItems.length === 1 ? "" : "ões"}` : ""}</span></header><div className="assemblyCalendarCards">{dayItems.map((item) => { const progress = Math.max(0, Math.min(100, Number(item.progress || 0))); return <button type="button" className="assemblyCalendarCard" key={item.id} onClick={() => navigate(`assembly-board?assemblyId=${encodeURIComponent(item.id)}`)} title="Abrir Central de Montagem"><small>{item.assemblyType === "individual" ? "Individual" : "Consórcio"}</small><strong>{item.tenderNumber} · {item.agency}</strong><span>{item.tenderObject}</span><div className="calendarProgress"><div><em className={progressTone(progress)}><i style={{ width: `${progress}%` }} /></em><b>{progress}%</b></div></div></button>; })}</div></section>;
+    })}</div></div></section>}
+    {!loading && !error && visibleItems.length === 0 && <Card className="assemblyCalendarEmpty"><p>Nenhuma licitação em montagem neste mês para os filtros selecionados.</p></Card>}
+  </Page>;
+}
+
 function TenderList({ navigate, openTenderInterestCompanies }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -4306,6 +4470,17 @@ function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
       setDocumentMessage({ type: "error", text: err.message });
     }
   };
+  const withdrawInterest = async () => {
+    if (!window.confirm("Desistir desta participação? O anúncio público será removido e uma montagem individual, se existir, será encerrada.")) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tenders/${encodeURIComponent(id)}/withdraw-interest`, { method: "PATCH", credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível desistir da participação.");
+      navigate("tender-list");
+    } catch (err) {
+      setError(err.message);
+    }
+  };
   if (error) return <Page label="Editais" title="Detalhe do edital"><Card className="dangerNotice"><p>{error}</p></Card></Page>;
   if (!tender) return <Page label="Editais" title="Detalhe do edital"><Card><p>Carregando edital...</p></Card></Page>;
   const documents = Array.isArray(tender.documents) ? tender.documents : [];
@@ -4313,11 +4488,14 @@ function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
   const aiIsWorking = aiAnalysis?.status === "queued" || aiAnalysis?.status === "processing";
   const canChallengeTender = ["company_admin", "commercial", "technical"].includes(sessionUser?.roleKey) && ["published", "under_review", "challenged"].includes(tender.status);
   const formatDocumentSize = (bytes) => !bytes ? "Tamanho não informado" : bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
-  const detailAction = tender.hasMyInterest
-    ? <Button onClick={() => openTenderInterestCompanies(tender.id)}>Ver empresas interessadas</Button>
-    : <Button onClick={() => navigate(`tender-interest?id=${tender.id}`)}>Registrar interesse</Button>;
+  const myInterest = tender.myInterest || null;
+  const detailAction = !myInterest
+    ? <Button onClick={() => navigate(`tender-interest?id=${tender.id}`)}>Registrar interesse</Button>
+    : myInterest.participationMode === "individual"
+      ? <><Button onClick={() => navigate(`assembly-board?interestId=${encodeURIComponent(myInterest.id)}`)}>Abrir montagem individual</Button><Button variant="secondary" onClick={() => navigate(`tender-interest?id=${tender.id}`)}>Buscar parceiros</Button></>
+      : <><Button onClick={() => openTenderInterestCompanies(tender.id)}>Ver empresas interessadas</Button>{myInterest.individualAssemblyId && <Button variant="secondary" onClick={() => navigate(`assembly-board?interestId=${encodeURIComponent(myInterest.id)}`)}>Abrir montagem individual</Button>}<Button variant="secondary" onClick={() => navigate(`tender-interest?id=${tender.id}`)}>Editar participação</Button></>;
   return (
-    <Page label="Editais" title="Detalhe do edital" actions={<>{detailAction}{canChallengeTender && <Button variant="secondary" onClick={() => navigate(`tender-challenge?id=${tender.id}`)}>{tender.myChallenge ? "Ver pedido de impugnação" : "Protocolar impugnação"}</Button>}</>}>
+    <Page label="Editais" title="Detalhe do edital" actions={<>{detailAction}{myInterest && <Button variant="secondary" onClick={withdrawInterest}>Desistir da participação</Button>}{canChallengeTender && <Button variant="secondary" onClick={() => navigate(`tender-challenge?id=${tender.id}`)}>{tender.myChallenge ? "Ver pedido de impugnação" : "Protocolar impugnação"}</Button>}</>}>
       <Card><h3>{tender.number} - {tender.agency}</h3><p>{tender.object}</p></Card>
       <div className="grid three">
         <Card><strong>Local</strong><p>{[tender.city,tender.state].filter(Boolean).join(" / ") || "Não informado"}</p></Card>
@@ -4633,6 +4811,7 @@ function TenderInterest({ navigate }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [form, setForm] = useState(() => ({
+    participationMode: "seeking_partners",
     generalPosition: "interested",
     desiredRole: "seeks_partner",
     publicSummary: "",
@@ -4656,7 +4835,21 @@ function TenderInterest({ navigate }) {
         if (!response.ok) throw new Error(data.error || "Não foi possível carregar o edital.");
         return data;
       })
-      .then(setTender)
+      .then((data) => {
+        setTender(data);
+        if (data.myInterest) {
+          const savedRequirements = new Map((data.myInterest.requirements || []).map((item) => [item.requirementKey, item]));
+          setForm((current) => ({
+            ...current,
+            participationMode: data.myInterest.participationMode || current.participationMode,
+            generalPosition: data.myInterest.generalPosition || current.generalPosition,
+            desiredRole: data.myInterest.desiredRole || current.desiredRole,
+            publicSummary: data.myInterest.publicSummary || "",
+            internalNote: data.myInterest.internalNote || "",
+            requirements: current.requirements.map((item) => ({ ...item, ...(savedRequirements.get(item.requirementKey) || {}) }))
+          }));
+        }
+      })
       .catch((err) => setError(err.message));
   }, [id]);
 
@@ -4680,7 +4873,13 @@ function TenderInterest({ navigate }) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível registrar o interesse.");
-      navigate(`tender-interest-list?id=${id}`);
+      if (data.participationMode === "individual" && data.interestId) {
+        navigate(`assembly-board?interestId=${encodeURIComponent(data.interestId)}`);
+      } else if (data.participationMode === "seeking_partners") {
+        navigate(`tender-interest-list?id=${id}`);
+      } else {
+        navigate(`tender-detail?id=${id}`);
+      }
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -4692,21 +4891,28 @@ function TenderInterest({ navigate }) {
   if (!tender) return <Page label="Editais" title="Manifestação de interesse"><Card><p>Carregando edital...</p></Card></Page>;
 
   return (
-    <Page label="Editais" title="Manifestação de interesse" actions={<Button onClick={submit} disabled={saving}>{saving ? "Salvando..." : "Salvar e ver empresas interessadas"}</Button>}>
+    <Page label="Editais" title="Manifestação de interesse" actions={<Button onClick={submit} disabled={saving}>{saving ? "Salvando..." : form.participationMode === "individual" ? "Salvar e abrir montagem" : form.participationMode === "seeking_partners" ? "Salvar e ver empresas interessadas" : "Salvar participação"}</Button>}>
       {message && <Card className="dangerNotice"><p>{message}</p></Card>}
       <section className="interestHero">
         <div>
           <span className="badge">{tender.number}</span>
-          <h3>Como sua empresa quer aparecer para possíveis parceiras?</h3>
-          <p>Monte uma ficha objetiva para mostrar o que possui, o que busca e onde precisa compor força técnica.</p>
+          <h3>Defina a estratégia da sua empresa nesta licitação</h3>
+          <p>Registre o que sua empresa atende e escolha se trabalhará sozinha, buscará parceiras ou apenas acompanhará a oportunidade.</p>
         </div>
         <div className="interestHeroPanel">
           <strong>Resultado desta tela</strong>
-          <span>Anúncio visível na vitrine da licitação</span>
+          <span>{form.participationMode === "individual" ? "Montagem privada da sua empresa" : form.participationMode === "seeking_partners" ? "Anúncio visível na vitrine da licitação" : "Registro privado para acompanhamento"}</span>
         </div>
       </section>
 
       <div className="interestQuickGrid">
+        <Field label="Estratégia de participação">
+          <select value={form.participationMode} onChange={(event) => setForm((current) => ({ ...current, participationMode: event.target.value }))}>
+            <option value="individual">Vou participar sozinha</option>
+            <option value="seeking_partners">Quero buscar parceiros</option>
+            <option value="undecided">Ainda estou avaliando</option>
+          </select>
+        </Field>
         <Field label="Posição geral">
           <select value={form.generalPosition} onChange={(event) => setForm((current) => ({ ...current, generalPosition: event.target.value }))}>
             <option value="interested">Tenho interesse em participar</option>
@@ -4715,7 +4921,7 @@ function TenderInterest({ navigate }) {
             <option value="not_interested">Não tenho interesse nesta licitação</option>
           </select>
         </Field>
-        <Field label="Papel desejado">
+        {form.participationMode === "seeking_partners" && <Field label="Papel desejado">
           <select value={form.desiredRole} onChange={(event) => setForm((current) => ({ ...current, desiredRole: event.target.value }))}>
             <option value="seeks_partner">Busco parceiro para complementar requisitos</option>
             <option value="can_lead_consortium">Posso liderar consórcio</option>
@@ -4723,7 +4929,7 @@ function TenderInterest({ navigate }) {
             <option value="seeks_lead_company">Busco empresa líder de proposta</option>
             <option value="evaluating_role">Ainda estou avaliando meu papel</option>
           </select>
-        </Field>
+        </Field>}
       </div>
 
       <div className="interestRequirementGrid">
@@ -4761,14 +4967,14 @@ function TenderInterest({ navigate }) {
       </div>
 
       <div className="interestSummaryGrid">
-        <Field label="Resumo do anúncio para possíveis parceiros">
-          <textarea value={form.publicSummary} onChange={(event) => setForm((current) => ({ ...current, publicSummary: event.target.value }))} placeholder="Escreva um resumo claro do anúncio que será visto por possíveis parceiros." />
+        <Field label={form.participationMode === "seeking_partners" ? "Resumo do anúncio para possíveis parceiros" : "Resumo da participação"}>
+          <textarea value={form.publicSummary} onChange={(event) => setForm((current) => ({ ...current, publicSummary: event.target.value }))} placeholder={form.participationMode === "seeking_partners" ? "Escreva um resumo claro do anúncio que será visto por possíveis parceiros." : "Registre um resumo objetivo da estratégia de participação da empresa."} />
         </Field>
         <Field label="Observação interna">
           <textarea value={form.internalNote} onChange={(event) => setForm((current) => ({ ...current, internalNote: event.target.value }))} placeholder="Anotação privada da sua empresa, não exibida para outros participantes." />
         </Field>
       </div>
-      <div className="formActionBar"><Button onClick={submit} disabled={saving}>{saving ? "Salvando..." : "Salvar e ver empresas interessadas"}</Button></div>
+      <div className="formActionBar"><Button onClick={submit} disabled={saving}>{saving ? "Salvando..." : form.participationMode === "individual" ? "Salvar e abrir montagem" : form.participationMode === "seeking_partners" ? "Salvar e ver empresas interessadas" : "Salvar participação"}</Button></div>
     </Page>
   );
 }
@@ -5860,6 +6066,8 @@ function MyAssemblyTasks({ navigate, openChatForTask }) {
 
 function AssemblyBoard({ sessionUser, navigate, openChatForTask }) {
   const matchId = currentHashParams().get("matchId") || "";
+  const interestId = currentHashParams().get("interestId") || "";
+  const assemblyId = currentHashParams().get("assemblyId") || "";
   const requestedTaskId = currentHashParams().get("taskId") || "";
   const [assembly, setAssembly] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -5893,14 +6101,19 @@ function AssemblyBoard({ sessionUser, navigate, openChatForTask }) {
   };
 
   const loadAssembly = async ({ quiet = false } = {}) => {
-    if (!matchId) {
-      setError("Abra a Central de Montagem por um consórcio em Meus consórcios.");
+    if (!matchId && !interestId && !assemblyId) {
+      setError("Abra a Central de Montagem por uma participação ou consórcio.");
       setLoading(false);
       return;
     }
     if (!quiet) setLoading(true);
     try {
-      const data = await request(`/api/assemblies?matchId=${encodeURIComponent(matchId)}`);
+      const endpoint = assemblyId
+        ? `/api/assemblies/${encodeURIComponent(assemblyId)}`
+        : matchId
+          ? `/api/assemblies?matchId=${encodeURIComponent(matchId)}`
+          : `/api/assemblies?interestId=${encodeURIComponent(interestId)}`;
+      const data = await request(endpoint);
       setAssembly(data);
       setError("");
       if (requestedTaskId && data.exists && Array.isArray(data.stages)) {
@@ -5921,7 +6134,7 @@ function AssemblyBoard({ sessionUser, navigate, openChatForTask }) {
 
   useEffect(() => {
     loadAssembly();
-  }, [matchId, requestedTaskId]);
+  }, [matchId, interestId, assemblyId, requestedTaskId]);
 
   const stages = assembly?.stages || [];
   const allTasks = stages.flatMap((stage) => (stage.tasks || []).map((task) => ({ ...task, stageId: stage.id, stageTitle: stage.title })));
@@ -5955,7 +6168,7 @@ function AssemblyBoard({ sessionUser, navigate, openChatForTask }) {
       const data = await request("/api/assemblies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ matchId, ...startForm })
+        body: JSON.stringify({ matchId, interestId, ...startForm })
       });
       setAssembly(data);
       setNotice("Central de Montagem iniciada com as oito fases do Modelo LicitaHub.");
@@ -6119,7 +6332,7 @@ function AssemblyBoard({ sessionUser, navigate, openChatForTask }) {
 
   if (loading) return <Page label="Licitações" title="Central de Montagem da Licitação"><div className="assemblyLoading"><span />Carregando o plano de montagem...</div></Page>;
 
-  if (!matchId || (!assembly && error)) {
+  if ((!matchId && !interestId && !assemblyId) || (!assembly && error)) {
     return <Page label="Licitações" title="Central de Montagem da Licitação"><Card className="dangerNotice"><p>{error || "Consórcio não informado."}</p><Button variant="secondary" onClick={() => navigate("match-list")}>Voltar para Meus consórcios</Button></Card></Page>;
   }
 
@@ -6129,10 +6342,10 @@ function AssemblyBoard({ sessionUser, navigate, openChatForTask }) {
         {error && <Card className="dangerNotice"><p>{error}</p></Card>}
         <section className="assemblyWelcome">
           <div className="assemblyWelcomeCopy">
-            <span className="assemblyKicker">Consórcio pronto para organizar</span>
+            <span className="assemblyKicker">{assembly.assemblyType === "individual" ? "Participação individual pronta para organizar" : "Consórcio pronto para organizar"}</span>
             <h3>{assembly.tenderNumber} · {assembly.agency}</h3>
             <p>{assembly.tenderObject}</p>
-            <div className="assemblyLeadLine"><span>Empresa líder</span><strong>{assembly.leadCompanyName}</strong></div>
+            <div className="assemblyLeadLine"><span>{assembly.assemblyType === "individual" ? "Empresa responsável" : "Empresa líder"}</span><strong>{assembly.leadCompanyName}</strong></div>
           </div>
           {assembly.canCreate ? (
             <div className="assemblyStartForm">
@@ -6142,7 +6355,7 @@ function AssemblyBoard({ sessionUser, navigate, openChatForTask }) {
               <Button onClick={beginAssembly} disabled={creating}>{creating ? "Preparando fases..." : "Iniciar com Modelo LicitaHub"}</Button>
             </div>
           ) : (
-            <div className="assemblyWaiting"><strong>Aguardando a empresa líder</strong><p>Assim que a líder iniciar a montagem, todas as consorciadas poderão acompanhar as fases e colaborar nas tarefas atribuídas.</p></div>
+            <div className="assemblyWaiting"><strong>Aguardando a empresa responsável</strong><p>Assim que a responsável iniciar a montagem, os profissionais vinculados poderão acompanhar as fases e colaborar nas tarefas atribuídas.</p></div>
           )}
         </section>
       </Page>
@@ -6159,7 +6372,7 @@ function AssemblyBoard({ sessionUser, navigate, openChatForTask }) {
   const availableProfessionals = (assembly.professionals || []).filter((professional) => !taskDraft?.responsibleCompanyId || professional.companyId === taskDraft.responsibleCompanyId);
 
   return (
-    <Page label="Licitações" title="Central de Montagem da Licitação" actions={<Button variant="secondary" onClick={() => navigate("match-list")}>Meus consórcios</Button>}>
+    <Page label="Licitações" title="Central de Montagem da Licitação" actions={<Button variant="secondary" onClick={() => navigate(assembly?.assemblyType === "individual" ? "tender-list" : "match-list")}>{assembly?.assemblyType === "individual" ? "Lista de editais" : "Meus consórcios"}</Button>}>
       {error && <Card className="dangerNotice"><p>{error}</p></Card>}
       {notice && <div className="assemblyNotice"><span>{notice}</span><button type="button" onClick={() => setNotice("")} aria-label="Fechar aviso">×</button></div>}
 

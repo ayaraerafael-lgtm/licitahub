@@ -254,11 +254,12 @@ type tenderInterestRequirementRequest struct {
 }
 
 type createTenderInterestRequest struct {
-	GeneralPosition string                             `json:"generalPosition"`
-	DesiredRole     string                             `json:"desiredRole"`
-	PublicSummary   string                             `json:"publicSummary"`
-	InternalNote    string                             `json:"internalNote"`
-	Requirements    []tenderInterestRequirementRequest `json:"requirements"`
+	GeneralPosition   string                             `json:"generalPosition"`
+	DesiredRole       string                             `json:"desiredRole"`
+	ParticipationMode string                             `json:"participationMode"`
+	PublicSummary     string                             `json:"publicSummary"`
+	InternalNote      string                             `json:"internalNote"`
+	Requirements      []tenderInterestRequirementRequest `json:"requirements"`
 }
 
 type partnerEvaluationRequest struct {
@@ -433,6 +434,7 @@ func main() {
 	mux.HandleFunc("/api/access-profiles", application.handleAccessProfiles)
 	mux.HandleFunc("/api/company-invitations", application.handleCompanyInvitations)
 	mux.HandleFunc("/api/company-invitations/", application.handleCompanyInvitationByPath)
+	mux.HandleFunc("/api/company-dashboard", application.handleCompanyDashboard)
 	mux.HandleFunc("/api/companies/", application.handleCompanyByPath)
 	mux.HandleFunc("/api/companies", application.handleCompanies)
 	mux.HandleFunc("/api/company-users", application.handleCompanyUsers)
@@ -459,6 +461,7 @@ func main() {
 	mux.HandleFunc("/api/matches", application.handleMatches)
 	mux.HandleFunc("/api/assemblies/", application.handleAssemblyByPath)
 	mux.HandleFunc("/api/assemblies", application.handleAssemblies)
+	mux.HandleFunc("/api/assembly-calendar", application.handleAssemblyCalendar)
 	mux.HandleFunc("/api/my-assembly-tasks", application.handleMyAssemblyTasks)
 	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 	mux.Handle("/", frontendFileServer())
@@ -1638,6 +1641,150 @@ func (a *app) handleCompanies(w http.ResponseWriter, r *http.Request) {
 	writeRawJSON(w, http.StatusOK, payload)
 }
 
+func (a *app) handleCompanyDashboard(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if session.CompanyID == "" {
+		writeError(w, http.StatusForbidden, "usuario sem empresa vinculada")
+		return
+	}
+
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		WITH visible_tenders AS (
+			SELECT t.*
+			FROM tender_interests ti
+			JOIN tenders t ON t.id = ti.tender_id
+			WHERE ti.company_id = %s::uuid
+			  AND ti.status = 'published'
+			  AND ti.deleted_at IS NULL
+			  AND t.deleted_at IS NULL
+			  AND t.status IN ('published', 'under_review', 'challenged')
+		), open_tasks AS (
+			SELECT
+				bat.id,
+				bat.title,
+				bat.status,
+				bat.priority,
+				bat.due_at,
+				ba.id AS assembly_id,
+				m.id AS match_id,
+				t.number AS tender_number,
+				t.object AS tender_object,
+				bas.title AS stage_title
+			FROM bid_assembly_tasks bat
+			JOIN bid_assembly_stages bas ON bas.id = bat.stage_id
+			JOIN bid_assemblies ba ON ba.id = bas.assembly_id
+			LEFT JOIN consortium_intentions ci ON ci.id = ba.consortium_intention_id
+			LEFT JOIN matches m ON m.id = ci.match_id
+			JOIN tenders t ON t.id = ba.tender_id
+			WHERE ba.status <> 'cancelled'
+			  AND bat.status NOT IN ('completed', 'not_applicable')
+			  AND EXISTS (
+				SELECT 1 FROM bid_assembly_participants bap
+				WHERE bap.assembly_id = ba.id
+				  AND bap.company_id = %s::uuid
+				  AND bap.status = 'active'
+			  )
+			  AND (
+				bat.responsible_user_id = %s::uuid
+				OR (bat.responsible_user_id IS NULL AND bat.responsible_company_id = %s::uuid)
+			  )
+		), active_consortia AS (
+			SELECT
+				ci.id,
+				m.id AS match_id,
+				t.number AS tender_number,
+				t.agency,
+				t.object AS tender_object,
+				ci.status,
+				COALESCE(leader.trade_name, '') AS lead_company_name,
+				(SELECT count(*) FROM consortium_members cm_all WHERE cm_all.consortium_intention_id = ci.id AND cm_all.status = 'active') AS member_count
+			FROM consortium_intentions ci
+			JOIN consortium_members cm ON cm.consortium_intention_id = ci.id
+			JOIN matches m ON m.id = ci.match_id
+			JOIN tenders t ON t.id = ci.tender_id
+			LEFT JOIN companies leader ON leader.id = ci.lead_company_id
+			WHERE cm.company_id = %s::uuid
+			  AND cm.status = 'active'
+			  AND ci.status IN ('in_conversation', 'intention_registered', 'advanced_to_consortium')
+		), unread_notifications AS (
+			SELECT n.*
+			FROM notifications n
+			WHERE n.is_read = false
+			  AND (
+				n.recipient_user_id = %s::uuid
+				OR n.recipient_company_id = %s::uuid
+			  )
+		)
+		SELECT json_build_object(
+			'stats', json_build_object(
+				'interestedTenders', (SELECT count(*) FROM visible_tenders),
+				'activeAds', (SELECT count(*) FROM partnership_ads pa WHERE pa.company_id = %s::uuid AND pa.status = 'published' AND pa.deleted_at IS NULL),
+				'activeConsortia', (SELECT count(*) FROM active_consortia),
+				'openTasks', (SELECT count(*) FROM open_tasks),
+				'overdueTasks', (SELECT count(*) FROM open_tasks WHERE due_at::date < current_date),
+				'unreadNotifications', (SELECT count(*) FROM unread_notifications)
+			),
+			'tenders', COALESCE((
+				SELECT json_agg(row_to_json(item))
+				FROM (
+					SELECT id::text AS id, agency, number, object, opening_date AS "openingDate", status
+					FROM visible_tenders
+					ORDER BY opening_date NULLS LAST, created_at DESC
+					LIMIT 6
+				) item
+			), '[]'::json),
+			'tasks', COALESCE((
+				SELECT json_agg(row_to_json(item))
+				FROM (
+					SELECT id::text AS id, title, status, priority, due_at AS "dueAt", assembly_id::text AS "assemblyId", match_id::text AS "matchId", tender_number AS "tenderNumber", tender_object AS "tenderObject", stage_title AS "stageTitle"
+					FROM open_tasks
+					ORDER BY due_at NULLS LAST, priority DESC, title
+					LIMIT 8
+				) item
+			), '[]'::json),
+			'consortia', COALESCE((
+				SELECT json_agg(row_to_json(item))
+				FROM (
+					SELECT id::text AS id, match_id::text AS "matchId", tender_number AS "tenderNumber", agency, tender_object AS "tenderObject", status, lead_company_name AS "leadCompanyName", member_count AS "memberCount"
+					FROM active_consortia
+					ORDER BY tender_number
+					LIMIT 6
+				) item
+			), '[]'::json),
+			'notifications', COALESCE((
+				SELECT json_agg(row_to_json(item))
+				FROM (
+					SELECT id::text AS id, type, title, COALESCE(message, '') AS message, COALESCE(destination_screen, '') AS "destinationScreen", COALESCE(related_entity_id::text, '') AS "relatedEntityId", created_at AS "createdAt"
+					FROM unread_notifications
+					ORDER BY created_at DESC
+					LIMIT 8
+				) item
+			), '[]'::json)
+		);
+	`,
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.UserID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.UserID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.CompanyID),
+	))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel carregar o painel da empresa")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
+}
+
 func (a *app) handleCompanyByPath(w http.ResponseWriter, r *http.Request) {
 	id, action := splitResourcePath(r.URL.Path, "/api/companies/")
 	if action == "status" {
@@ -2175,6 +2322,14 @@ func (a *app) handleTenderByPath(w http.ResponseWriter, r *http.Request) {
 		default:
 			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
 		}
+		return
+	}
+	if action == "withdraw-interest" {
+		if r.Method != http.MethodPatch {
+			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+			return
+		}
+		a.withdrawTenderInterest(w, r, id)
 		return
 	}
 	if action == "challenge" {
@@ -3143,8 +3298,14 @@ func (a *app) updateTender(w http.ResponseWriter, r *http.Request, tenderID stri
 		openingSQL = sqlQuote(req.OpeningDate+"T12:00:00-03:00") + "::timestamptz"
 	}
 	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
-		WITH updated_tender AS (
-			UPDATE tenders
+		WITH previous_tender AS (
+			SELECT id, status
+			FROM tenders
+			WHERE id = %s::uuid AND deleted_at IS NULL
+			FOR UPDATE
+		),
+		updated_tender AS (
+			UPDATE tenders t
 			SET
 				agency = %s,
 				number = %s,
@@ -3158,9 +3319,45 @@ func (a *app) updateTender(w http.ResponseWriter, r *http.Request, tenderID stri
 				status = %s,
 				cloud_folder_url = NULLIF(%s, ''),
 				updated_at = now()
-			WHERE id = %s::uuid
-			  AND deleted_at IS NULL
-			RETURNING *
+			FROM previous_tender previous
+			WHERE t.id = previous.id
+			RETURNING t.*, previous.status AS previous_status
+		),
+		related_companies AS (
+			SELECT ti.company_id FROM tender_interests ti JOIN updated_tender ut ON ut.id = ti.tender_id WHERE ti.deleted_at IS NULL
+			UNION
+			SELECT pa.company_id FROM partnership_ads pa JOIN updated_tender ut ON ut.id = pa.tender_id WHERE pa.deleted_at IS NULL
+			UNION
+			SELECT cm.company_id
+			FROM consortium_members cm
+			JOIN consortium_intentions ci ON ci.id = cm.consortium_intention_id
+			JOIN updated_tender ut ON ut.id = ci.tender_id
+			WHERE cm.status = 'active'
+			UNION
+			SELECT participant.company_id
+			FROM bid_assembly_participants participant
+			JOIN bid_assemblies assembly ON assembly.id = participant.assembly_id
+			JOIN updated_tender ut ON ut.id = assembly.tender_id
+			WHERE participant.status = 'active'
+		),
+		created_notifications AS (
+			INSERT INTO notifications (
+				recipient_user_id, recipient_company_id, type, title, message,
+				destination_screen, related_entity_type, related_entity_id
+			)
+			SELECT DISTINCT
+				u.id, u.company_id, 'system',
+				'Edital voltou a ser publicado',
+				'O edital ' || ut.number || ' voltou ao status publicado. Revise sua participacao, prazos e montagem.',
+				'tender-detail', 'tender', ut.id
+			FROM updated_tender ut
+			JOIN related_companies related ON true
+			JOIN users u ON u.company_id = related.company_id
+			WHERE ut.previous_status = 'suspended'
+			  AND ut.status = 'published'
+			  AND u.status = 'active'
+			  AND u.deleted_at IS NULL
+			RETURNING id
 		)
 		SELECT row_to_json(item)
 		FROM (
@@ -3168,10 +3365,11 @@ func (a *app) updateTender(w http.ResponseWriter, r *http.Request, tenderID stri
 			FROM updated_tender
 		) item;
 	`,
+		sqlQuote(tenderID),
 		sqlQuote(req.Agency), sqlQuote(req.Number), sqlQuote(req.Object),
 		sqlQuote(req.Modality), sqlQuote(req.JudgmentCriterion), valueSQL,
 		sqlQuote(req.State), sqlQuote(req.City), openingSQL, sqlQuote(req.Status),
-		sqlQuote(req.CloudFolderURL), sqlQuote(tenderID),
+		sqlQuote(req.CloudFolderURL),
 	))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "nao foi possivel editar o edital: "+err.Error())
@@ -3238,6 +3436,7 @@ func (a *app) refreshOccurredTenders(ctx context.Context) error {
 
 func tenderDetailSQL(id string, session sessionUser) string {
 	myInterestSQL := "false"
+	myInterestDetailSQL := "'null'::json"
 	myChallengeSQL := "'null'::json"
 	if strings.TrimSpace(session.CompanyID) != "" {
 		myInterestSQL = fmt.Sprintf(`EXISTS (
@@ -3257,6 +3456,42 @@ func tenderDetailSQL(id string, session sessionUser) string {
 				WHERE tender_id=t.id AND company_id=%s::uuid
 				LIMIT 1
 			) challenge_item
+		)`, sqlQuote(session.CompanyID))
+		myInterestDetailSQL = fmt.Sprintf(`(
+			SELECT row_to_json(interest_item)
+			FROM (
+				SELECT ti.id::text AS id, ti.participation_mode AS "participationMode", ti.status,
+					COALESCE(ti.public_summary, '') AS "publicSummary",
+					COALESCE(ti.internal_note, '') AS "internalNote",
+					ti.general_position AS "generalPosition",
+					ti.desired_role AS "desiredRole",
+					COALESCE((
+						SELECT json_agg(row_to_json(requirement_item) ORDER BY requirement_item."requirementKey")
+						FROM (
+							SELECT rt.key AS "requirementKey", tir.status_key AS "statusKey",
+								COALESCE(tir.what_we_have, '') AS "whatWeHave",
+								COALESCE(tir.what_we_seek, '') AS "whatWeSeek"
+							FROM tender_interest_requirements tir
+							JOIN tender_requirements tr ON tr.id = tir.tender_requirement_id
+							JOIN tender_requirement_types rt ON rt.id = tr.requirement_type_id
+							WHERE tir.tender_interest_id = ti.id
+						) requirement_item
+					), '[]'::json) AS requirements,
+					EXISTS (
+						SELECT 1 FROM partnership_ads pa
+						WHERE pa.tender_interest_id = ti.id AND pa.status = 'published' AND pa.deleted_at IS NULL
+					) AS "hasPublishedAd",
+					COALESCE((
+						SELECT ba.id::text FROM bid_assemblies ba
+						WHERE ba.tender_id = ti.tender_id AND ba.owner_company_id = ti.company_id
+						  AND ba.assembly_type = 'individual' AND ba.status <> 'cancelled'
+						LIMIT 1
+					), '') AS "individualAssemblyId"
+				FROM tender_interests ti
+				WHERE ti.tender_id = t.id AND ti.company_id = %s::uuid
+				  AND ti.deleted_at IS NULL AND ti.status <> 'withdrawn'
+				LIMIT 1
+			) interest_item
 		)`, sqlQuote(session.CompanyID))
 	}
 	return fmt.Sprintf(`
@@ -3294,12 +3529,13 @@ func tenderDetailSQL(id string, session sessionUser) string {
 					) document_item
 				), '[]'::json) AS documents,
 				COALESCE(%s, 'null'::json) AS "myChallenge",
+				COALESCE(%s, 'null'::json) AS "myInterest",
 				%s AS "hasMyInterest"
 			FROM tenders t
 			WHERE t.id = %s::uuid AND t.deleted_at IS NULL
 			LIMIT 1
 		) item;
-	`, myChallengeSQL, myInterestSQL, sqlQuote(id))
+	`, myChallengeSQL, myInterestDetailSQL, myInterestSQL, sqlQuote(id))
 }
 
 func tenderChallengeSQL(tenderID, companyID string) string {
@@ -3354,6 +3590,7 @@ func (a *app) createTenderInterest(w http.ResponseWriter, r *http.Request, tende
 	}
 	req.GeneralPosition = normalizeInterestGeneralPosition(req.GeneralPosition)
 	req.DesiredRole = normalizeInterestDesiredRole(req.DesiredRole)
+	req.ParticipationMode = normalizeParticipationMode(req.ParticipationMode)
 	req.PublicSummary = strings.TrimSpace(req.PublicSummary)
 	req.InternalNote = strings.TrimSpace(req.InternalNote)
 	for index := range req.Requirements {
@@ -3363,7 +3600,7 @@ func (a *app) createTenderInterest(w http.ResponseWriter, r *http.Request, tende
 		req.Requirements[index].WhatWeSeek = strings.TrimSpace(req.Requirements[index].WhatWeSeek)
 	}
 	if req.PublicSummary == "" {
-		writeError(w, http.StatusBadRequest, "resumo do anuncio e obrigatorio")
+		writeError(w, http.StatusBadRequest, "resumo da participacao e obrigatorio")
 		return
 	}
 	if err := validateTenderInterestRequirements(req.Requirements); err != nil {
@@ -3386,6 +3623,71 @@ func (a *app) createTenderInterest(w http.ResponseWriter, r *http.Request, tende
 		return
 	}
 	writeRawJSON(w, http.StatusCreated, payload)
+}
+
+func (a *app) withdrawTenderInterest(w http.ResponseWriter, r *http.Request, tenderID string) {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if session.CompanyID == "" || !session.canCoordinateAssembly() {
+		writeError(w, http.StatusForbidden, "somente administrador ou comercial da empresa pode desistir da participacao")
+		return
+	}
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		WITH active_consortium AS (
+			SELECT 1
+			FROM consortium_intentions ci
+			JOIN consortium_members cm ON cm.consortium_intention_id = ci.id
+			WHERE ci.tender_id = %s::uuid
+			  AND cm.company_id = %s::uuid
+			  AND cm.status = 'active'
+			  AND ci.status IN ('in_conversation', 'intention_registered', 'advanced_to_consortium')
+			LIMIT 1
+		), withdrawn_interest AS (
+			UPDATE tender_interests ti
+			SET status = 'withdrawn', visibility = 'private', updated_at = now()
+			WHERE ti.tender_id = %s::uuid
+			  AND ti.company_id = %s::uuid
+			  AND ti.deleted_at IS NULL
+			  AND ti.status <> 'withdrawn'
+			  AND NOT EXISTS (SELECT 1 FROM active_consortium)
+			RETURNING ti.id, ti.tender_id, ti.company_id
+		), closed_ads AS (
+			UPDATE partnership_ads pa
+			SET status = 'closed', updated_at = now()
+			FROM withdrawn_interest wi
+			WHERE pa.tender_interest_id = wi.id
+			  AND pa.deleted_at IS NULL
+			RETURNING pa.id
+		), cancelled_individual_assembly AS (
+			UPDATE bid_assemblies ba
+			SET status = 'cancelled', updated_at = now()
+			FROM withdrawn_interest wi
+			WHERE ba.tender_id = wi.tender_id
+			  AND ba.owner_company_id = wi.company_id
+			  AND ba.assembly_type = 'individual'
+			  AND ba.status <> 'cancelled'
+			RETURNING ba.id
+		), created_audit AS (
+			INSERT INTO audit_logs (actor_user_id, company_id, module, action, entity_type, entity_id, description)
+			SELECT %s::uuid, wi.company_id, 'editais', 'desistencia_participacao', 'tender_interest', wi.id,
+				'Empresa desistiu da participacao no edital; anuncio e montagem individual foram encerrados.'
+			FROM withdrawn_interest wi
+			RETURNING id
+		)
+		SELECT row_to_json(item)
+		FROM (SELECT id::text AS "interestId", true AS withdrawn FROM withdrawn_interest) item;
+	`, sqlQuote(tenderID), sqlQuote(session.CompanyID), sqlQuote(tenderID), sqlQuote(session.CompanyID), sqlQuote(session.UserID)))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel registrar a desistencia")
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusBadRequest, "nao foi possivel desistir. Se sua empresa ja participa de um consorcio, use a opcao Desistir do consorcio.")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
 }
 
 func (a *app) tenderInterestUnavailableReason(ctx context.Context, tenderID string) string {
@@ -3995,8 +4297,8 @@ func (a *app) handleMatchByPath(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) updateConsortiumLeader(w http.ResponseWriter, r *http.Request, matchID string, session sessionUser) {
-	if session.CompanyID == "" {
-		writeError(w, http.StatusForbidden, "usuario sem empresa vinculada")
+	if session.CompanyID == "" || !session.canCoordinateAssembly() {
+		writeError(w, http.StatusForbidden, "somente administrador ou comercial de empresa consorciada pode definir a lideranca")
 		return
 	}
 	var req updateConsortiumLeaderRequest
@@ -5212,6 +5514,13 @@ func (a *app) ensureDatabaseMigrations(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS idx_tender_interests_tender_status
 			ON tender_interests(tender_id, status, visibility)
 			WHERE deleted_at IS NULL;
+		ALTER TABLE tender_interests ADD COLUMN IF NOT EXISTS participation_mode varchar(40) NOT NULL DEFAULT 'seeking_partners';
+		UPDATE tender_interests
+		SET participation_mode = 'seeking_partners'
+		WHERE participation_mode IS NULL OR participation_mode NOT IN ('individual', 'seeking_partners', 'undecided');
+		ALTER TABLE tender_interests DROP CONSTRAINT IF EXISTS tender_interests_participation_mode_chk;
+		ALTER TABLE tender_interests ADD CONSTRAINT tender_interests_participation_mode_chk
+			CHECK (participation_mode IN ('individual', 'seeking_partners', 'undecided'));
 		CREATE INDEX IF NOT EXISTS idx_partnership_ads_showcase
 			ON partnership_ads(status, published_at DESC)
 			WHERE deleted_at IS NULL;
@@ -6127,6 +6436,11 @@ func buildUpdateCompanyProfileSQL(companyID string, userID string, req updateCom
 }
 
 func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req createTenderInterestRequest, requirementsJSON string) string {
+	visibility := "private"
+	if req.ParticipationMode == "seeking_partners" {
+		visibility = "public_showcase"
+	}
+	isPublic := sqlBool(req.ParticipationMode == "seeking_partners")
 	return fmt.Sprintf(`
 		WITH selected_tender AS (
 			SELECT id, number, object FROM tenders
@@ -6158,9 +6472,10 @@ func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req crea
 			SET
 				general_position = %s,
 				desired_role = %s,
+				participation_mode = %s,
 				public_summary = %s,
 				internal_note = NULLIF(%s, ''),
-				visibility = 'public_showcase',
+				visibility = %s,
 				status = 'published',
 				updated_at = now()
 			WHERE tender_id = (SELECT id FROM selected_tender)
@@ -6172,7 +6487,7 @@ func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req crea
 		inserted_interest AS (
 			INSERT INTO tender_interests (
 				tender_id, company_id, created_by_user_id, general_position,
-				desired_role, public_summary, internal_note, visibility, status
+				desired_role, participation_mode, public_summary, internal_note, visibility, status
 			)
 			SELECT
 				st.id,
@@ -6181,8 +6496,9 @@ func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req crea
 				%s,
 				%s,
 				%s,
+				%s,
 				NULLIF(%s, ''),
-				'public_showcase',
+				%s,
 				'published'
 			FROM selected_tender st
 			WHERE NOT EXISTS (SELECT 1 FROM updated_interest)
@@ -6193,6 +6509,29 @@ func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req crea
 			UNION ALL
 			SELECT * FROM inserted_interest
 			LIMIT 1
+		),
+		blocked_individual_tasks AS (
+			UPDATE bid_assembly_tasks task
+			SET status = 'blocked', updated_at = now()
+			FROM bid_assembly_stages stage
+			JOIN bid_assemblies assembly ON assembly.id = stage.assembly_id
+			JOIN selected_interest si ON si.tender_id = assembly.tender_id AND si.company_id = assembly.owner_company_id
+			WHERE task.stage_id = stage.id
+			  AND assembly.assembly_type = 'individual'
+			  AND assembly.status <> 'cancelled'
+			  AND si.participation_mode <> 'individual'
+			RETURNING task.id
+		),
+		cancelled_individual_assembly AS (
+			UPDATE bid_assemblies assembly
+			SET status = 'cancelled', updated_at = now()
+			FROM selected_interest si
+			WHERE assembly.tender_id = si.tender_id
+			  AND assembly.owner_company_id = si.company_id
+			  AND assembly.assembly_type = 'individual'
+			  AND assembly.status <> 'cancelled'
+			  AND si.participation_mode <> 'individual'
+			RETURNING assembly.id
 		),
 		resolved_requirements AS (
 			SELECT tr.id, tr.tender_id, tr.requirement_type_id
@@ -6232,6 +6571,14 @@ func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req crea
 				updated_at = now()
 			RETURNING id
 		),
+		closed_ad AS (
+			UPDATE partnership_ads
+			SET status = 'closed', updated_at = now()
+			WHERE tender_interest_id = (SELECT id FROM selected_interest)
+			  AND deleted_at IS NULL
+			  AND NOT %s
+			RETURNING id
+		),
 		updated_ad AS (
 			UPDATE partnership_ads
 			SET
@@ -6248,6 +6595,7 @@ func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req crea
 				deleted_at = NULL
 			WHERE tender_interest_id = (SELECT id FROM selected_interest)
 			  AND deleted_at IS NULL
+			  AND %s
 			RETURNING *
 		),
 		inserted_ad AS (
@@ -6270,7 +6618,8 @@ func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req crea
 				now()
 			FROM selected_interest si
 			JOIN companies c ON c.id = si.company_id
-			WHERE NOT EXISTS (SELECT 1 FROM updated_ad)
+			WHERE %s
+			  AND NOT EXISTS (SELECT 1 FROM updated_ad)
 			RETURNING *
 		),
 		selected_ad AS (
@@ -6302,6 +6651,7 @@ func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req crea
 			JOIN users u ON u.company_id = other_interest.company_id
 			WHERE u.status = 'active'
 			  AND u.deleted_at IS NULL
+			  AND %s
 			RETURNING id
 		)
 		SELECT row_to_json(item)
@@ -6311,28 +6661,37 @@ func buildCreateTenderInterestSQL(tenderID string, session sessionUser, req crea
 				sa.id::text AS "adId",
 				si.tender_id::text AS "tenderId",
 				si.company_id::text AS "companyId",
+				si.participation_mode AS "participationMode",
 				si.public_summary AS "publicSummary",
-				sa.status AS "adStatus"
+				COALESCE(sa.status, '') AS "adStatus"
 			FROM selected_interest si
-			JOIN selected_ad sa ON sa.tender_interest_id = si.id
+			LEFT JOIN selected_ad sa ON sa.tender_interest_id = si.id
 		) item;
 	`,
 		sqlQuote(tenderID),
 		sqlQuote(req.GeneralPosition),
 		sqlQuote(req.DesiredRole),
+		sqlQuote(req.ParticipationMode),
 		sqlQuote(req.PublicSummary),
 		sqlQuote(req.InternalNote),
+		sqlQuote(visibility),
 		sqlQuote(session.CompanyID),
 		sqlQuote(session.CompanyID),
 		sqlQuote(session.UserID),
 		sqlQuote(req.GeneralPosition),
 		sqlQuote(req.DesiredRole),
+		sqlQuote(req.ParticipationMode),
 		sqlQuote(req.PublicSummary),
 		sqlQuote(req.InternalNote),
+		sqlQuote(visibility),
 		sqlQuote(requirementsJSON),
+		isPublic,
 		sqlQuote(session.CompanyID),
 		sqlQuote(req.PublicSummary),
+		isPublic,
 		sqlQuote(req.PublicSummary),
+		isPublic,
+		isPublic,
 	)
 }
 
@@ -7233,12 +7592,22 @@ func buildEvaluatePartnershipAdSQL(adID string, session sessionUser, decision st
 func buildUpdateConsortiumLeaderSQL(matchID string, session sessionUser, req updateConsortiumLeaderRequest) string {
 	return fmt.Sprintf(`
 		WITH selected_match AS (
-			SELECT *
-			FROM matches
-			WHERE id = %s::uuid
-			  AND status = 'active'
-			  AND %s::uuid IN (company_a_id, company_b_id)
-			  AND %s::uuid IN (company_a_id, company_b_id)
+			SELECT m.*
+			FROM matches m
+			LEFT JOIN consortium_intentions current_intention ON current_intention.match_id = m.id
+			WHERE m.id = %s::uuid
+			  AND m.status = 'active'
+			  AND (
+				m.company_a_id = %s::uuid
+				OR m.company_b_id = %s::uuid
+				OR EXISTS (
+					SELECT 1
+					FROM consortium_members active_member
+					WHERE active_member.consortium_intention_id = current_intention.id
+					  AND active_member.company_id = %s::uuid
+					  AND active_member.status = 'active'
+				)
+			  )
 			LIMIT 1
 		),
 		updated_intention AS (
@@ -7250,6 +7619,13 @@ func buildUpdateConsortiumLeaderSQL(matchID string, session sessionUser, req upd
 				updated_at = now()
 			FROM selected_match sm
 			WHERE ci.match_id = sm.id
+			  AND EXISTS (
+				SELECT 1
+				FROM consortium_members active_member
+				WHERE active_member.consortium_intention_id = ci.id
+				  AND active_member.company_id = %s::uuid
+				  AND active_member.status = 'active'
+			  )
 			RETURNING ci.*
 		),
 		inserted_intention AS (
@@ -7263,7 +7639,8 @@ func buildUpdateConsortiumLeaderSQL(matchID string, session sessionUser, req upd
 				'intention_registered',
 				NULLIF(%s, '')
 			FROM selected_match sm
-			WHERE NOT EXISTS (SELECT 1 FROM updated_intention)
+			WHERE %s::uuid IN (sm.company_a_id, sm.company_b_id)
+			  AND NOT EXISTS (SELECT 1 FROM updated_intention)
 			RETURNING *
 		),
 		selected_intention AS (
@@ -7307,7 +7684,17 @@ func buildUpdateConsortiumLeaderSQL(matchID string, session sessionUser, req upd
 				sm.id
 			FROM selected_match sm
 			JOIN companies c_lead ON c_lead.id = %s::uuid
-			JOIN users u ON u.company_id IN (sm.company_a_id, sm.company_b_id)
+			JOIN users u ON (
+				u.company_id IN (sm.company_a_id, sm.company_b_id)
+				OR EXISTS (
+					SELECT 1
+					FROM consortium_intentions notify_intention
+					JOIN consortium_members notify_member ON notify_member.consortium_intention_id = notify_intention.id
+					WHERE notify_intention.match_id = sm.id
+					  AND notify_member.company_id = u.company_id
+					  AND notify_member.status = 'active'
+				)
+			)
 			WHERE u.status = 'active'
 			  AND u.deleted_at IS NULL
 			RETURNING id
@@ -7328,11 +7715,14 @@ func buildUpdateConsortiumLeaderSQL(matchID string, session sessionUser, req upd
 	`,
 		sqlQuote(matchID),
 		sqlQuote(session.CompanyID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(session.CompanyID),
+		sqlQuote(req.LeadCompanyID),
+		sqlQuote(req.Notes),
 		sqlQuote(req.LeadCompanyID),
 		sqlQuote(req.LeadCompanyID),
 		sqlQuote(req.Notes),
 		sqlQuote(req.LeadCompanyID),
-		sqlQuote(req.Notes),
 		sqlQuote(req.LeadCompanyID),
 		sqlQuote(req.LeadCompanyID),
 	)
@@ -8514,6 +8904,15 @@ func normalizeInterestDesiredRole(value string) string {
 		return strings.ToLower(strings.TrimSpace(value))
 	default:
 		return "seeks_partner"
+	}
+}
+
+func normalizeParticipationMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "individual", "undecided":
+		return strings.ToLower(strings.TrimSpace(value))
+	default:
+		return "seeking_partners"
 	}
 }
 
