@@ -23,13 +23,14 @@ echo Preparando os arquivos alterados...
 if errorlevel 1 goto error
 
 "%GIT%" diff --cached --quiet
-if not errorlevel 1 goto no_changes
+if not errorlevel 1 goto push_existing
 
 echo.
 echo Criando o commit...
-"%GIT%" commit -m "Atualiza gestao de empresas e documentacao"
+"%GIT%" commit -m "Atualiza captacao e documentacao"
 if errorlevel 1 goto error
 
+:push_existing
 echo.
 echo Enviando ao GitHub...
 "%GIT%" push origin main
@@ -40,11 +41,6 @@ echo ================================================
 echo   Commit e envio concluidos com sucesso.
 echo ================================================
 "%GIT%" log -1 --oneline
-goto end
-
-:no_changes
-echo.
-echo Nao havia alteracoes novas para registrar.
 goto end
 
 :error
