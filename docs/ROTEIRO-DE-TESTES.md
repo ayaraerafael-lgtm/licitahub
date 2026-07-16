@@ -92,8 +92,8 @@ Preparar antes de iniciar:
 | ED-05 | Data invalida | Tentar cadastrar ou editar sessao para data passada | Sistema impede a gravacao. |
 | ED-06 | Ocorrido | Deixar data passar e atualizar sistema | Edital muda para ocorrido; nao aceita novo interesse. |
 | ED-07 | Suspensao | Suspender edital sem interesse | Sai de oportunidades ativas; nao aceita novo interesse. |
-| ED-08 | Suspensao com interesse | Suspender edital com anuncios, conversa e montagem | Verificar que novos interesses/matches sao bloqueados e os registros existentes ficam preservados e claramente sinalizados. |
-| ED-08A | Retomada | Alterar edital suspenso para publicado | Empresas com interesse, anuncio, consorcio ou montagem recebem alerta; clique leva ao detalhe do edital; nenhuma notificacao duplicada e criada por edicao sem troca de status. |
+| ED-08 | Suspensao com interesse | Suspender edital com anuncios, conversa e montagem | Anuncios saem da vitrine; a montagem deixa de aparecer e nao aceita alteracoes ou alertas de prazo; historico e tarefas ficam preservados. |
+| ED-08A | Retomada | Alterar edital suspenso para publicado | Anuncios e montagem pausados pelo sistema sao restaurados no estado anterior; empresas relacionadas recebem alerta; nenhuma notificacao duplicada e criada por edicao sem troca de status. |
 | ED-09 | Cancelamento com consorcio | Cancelar edital com consorcio e montagem | Anuncios devem sair da vitrine; chat do edital deve encerrar; consorcio e montagem devem ficar encerrados; tarefas devem ficar bloqueadas; historico deve permanecer consultavel. |
 | ED-10 | Exclusao indevida | Tentar excluir edital publicado com relacionamentos | Sistema deve impedir exclusao e orientar a usar cancelamento. |
 | ED-11 | Exclusao de rascunho | Excluir edital sem interesse ou montagem | Edital desaparece das listas sem deixar registros operacionais ativos. |
@@ -122,6 +122,7 @@ Preparar antes de iniciar:
 | MA-03 | Terceira empresa | Lider publica busca complementar e Gama se candidata | Gama entra no consorcio somente apos aceite da lider. |
 | MA-04 | Lideranca inicial | Administrador/comercial de empresa ativa escolhe lider | Lider aparece em Meus consorcios e nas telas relacionadas. |
 | MA-05 | Troca de lider | Cada empresa ativa, inclusive a terceira, troca a lideranca | Troca funciona independentemente da ordem de entrada; todos recebem notificacao. |
+| MA-05A | Montagem automatica | Definir lider de consorcio e sair da tela | A Central de Montagem e criada automaticamente com prazo geral igual a data da sessao. |
 | MA-06 | Perfil sem permissao | Tecnico ou leitor tenta trocar lider | Campo e acao nao ficam disponiveis. |
 | MA-07 | Desistencia de membro | Empresa nao lider desiste | Ela deixa o consorcio; demais membros permanecem consistentes. |
 | MA-08 | Desistencia da lider | Lider tenta sair com duas ou mais empresas restantes | Sistema exige nova lideranca antes da saida. |
@@ -141,6 +142,8 @@ Preparar antes de iniciar:
 | MO-08 | Percentual | Concluir e marcar nao se aplica em tarefas | Percentuais da fase, montagem e calendario recalculam corretamente. |
 | MO-09 | Evidencias | Incluir arquivo, link e anotacao | Itens aparecem na tarefa e no dossie. |
 | MO-10 | Encerramento | Cancelar edital ou sair da participacao individual | Montagem deixa de aceitar alteracoes; tarefas ficam bloqueadas; historico permanece. |
+| MO-10A | Pausa por edital | Suspender edital com montagem ativa e tentar abrir link direto da central | A montagem permanece preservada, mas fica indisponivel enquanto o edital nao estiver publicado; nenhum aviso de prazo e emitido. |
+| MO-11 | Central de montagens | Salvar participacao individual, sair da tela e abrir Editais > Central de montagens | A montagem individual e criada no salvamento, aparece na lista e abre diretamente o mesmo plano. |
 
 ## 11. Calendario de montagens
 
@@ -163,8 +166,22 @@ Preparar antes de iniciar:
 | CH-04 | Chat encerrado | Fechar consorcio ou cancelar edital | Chat relacionado nao permite nova mensagem. |
 | CH-05 | Sino | Gerar curtida, comentario, convite, match, tarefa e chat | Sino fica amarelo com pendencias, cinza sem novidades e direciona para a origem correta. |
 | CH-06 | Som | Receber mensagem nova com tela aberta | Som toca em volume perceptivel sem repetir indevidamente. |
+| CH-07 | Histórico | Abrir Histórico no sino e filtrar alertas lidos, não lidos, tipo e período | Registros antigos aparecem paginados e cada item abre sua origem correta. |
+| CH-08 | Isolamento por usuário | Gerar alerta para uma pessoa da Empresa Alfa e abrir o sino de outra pessoa da mesma empresa | A segunda pessoa não vê o alerta pessoal da primeira; apenas avisos gerais da empresa aparecem para ambas. |
 
 ## 13. Seguranca, dados e regressao
+
+## 13A. Captação PNCP
+
+| ID | Cenario | Passos | Resultado esperado |
+|---|---|---|---|
+| PN-01 | Consulta | Como administrador da plataforma, abrir Editais > Captação PNCP e pesquisar período válido | A fila recebe as oportunidades retornadas pela fonte oficial, sem publicar automaticamente. |
+| PN-02 | Triagem | Alternar aderência e situação da fila | Editais com termos técnicos ficam priorizados; administrador ainda pode exibir todas as capturas. |
+| PN-03 | Preparar cadastro | Preparar uma captura ainda pendente | Um único edital em rascunho é criado, com os dados do PNCP preenchidos, e o sistema abre seu cadastro para complementação. |
+| PN-03A | Publicação final | Completar o rascunho, anexar documentos se necessário e salvar com status Publicado | O edital fica visível na lista das associadas e gera alerta somente neste momento. |
+| PN-04 | Descarte | Descartar uma captura pendente | Registro deixa a fila de decisão e não cria edital no LicitaHub. |
+| PN-05 | Duplicidade | Repetir uma consulta que já retornou o mesmo registro do PNCP | A fila atualiza a mesma captura sem duplicar o edital. |
+| PN-06 | Fonte indisponível | Consultar quando a fonte externa não responder | Sistema mostra mensagem clara e não altera a fila existente. |
 
 | ID | Cenario | Passos | Resultado esperado |
 |---|---|---|---|

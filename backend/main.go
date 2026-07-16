@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -183,20 +184,26 @@ type resetPasswordRequest struct {
 }
 
 type createTenderRequest struct {
-	Agency            string `json:"agency"`
-	Number            string `json:"number"`
-	Object            string `json:"object"`
-	Modality          string `json:"modality"`
-	JudgmentCriterion string `json:"judgmentCriterion"`
-	EstimatedValue    string `json:"estimatedValue"`
-	State             string `json:"state"`
-	City              string `json:"city"`
-	OpeningDate       string `json:"openingDate"`
-	Status            string `json:"status"`
-	CloudFolderURL    string `json:"cloudFolderUrl"`
-	AnalysisDataURL   string `json:"analysisDataUrl"`
-	AnalysisFileName  string `json:"analysisFileName"`
-	AnalysisMimeType  string `json:"analysisMimeType"`
+	Agency               string `json:"agency"`
+	Number               string `json:"number"`
+	Object               string `json:"object"`
+	Modality             string `json:"modality"`
+	JudgmentCriterion    string `json:"judgmentCriterion"`
+	EstimatedValue       string `json:"estimatedValue"`
+	State                string `json:"state"`
+	City                 string `json:"city"`
+	OpeningDate          string `json:"openingDate"`
+	Status               string `json:"status"`
+	CloudFolderURL       string `json:"cloudFolderUrl"`
+	AnalysisDataURL      string `json:"analysisDataUrl"`
+	AnalysisFileName     string `json:"analysisFileName"`
+	AnalysisMimeType     string `json:"analysisMimeType"`
+	ConfirmValueConflict bool   `json:"confirmValueConflict"`
+}
+
+type tenderValueConflictRequest struct {
+	EstimatedValue  string `json:"estimatedValue"`
+	ExcludeTenderID string `json:"excludeTenderId"`
 }
 
 type updateTenderAnalysisRequest struct {
@@ -382,6 +389,7 @@ type updateMyUserProfileRequest struct {
 	FullName             string `json:"fullName"`
 	Email                string `json:"email"`
 	Phone                string `json:"phone"`
+	JobTitle             string `json:"jobTitle"`
 	ProfilePhotoDataURL  string `json:"profilePhotoDataUrl"`
 	ProfilePhotoFileName string `json:"profilePhotoFileName"`
 	ProfilePhotoMimeType string `json:"profilePhotoMimeType"`
@@ -430,6 +438,7 @@ func main() {
 	mux.HandleFunc("/api/auth/reset-password", application.handleResetPassword)
 	mux.HandleFunc("/api/users/me", application.handleMyUserProfile)
 	mux.HandleFunc("/api/notifications/read-all", application.handleNotificationsReadAll)
+	mux.HandleFunc("/api/notification-history", application.handleNotificationHistory)
 	mux.HandleFunc("/api/notifications", application.handleNotifications)
 	mux.HandleFunc("/api/access-profiles", application.handleAccessProfiles)
 	mux.HandleFunc("/api/company-invitations", application.handleCompanyInvitations)
@@ -448,6 +457,8 @@ func main() {
 	mux.HandleFunc("/api/community/posts", application.handleCommunityPosts)
 	mux.HandleFunc("/api/tenders/", application.handleTenderByPath)
 	mux.HandleFunc("/api/tenders", application.handleTenders)
+	mux.HandleFunc("/api/pncp/captures/", application.handlePNCPCaptureByPath)
+	mux.HandleFunc("/api/pncp/captures", application.handlePNCPCaptures)
 	mux.HandleFunc("/api/tender-challenges/", application.handleTenderChallengeByPath)
 	mux.HandleFunc("/api/tender-challenges", application.handleTenderChallenges)
 	mux.HandleFunc("/api/partnership-ads/", application.handlePartnershipAdByPath)
@@ -461,6 +472,7 @@ func main() {
 	mux.HandleFunc("/api/matches", application.handleMatches)
 	mux.HandleFunc("/api/assemblies/", application.handleAssemblyByPath)
 	mux.HandleFunc("/api/assemblies", application.handleAssemblies)
+	mux.HandleFunc("/api/assembly-list", application.handleAssemblyList)
 	mux.HandleFunc("/api/assembly-calendar", application.handleAssemblyCalendar)
 	mux.HandleFunc("/api/my-assembly-tasks", application.handleMyAssemblyTasks)
 	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
@@ -556,6 +568,7 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 			LEFT JOIN media_files company_logo ON company_logo.id = cp.logo_media_id
 			WHERE lower(u.email) = %s
 			  AND u.deleted_at IS NULL
+			  AND u.status <> 'removed'
 			ORDER BY u.created_at
 			LIMIT 1
 		),
@@ -752,6 +765,7 @@ func (a *app) updateMyUserProfile(w http.ResponseWriter, r *http.Request) {
 	req.FullName = strings.TrimSpace(req.FullName)
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
 	req.Phone = strings.TrimSpace(req.Phone)
+	req.JobTitle = strings.TrimSpace(req.JobTitle)
 	req.ProfilePhotoDataURL = strings.TrimSpace(req.ProfilePhotoDataURL)
 	req.ProfilePhotoFileName = strings.TrimSpace(req.ProfilePhotoFileName)
 	req.ProfilePhotoMimeType = strings.TrimSpace(req.ProfilePhotoMimeType)
@@ -855,6 +869,8 @@ func (a *app) handleNotifications(w http.ResponseWriter, r *http.Request) {
 			  AND (
 				n.recipient_user_id = %s::uuid
 				OR (
+					n.recipient_user_id IS NULL
+					AND
 					NULLIF(%s, '')::uuid IS NOT NULL
 					AND n.recipient_company_id = NULLIF(%s, '')::uuid
 				)
@@ -887,6 +903,8 @@ func (a *app) handleNotificationsReadAll(w http.ResponseWriter, r *http.Request)
 			  AND (
 				n.recipient_user_id = %s::uuid
 				OR (
+					n.recipient_user_id IS NULL
+					AND
 					NULLIF(%s, '')::uuid IS NOT NULL
 					AND n.recipient_company_id = NULLIF(%s, '')::uuid
 				)
@@ -897,6 +915,92 @@ func (a *app) handleNotificationsReadAll(w http.ResponseWriter, r *http.Request)
 	`, sqlQuote(session.UserID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID)))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "nao foi possivel zerar notificacoes")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
+}
+
+func (a *app) handleNotificationHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	query := r.URL.Query()
+	search := strings.TrimSpace(query.Get("search"))
+	if len(search) > 160 {
+		search = search[:160]
+	}
+	typeFilter := strings.TrimSpace(query.Get("type"))
+	allowedTypes := map[string]bool{"post_like": true, "post_comment": true, "match": true, "company_interested": true, "news": true, "system": true}
+	if !allowedTypes[typeFilter] {
+		typeFilter = ""
+	}
+	statusFilter := strings.TrimSpace(query.Get("status"))
+	if statusFilter != "read" && statusFilter != "unread" {
+		statusFilter = ""
+	}
+	period := strings.TrimSpace(query.Get("period"))
+	allowedPeriods := map[string]bool{"7": true, "30": true, "90": true, "365": true}
+	if !allowedPeriods[period] {
+		period = ""
+	}
+	page, _ := strconv.Atoi(query.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	const pageSize = 20
+	offset := (page - 1) * pageSize
+	conditions := []string{fmt.Sprintf(`(
+		n.recipient_user_id = %s::uuid
+		OR (n.recipient_user_id IS NULL AND NULLIF(%s, '')::uuid IS NOT NULL AND n.recipient_company_id = NULLIF(%s, '')::uuid)
+	)`, sqlQuote(session.UserID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID))}
+	if search != "" {
+		conditions = append(conditions, fmt.Sprintf(`lower(concat_ws(' ', n.title, COALESCE(n.message, ''))) LIKE %s`, sqlQuote("%"+strings.ToLower(search)+"%")))
+	}
+	if typeFilter != "" {
+		conditions = append(conditions, fmt.Sprintf("n.type = %s", sqlQuote(typeFilter)))
+	}
+	if statusFilter == "read" {
+		conditions = append(conditions, "n.is_read = true")
+	} else if statusFilter == "unread" {
+		conditions = append(conditions, "n.is_read = false")
+	}
+	if period != "" {
+		conditions = append(conditions, fmt.Sprintf("n.created_at >= now() - interval '%s days'", period))
+	}
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		WITH filtered AS (
+			SELECT n.*
+			FROM notifications n
+			WHERE %s
+		), paged AS (
+			SELECT * FROM filtered
+			ORDER BY created_at DESC
+			LIMIT %d OFFSET %d
+		)
+		SELECT json_build_object(
+			'items', COALESCE((
+				SELECT json_agg(row_to_json(item) ORDER BY item."createdAt" DESC)
+				FROM (
+					SELECT n.id::text AS id, n.type, n.title, COALESCE(n.message, '') AS message,
+						COALESCE(n.destination_screen, '') AS "destinationScreen",
+						COALESCE(n.related_entity_type, '') AS "relatedEntityType",
+						COALESCE(n.related_entity_id::text, '') AS "relatedEntityId",
+						n.is_read AS "isRead", n.read_at AS "readAt", n.created_at AS "createdAt"
+					FROM paged n
+				) item
+			), '[]'::json),
+			'total', (SELECT count(*) FROM filtered),
+			'page', %d,
+			'pageSize', %d
+		);
+	`, strings.Join(conditions, " AND "), pageSize, offset, page, pageSize))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel carregar o historico de alertas")
 		return
 	}
 	writeRawJSON(w, http.StatusOK, payload)
@@ -1719,7 +1823,7 @@ func (a *app) handleCompanyDashboard(w http.ResponseWriter, r *http.Request) {
 			WHERE n.is_read = false
 			  AND (
 				n.recipient_user_id = %s::uuid
-				OR n.recipient_company_id = %s::uuid
+				OR (n.recipient_user_id IS NULL AND n.recipient_company_id = %s::uuid)
 			  )
 		)
 		SELECT json_build_object(
@@ -2120,6 +2224,13 @@ func (a *app) createCompanyUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "email do usuario e obrigatorio")
 		return
 	}
+	if used, err := a.userEmailAlreadyUsed(r.Context(), req.Email, ""); err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel validar o email do usuario")
+		return
+	} else if used {
+		writeError(w, http.StatusConflict, "este email ja foi utilizado por outro usuario e nao pode ser reutilizado. Informe outro email")
+		return
+	}
 	if req.Phone == "" {
 		writeError(w, http.StatusBadRequest, "telefone do usuario e obrigatorio")
 		return
@@ -2193,6 +2304,13 @@ func (a *app) updateCompanyUser(w http.ResponseWriter, r *http.Request, userID s
 		writeError(w, http.StatusBadRequest, "email do usuario e obrigatorio")
 		return
 	}
+	if used, err := a.userEmailAlreadyUsed(r.Context(), req.Email, userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel validar o email do usuario")
+		return
+	} else if used {
+		writeError(w, http.StatusConflict, "este email ja foi utilizado por outro usuario e nao pode ser reutilizado. Informe outro email")
+		return
+	}
 	if req.Phone == "" {
 		writeError(w, http.StatusBadRequest, "telefone do usuario e obrigatorio")
 		return
@@ -2230,6 +2348,31 @@ func (a *app) updateCompanyUser(w http.ResponseWriter, r *http.Request, userID s
 	}
 
 	writeRawJSON(w, http.StatusOK, payload)
+}
+
+func (a *app) userEmailAlreadyUsed(ctx context.Context, email string, excludeUserID string) (bool, error) {
+	exclude := ""
+	if strings.TrimSpace(excludeUserID) != "" {
+		exclude = fmt.Sprintf("AND id <> %s::uuid", sqlQuote(excludeUserID))
+	}
+	payload, err := a.queryJSON(ctx, fmt.Sprintf(`
+		SELECT json_build_object('used', EXISTS (
+			SELECT 1
+			FROM users
+			WHERE lower(email) = lower(%s)
+			  %s
+		));
+	`, sqlQuote(email), exclude))
+	if err != nil {
+		return false, err
+	}
+	var result struct {
+		Used bool `json:"used"`
+	}
+	if err := json.Unmarshal(payload, &result); err != nil {
+		return false, err
+	}
+	return result.Used, nil
 }
 
 func (a *app) companyUserHasPhoto(ctx context.Context, userID string, session sessionUser) (bool, error) {
@@ -2307,10 +2450,63 @@ func (a *app) handleTenders(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (a *app) checkTenderValueConflicts(w http.ResponseWriter, r *http.Request) {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if !session.canManagePlatform() {
+		writeError(w, http.StatusForbidden, "apenas administrador da plataforma pode consultar editais semelhantes")
+		return
+	}
+	var req tenderValueConflictRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "json invalido")
+		return
+	}
+	payload, err := a.publishedTenderValueConflicts(r.Context(), strings.TrimSpace(req.EstimatedValue), strings.TrimSpace(req.ExcludeTenderID))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "valor estimado invalido")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
+}
+
+func (a *app) publishedTenderValueConflicts(ctx context.Context, estimatedValue string, excludeTenderID string) ([]byte, error) {
+	if strings.TrimSpace(estimatedValue) == "" {
+		return []byte("[]"), nil
+	}
+	excludeFilter := ""
+	if strings.TrimSpace(excludeTenderID) != "" {
+		excludeFilter = fmt.Sprintf("AND t.id <> %s::uuid", sqlQuote(excludeTenderID))
+	}
+	return a.queryJSON(ctx, fmt.Sprintf(`
+		SELECT COALESCE(json_agg(row_to_json(item)), '[]'::json)
+		FROM (
+			SELECT t.id::text AS id, t.number, t.agency, t.object,
+				t.estimated_value AS "estimatedValue", t.opening_date AS "openingDate"
+			FROM tenders t
+			WHERE t.status = 'published'
+			  AND t.deleted_at IS NULL
+			  AND t.estimated_value = %s::numeric
+			  %s
+			ORDER BY t.opening_date ASC NULLS LAST, t.created_at DESC
+		) item;
+	`, sqlQuote(estimatedValue), excludeFilter))
+}
+
 func (a *app) handleTenderByPath(w http.ResponseWriter, r *http.Request) {
 	id, action := splitResourcePath(r.URL.Path, "/api/tenders/")
 	if id == "" {
 		writeError(w, http.StatusNotFound, "edital nao encontrado")
+		return
+	}
+	if id == "value-conflicts" && action == "" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+			return
+		}
+		a.checkTenderValueConflicts(w, r)
 		return
 	}
 	if action == "interests" {
@@ -3169,6 +3365,17 @@ func (a *app) createTender(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "status do edital invalido")
 		return
 	}
+	if req.Status == "published" && req.EstimatedValue != "" && !req.ConfirmValueConflict {
+		conflicts, err := a.publishedTenderValueConflicts(r.Context(), req.EstimatedValue, "")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "valor estimado invalido")
+			return
+		}
+		if strings.TrimSpace(string(conflicts)) != "[]" {
+			writeError(w, http.StatusConflict, "existe outro edital publicado com o mesmo valor estimado. Compare os dados e confirme a publicacao")
+			return
+		}
+	}
 	if err := a.validateTenderOpeningDate(r.Context(), "", req.OpeningDate); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -3285,6 +3492,17 @@ func (a *app) updateTender(w http.ResponseWriter, r *http.Request, tenderID stri
 		writeError(w, http.StatusBadRequest, "status do edital invalido")
 		return
 	}
+	if req.Status == "published" && req.EstimatedValue != "" && !req.ConfirmValueConflict {
+		conflicts, err := a.publishedTenderValueConflicts(r.Context(), req.EstimatedValue, tenderID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "valor estimado invalido")
+			return
+		}
+		if strings.TrimSpace(string(conflicts)) != "[]" {
+			writeError(w, http.StatusConflict, "existe outro edital publicado com o mesmo valor estimado. Compare os dados e confirme a publicacao")
+			return
+		}
+	}
 	if err := a.validateTenderOpeningDate(r.Context(), tenderID, req.OpeningDate); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -3323,6 +3541,41 @@ func (a *app) updateTender(w http.ResponseWriter, r *http.Request, tenderID stri
 			WHERE t.id = previous.id
 			RETURNING t.*, previous.status AS previous_status
 		),
+		paused_assemblies AS (
+			UPDATE bid_assemblies assembly
+			SET status_before_pause = assembly.status, status = 'paused', updated_at = now()
+			FROM updated_tender ut
+			WHERE assembly.tender_id = ut.id
+			  AND ut.status <> 'published'
+			  AND assembly.status NOT IN ('cancelled', 'paused')
+			RETURNING assembly.id
+		),
+		resumed_assemblies AS (
+			UPDATE bid_assemblies assembly
+			SET status = COALESCE(assembly.status_before_pause, 'preparing'), status_before_pause = NULL, updated_at = now()
+			FROM updated_tender ut
+			WHERE assembly.tender_id = ut.id
+			  AND ut.status = 'published'
+			  AND assembly.status = 'paused'
+			RETURNING assembly.id
+		),
+		paused_ads AS (
+			UPDATE partnership_ads ad
+			SET status = 'paused', paused_by_tender = true, updated_at = now()
+			FROM updated_tender ut
+			WHERE ad.tender_id = ut.id AND ut.status <> 'published' AND ad.status = 'published'
+			RETURNING ad.id
+		),
+		resumed_ads AS (
+			UPDATE partnership_ads ad
+			SET status = 'published', paused_by_tender = false, updated_at = now()
+			FROM updated_tender ut
+			WHERE ad.tender_id = ut.id
+			  AND ut.status = 'published'
+			  AND ad.status = 'paused'
+			  AND ad.paused_by_tender = true
+			RETURNING ad.id
+		),
 		related_companies AS (
 			SELECT ti.company_id FROM tender_interests ti JOIN updated_tender ut ON ut.id = ti.tender_id WHERE ti.deleted_at IS NULL
 			UNION
@@ -3347,16 +3600,38 @@ func (a *app) updateTender(w http.ResponseWriter, r *http.Request, tenderID stri
 			)
 			SELECT DISTINCT
 				u.id, u.company_id, 'system',
-				'Edital voltou a ser publicado',
-				'O edital ' || ut.number || ' voltou ao status publicado. Revise sua participacao, prazos e montagem.',
+				CASE WHEN ut.status = 'suspended' THEN 'Edital suspenso' ELSE 'Edital voltou a ser publicado' END,
+				CASE WHEN ut.status = 'suspended'
+					THEN 'O edital ' || ut.number || ' foi suspenso. Anuncios e montagem foram pausados ate nova publicacao.'
+					ELSE 'O edital ' || ut.number || ' voltou ao status publicado. Revise sua participacao, prazos e montagem.' END,
 				'tender-detail', 'tender', ut.id
 			FROM updated_tender ut
 			JOIN related_companies related ON true
 			JOIN users u ON u.company_id = related.company_id
-			WHERE ut.previous_status = 'suspended'
-			  AND ut.status = 'published'
+			WHERE ((ut.status = 'suspended' AND ut.previous_status <> 'suspended')
+			   OR (ut.previous_status = 'suspended' AND ut.status = 'published'))
 			  AND u.status = 'active'
 			  AND u.deleted_at IS NULL
+			RETURNING id
+		), pncp_capture_published AS (
+			UPDATE pncp_captures pc
+			SET status = 'approved', approved_at = now(), updated_at = now()
+			FROM updated_tender ut
+			WHERE pc.published_tender_id = ut.id
+			  AND pc.status = 'prepared'
+			  AND ut.status = 'published'
+			RETURNING pc.id, ut.id AS tender_id, ut.number
+		), pncp_notifications AS (
+			INSERT INTO notifications (
+				recipient_user_id, recipient_company_id, type, title, message,
+				destination_screen, related_entity_type, related_entity_id
+			)
+			SELECT u.id, u.company_id, 'system', 'Novo edital publicado',
+				'Edital ' || pc.number || ' foi publicado pela LicitaHub.',
+				'tender-list', 'tender', pc.tender_id
+			FROM pncp_capture_published pc
+			JOIN users u ON u.company_id IS NOT NULL
+			WHERE u.status = 'active' AND u.deleted_at IS NULL
 			RETURNING id
 		)
 		SELECT row_to_json(item)
@@ -3430,6 +3705,37 @@ func (a *app) refreshOccurredTenders(ctx context.Context) error {
 		  AND opening_date IS NOT NULL
 		  AND opening_date < now()
 		  AND deleted_at IS NULL;
+		UPDATE bid_assemblies assembly
+		SET status_before_pause = assembly.status, status = 'paused', updated_at = now()
+		FROM tenders tender
+		WHERE assembly.tender_id = tender.id
+		  AND tender.deleted_at IS NULL
+		  AND tender.status <> 'published'
+		  AND assembly.status NOT IN ('cancelled', 'paused');
+		UPDATE bid_assemblies assembly
+		SET status = COALESCE(assembly.status_before_pause, 'preparing'),
+			status_before_pause = NULL,
+			updated_at = now()
+		FROM tenders tender
+		WHERE assembly.tender_id = tender.id
+		  AND tender.deleted_at IS NULL
+		  AND tender.status = 'published'
+		  AND assembly.status = 'paused';
+		UPDATE partnership_ads ad
+		SET status = 'paused', paused_by_tender = true, updated_at = now()
+		FROM tenders tender
+		WHERE ad.tender_id = tender.id
+		  AND tender.deleted_at IS NULL
+		  AND tender.status <> 'published'
+		  AND ad.status = 'published';
+		UPDATE partnership_ads ad
+		SET status = 'published', paused_by_tender = false, updated_at = now()
+		FROM tenders tender
+		WHERE ad.tender_id = tender.id
+		  AND tender.deleted_at IS NULL
+		  AND tender.status = 'published'
+		  AND ad.status = 'paused'
+		  AND ad.paused_by_tender = true;
 	`)
 	return err
 }
@@ -3599,7 +3905,7 @@ func (a *app) createTenderInterest(w http.ResponseWriter, r *http.Request, tende
 		req.Requirements[index].WhatWeHave = strings.TrimSpace(req.Requirements[index].WhatWeHave)
 		req.Requirements[index].WhatWeSeek = strings.TrimSpace(req.Requirements[index].WhatWeSeek)
 	}
-	if req.PublicSummary == "" {
+	if req.ParticipationMode != "individual" && req.PublicSummary == "" {
 		writeError(w, http.StatusBadRequest, "resumo da participacao e obrigatorio")
 		return
 	}
@@ -3621,6 +3927,19 @@ func (a *app) createTenderInterest(w http.ResponseWriter, r *http.Request, tende
 	if strings.TrimSpace(string(payload)) == "null" {
 		writeError(w, http.StatusBadRequest, a.tenderInterestUnavailableReason(r.Context(), tenderID))
 		return
+	}
+	if req.ParticipationMode == "individual" {
+		var createdInterest struct {
+			InterestID string `json:"interestId"`
+		}
+		if err := json.Unmarshal(payload, &createdInterest); err != nil || createdInterest.InterestID == "" {
+			writeError(w, http.StatusInternalServerError, "interesse registrado sem identificador para a montagem individual")
+			return
+		}
+		if err := a.ensureIndividualAssembly(r.Context(), createdInterest.InterestID, session); err != nil {
+			writeError(w, http.StatusInternalServerError, "interesse registrado, mas nao foi possivel preparar a montagem individual: "+err.Error())
+			return
+		}
 	}
 	writeRawJSON(w, http.StatusCreated, payload)
 }
@@ -4234,6 +4553,10 @@ func (a *app) handleMatches(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if err := a.refreshOccurredTenders(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel atualizar a situacao dos editais")
+		return
+	}
 	payload, err := a.queryJSON(r.Context(), matchesSQL(session, ""))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "nao foi possivel carregar matches")
@@ -4319,6 +4642,10 @@ func (a *app) updateConsortiumLeader(w http.ResponseWriter, r *http.Request, mat
 	}
 	if strings.TrimSpace(string(payload)) == "null" {
 		writeError(w, http.StatusNotFound, "match nao encontrado")
+		return
+	}
+	if err := a.ensureConsortiumAssembly(r.Context(), matchID, session); err != nil {
+		writeError(w, http.StatusInternalServerError, "lideranca definida, mas nao foi possivel preparar a montagem: "+err.Error())
 		return
 	}
 	writeRawJSON(w, http.StatusOK, payload)
@@ -4883,6 +5210,12 @@ func (a *app) handleCommunityPostByPath(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		a.archiveCommunityPost(w, r, postID)
+	case "publish":
+		if r.Method != http.MethodPatch {
+			writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+			return
+		}
+		a.publishCommunityPost(w, r, postID)
 	default:
 		writeError(w, http.StatusNotFound, "rota nao encontrada")
 	}
@@ -4958,7 +5291,7 @@ func (a *app) updateCommunityPost(w http.ResponseWriter, r *http.Request, postID
 			WHERE p.id = %s::uuid
 			  AND p.company_id = %s::uuid
 			  AND p.deleted_at IS NULL
-			  AND p.status = 'published'
+			  AND p.status IN ('published', 'archived')
 			  AND EXISTS (SELECT 1 FROM selected_category)
 			RETURNING p.id
 		)
@@ -5030,6 +5363,38 @@ func (a *app) archiveCommunityPost(w http.ResponseWriter, r *http.Request, postI
 	}
 	if strings.TrimSpace(string(payload)) == "null" {
 		writeError(w, http.StatusNotFound, "publicacao nao encontrada para sua empresa")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
+}
+
+func (a *app) publishCommunityPost(w http.ResponseWriter, r *http.Request, postID string) {
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		WITH published_post AS (
+			UPDATE posts
+			SET status = 'published', published_at = COALESCE(published_at, now()), updated_at = now()
+			WHERE id = %s::uuid
+			  AND company_id = %s::uuid
+			  AND status = 'archived'
+			  AND deleted_at IS NULL
+			RETURNING id, status, published_at, updated_at
+		)
+		SELECT row_to_json(item)
+		FROM (
+			SELECT id::text AS id, status, published_at AS "publishedAt", updated_at AS "updatedAt"
+			FROM published_post
+		) item;
+	`, sqlQuote(postID), sqlQuote(session.CompanyID)))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel republicar publicacao")
+		return
+	}
+	if strings.TrimSpace(string(payload)) == "null" {
+		writeError(w, http.StatusNotFound, "publicacao arquivada nao encontrada")
 		return
 	}
 	writeRawJSON(w, http.StatusOK, payload)
@@ -5434,6 +5799,56 @@ func (a *app) ensureDatabaseMigrations(ctx context.Context) error {
 			ON post_favorites(user_id, created_at DESC);
 		ALTER TABLE tenders DROP CONSTRAINT IF EXISTS tenders_status_chk;
 		ALTER TABLE tenders ADD CONSTRAINT tenders_status_chk CHECK (status IN ('draft', 'published', 'under_review', 'suspended', 'challenged', 'occurred', 'closed', 'cancelled'));
+		ALTER TABLE tenders ADD COLUMN IF NOT EXISTS source varchar(40) NOT NULL DEFAULT 'manual';
+		ALTER TABLE tenders ADD COLUMN IF NOT EXISTS source_reference varchar(220);
+		CREATE UNIQUE INDEX IF NOT EXISTS tenders_source_reference_uk
+			ON tenders(source, source_reference)
+			WHERE source_reference IS NOT NULL AND deleted_at IS NULL;
+		CREATE TABLE IF NOT EXISTS pncp_captures (
+			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+			source varchar(40) NOT NULL DEFAULT 'pncp',
+			source_key varchar(220) NOT NULL UNIQUE,
+			agency varchar(220) NOT NULL,
+			number varchar(120) NOT NULL,
+			object text NOT NULL,
+			modality varchar(120),
+			judgment_criterion varchar(120),
+			state varchar(2),
+			city varchar(120),
+			opening_date timestamptz,
+			estimated_value numeric(16, 2),
+			external_url text,
+			relevance_score integer NOT NULL DEFAULT 0,
+			relevance_reasons jsonb NOT NULL DEFAULT '[]'::jsonb,
+			raw_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+			status varchar(40) NOT NULL DEFAULT 'captured',
+			captured_at timestamptz NOT NULL DEFAULT now(),
+			updated_at timestamptz NOT NULL DEFAULT now(),
+			approved_at timestamptz,
+			approved_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+			discarded_at timestamptz,
+			discarded_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+			published_tender_id uuid REFERENCES tenders(id) ON DELETE SET NULL,
+			CONSTRAINT pncp_captures_status_chk CHECK (status IN ('captured', 'prepared', 'approved', 'discarded'))
+		);
+		ALTER TABLE pncp_captures ADD COLUMN IF NOT EXISTS source varchar(40) NOT NULL DEFAULT 'pncp';
+		ALTER TABLE pncp_captures ADD COLUMN IF NOT EXISTS judgment_criterion varchar(120);
+		ALTER TABLE pncp_captures DROP CONSTRAINT IF EXISTS pncp_captures_status_chk;
+		ALTER TABLE pncp_captures ADD CONSTRAINT pncp_captures_status_chk CHECK (status IN ('captured', 'prepared', 'approved', 'discarded'));
+		ALTER TABLE bid_assemblies ADD COLUMN IF NOT EXISTS status_before_pause varchar(40);
+		ALTER TABLE bid_assemblies DROP CONSTRAINT IF EXISTS bid_assemblies_status_chk;
+		ALTER TABLE bid_assemblies ADD CONSTRAINT bid_assemblies_status_chk CHECK (status IN ('preparing','in_progress','under_review','ready_to_submit','submitted','paused','cancelled'));
+		ALTER TABLE partnership_ads ADD COLUMN IF NOT EXISTS paused_by_tender boolean NOT NULL DEFAULT false;
+		UPDATE pncp_captures
+		SET external_url = 'https://pncp.gov.br/app/editais/' ||
+			regexp_replace(COALESCE(raw_payload->'orgaoEntidade'->>'cnpj', ''), '\D', '', 'g') || '/' ||
+			COALESCE(raw_payload->>'anoCompra', '') || '/' ||
+			lpad(regexp_replace(COALESCE(raw_payload->>'sequencialCompra', ''), '\D', '', 'g'), 6, '0')
+		WHERE length(regexp_replace(COALESCE(raw_payload->'orgaoEntidade'->>'cnpj', ''), '\D', '', 'g')) = 14
+		  AND length(COALESCE(raw_payload->>'anoCompra', '')) = 4
+		  AND regexp_replace(COALESCE(raw_payload->>'sequencialCompra', ''), '\D', '', 'g') <> '';
+		CREATE INDEX IF NOT EXISTS idx_pncp_captures_status_relevance
+			ON pncp_captures(status, relevance_score DESC, opening_date ASC);
 		ALTER TABLE tender_files ADD COLUMN IF NOT EXISTS file_size bigint;
 		CREATE INDEX IF NOT EXISTS idx_tender_files_tender_type_created
 			ON tender_files(tender_id, file_type, created_at DESC);
@@ -6774,6 +7189,7 @@ func partnershipAdsSQL(extraWhere string, session sessionUser) string {
 			WHERE pa.deleted_at IS NULL
 			  AND pa.status = 'published'
 			  AND t.deleted_at IS NULL
+			  AND t.status = 'published'
 			  %s
 		) item;
 	`, sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), extraWhere)
@@ -6841,6 +7257,7 @@ func partnershipAdDetailSQL(adID string) string {
 			WHERE pa.id = %s::uuid
 			  AND pa.deleted_at IS NULL
 			  AND t.deleted_at IS NULL
+			  AND t.status = 'published'
 			LIMIT 1
 		) item;
 	`, sqlQuote(adID))
@@ -7668,6 +8085,15 @@ func buildUpdateConsortiumLeaderSQL(matchID string, session sessionUser, req upd
 			SET role = EXCLUDED.role
 			RETURNING id
 		),
+		updated_assemblies AS (
+			UPDATE bid_assemblies assembly
+			SET lead_company_id = selected_intention.lead_company_id,
+				updated_at = now()
+			FROM selected_intention
+			WHERE assembly.consortium_intention_id = selected_intention.id
+			  AND assembly.status <> 'cancelled'
+			RETURNING assembly.id
+		),
 		created_notifications AS (
 			INSERT INTO notifications (
 				recipient_user_id, recipient_company_id, type, title, message,
@@ -8086,6 +8512,7 @@ func matchesSQL(session sessionUser, extraWhere string) string {
 				t.agency,
 				t.number AS "tenderNumber",
 				t.object AS "tenderObject",
+				t.status AS "tenderStatus",
 				m.status,
 				m.matched_at AS "matchedAt",
 				COALESCE(ci.lead_company_id::text, '') AS "leadCompanyId",
@@ -8214,6 +8641,7 @@ func buildUpdateMyUserProfileSQL(session sessionUser, req updateMyUserProfileReq
 				full_name = %s,
 				email = %s,
 				phone = %s,
+				job_title = %s,
 				profile_photo_media_id = COALESCE((SELECT id FROM selected_photo), profile_photo_media_id),
 				updated_at = now()
 			WHERE id = %s::uuid
@@ -8226,6 +8654,12 @@ func buildUpdateMyUserProfileSQL(session sessionUser, req updateMyUserProfileReq
 		sqlQuote(req.FullName),
 		sqlQuote(req.Email),
 		sqlQuote(req.Phone),
+		func() string {
+			if session.RoleKey == "company_admin" {
+				return sqlQuote(req.JobTitle)
+			}
+			return "job_title"
+		}(),
 		sqlQuote(session.UserID),
 		fmt.Sprintf(myUserProfileSQL(), sqlQuote(session.UserID)),
 	)
@@ -8408,11 +8842,14 @@ func communityPostsSQL(session sessionUser, whereExtra string) string {
 			LEFT JOIN post_categories pc ON pc.id = p.category_id
 			LEFT JOIN media_files media ON media.id = p.main_image_media_id
 			WHERE p.deleted_at IS NULL
-			  AND p.status = 'published'
+			  AND (
+				p.status = 'published'
+				OR (p.status = 'archived' AND p.company_id = %s::uuid)
+			  )
 			  %s
 			ORDER BY p.published_at DESC NULLS LAST, p.created_at DESC
 		) item;
-	`, sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(session.CompanyID), whereExtra)
+	`, sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), whereExtra)
 }
 
 func buildCreateCommunityPostSQL(session sessionUser, req createPostRequest) string {

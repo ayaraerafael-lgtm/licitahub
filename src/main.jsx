@@ -139,6 +139,7 @@ const modules = [
     items: [
       { id: "company-dashboard", label: "Dashboard" },
       { id: "my-assembly-tasks", label: "Minhas tarefas" },
+      { id: "notification-history", label: "Histórico de alertas", hidden: true },
       { id: "my-profile", label: "Meu perfil", hidden: true },
       { id: "company-profile-edit", label: "Editar perfil", roles: ["companyAdmin"] },
       { id: "company-users", label: "Usuários vinculados", roles: ["companyAdmin"] },
@@ -165,9 +166,11 @@ const modules = [
     roles: ["platformAdmin", "companyAdmin", "commercial", "technical", "reader"],
     items: [
       { id: "tender-admin", label: "Admin editais", roles: ["platformAdmin"] },
+      { id: "pncp-capture", label: "Captação de editais", roles: ["platformAdmin"] },
       { id: "tender-new", label: "Cadastro de edital", roles: ["platformAdmin"] },
       { id: "tender-challenge-board", label: "Impugnações", roles: ["platformAdmin"] },
       { id: "tender-list", label: "Lista de editais", roles: ["companyAdmin", "commercial", "technical", "reader"] },
+      { id: "assembly-center", label: "Central de montagens", roles: ["companyAdmin", "commercial", "technical", "reader"] },
 	  { id: "tender-calendar", label: "Calendário", roles: ["companyAdmin", "commercial", "technical", "reader"] },
       { id: "match-partners", label: "Vitrine de parceiros", roles: ["companyAdmin", "commercial"] },
       { id: "match-list", label: "Meus consórcios", roles: ["companyAdmin", "commercial", "technical", "reader"] },
@@ -470,10 +473,6 @@ function App() {
           </div>
         </div>
 
-        <button className="menuToggle" type="button" title={menuCollapsed ? "Abrir menu" : "Recolher menu"} aria-label={menuCollapsed ? "Abrir menu" : "Recolher menu"} onClick={() => setMenuCollapsed(!menuCollapsed)}>
-          {menuCollapsed ? "›" : "‹"}
-        </button>
-
         <nav>
           {visibleModules.map((group) => (
             <div className={`navGroup ${openModuleId === group.id ? "isOpen" : ""}`} key={group.id}>
@@ -714,15 +713,17 @@ function Topbar({ navigate, openPublicationManager, openTenderInterestCompanies,
           <div className="alertDropdown">
             <div className="alertDropdownHeader">
               <strong>Alertas importantes</strong>
-              <span>{unreadCount} novos</span>
+              <div><span>{unreadCount} novos</span><button type="button" className="alertHistoryButton" onClick={() => { setAlertsOpen(false); navigate("notification-history"); }}>Histórico</button></div>
             </div>
-            {alerts.length === 0 && <div className="alertEmpty">Nenhum alerta novo.</div>}
-            {alerts.map((alert) => (
-              <button type="button" className="alertItem" key={alert.id} onClick={() => openAlert(alert)}>
-                <strong>{alert.title}</strong>
-                <span>{alert.message}</span>
-              </button>
-            ))}
+            <div className="alertDropdownList">
+              {alerts.length === 0 && <div className="alertEmpty">Nenhum alerta novo.</div>}
+              {alerts.map((alert) => (
+                <button type="button" className="alertItem" key={alert.id} onClick={() => openAlert(alert)}>
+                  <strong>{alert.title}</strong>
+                  <span>{alert.message}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
         <div className="userIdentityMenu" ref={userMenuRef}>
@@ -749,6 +750,62 @@ function ScrollControls() {
       <button type="button" title="Descer para o final" aria-label="Descer para o final" onClick={scrollToBottom}>{"\u2193"}</button>
     </div>
   );
+}
+
+function NotificationHistory({ navigate, openPublicationManager, openTenderInterestCompanies }) {
+  const [filters, setFilters] = useState({ search: "", type: "", status: "", period: "30" });
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState({ items: [], total: 0, page: 1, pageSize: 20 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const typeLabels = { post_like: "Curtida", post_comment: "Comentário", match: "Match e consórcio", company_interested: "Interesse em edital", news: "Notícia", system: "Sistema" };
+
+  useEffect(() => {
+    setLoading(true);
+    setError("");
+    const query = new URLSearchParams({ page: String(page), period: filters.period });
+    if (filters.search.trim()) query.set("search", filters.search.trim());
+    if (filters.type) query.set("type", filters.type);
+    if (filters.status) query.set("status", filters.status);
+    fetch(`${API_BASE_URL}/api/notification-history?${query.toString()}`, { credentials: "include" })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Não foi possível carregar o histórico de alertas.");
+        return result;
+      })
+      .then((result) => setData({ items: Array.isArray(result.items) ? result.items : [], total: Number(result.total || 0), page: Number(result.page || page), pageSize: Number(result.pageSize || 20) }))
+      .catch((loadError) => setError(loadError.message))
+      .finally(() => setLoading(false));
+  }, [filters, page]);
+
+  const updateFilter = (key, value) => {
+    setPage(1);
+    setFilters((current) => ({ ...current, [key]: value }));
+  };
+  const openNotification = (notice) => {
+    const destination = notice.destinationScreen || "";
+    const relatedId = notice.relatedEntityId || "";
+    if (destination === "publication-list" && relatedId) openPublicationManager(relatedId);
+    else if (destination === "tender-interest-list" && relatedId) openTenderInterestCompanies(relatedId);
+    else if (destination === "tender-detail" && relatedId) navigate(`tender-detail?id=${encodeURIComponent(relatedId)}`);
+    else if (destination === "match-profile" && relatedId) navigate(`match-profile?id=${encodeURIComponent(relatedId)}`);
+    else if (destination === "match-success" && relatedId) navigate(`match-success?id=${encodeURIComponent(relatedId)}`);
+    else navigate(destination || "company-dashboard");
+  };
+  const totalPages = Math.max(1, Math.ceil(data.total / data.pageSize));
+
+  return <Page label="Acompanhamento" title="Histórico de alertas">
+    <section className="notificationHistoryHero"><div><span className="eyebrow">Arquivo de acontecimentos</span><h3>Alertas recebidos por você</h3><p>Consulte movimentações anteriores e retorne diretamente ao conteúdo, edital, consórcio ou publicação de origem.</p></div><div className="notificationHistoryTotal"><strong>{data.total}</strong><span>registro{data.total === 1 ? "" : "s"}</span></div></section>
+    <Card className="compactFilters notificationHistoryFilters"><FormGrid>
+      <Field label="Buscar"><input value={filters.search} onChange={(event) => updateFilter("search", event.target.value)} placeholder="Título ou mensagem do alerta" /></Field>
+      <Field label="Tipo"><select value={filters.type} onChange={(event) => updateFilter("type", event.target.value)}><option value="">Todos</option>{Object.entries(typeLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></Field>
+      <Field label="Situação"><select value={filters.status} onChange={(event) => updateFilter("status", event.target.value)}><option value="">Todos</option><option value="unread">Não lidos</option><option value="read">Já lidos</option></select></Field>
+      <Field label="Período"><select value={filters.period} onChange={(event) => updateFilter("period", event.target.value)}><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="365">Último ano</option><option value="">Todo o histórico</option></select></Field>
+    </FormGrid></Card>
+    {error && <Card className="dangerNotice"><p>{error}</p></Card>}
+    {loading ? <Card><p>Carregando o histórico de alertas...</p></Card> : data.items.length === 0 ? <Card className="notificationHistoryEmpty"><p>Nenhum alerta encontrado para os filtros informados.</p></Card> : <section className="notificationHistoryList">{data.items.map((notice) => <button type="button" className={`notificationHistoryItem ${notice.isRead ? "isRead" : "isUnread"}`} key={notice.id} onClick={() => openNotification(notice)}><span className="notificationHistoryType">{typeLabels[notice.type] || "Atualização"}</span><div><strong>{notice.title}</strong><p>{notice.message || "Há uma atualização para consultar."}</p><small>{notice.createdAt ? new Date(notice.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</small></div><em>{notice.isRead ? "Lido" : "Novo"}</em></button>)}</section>}
+    {!loading && data.total > data.pageSize && <div className="notificationPagination"><Button variant="secondary" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>Anterior</Button><span>Página {page} de {totalPages}</span><Button variant="secondary" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>Próxima</Button></div>}
+  </Page>;
 }
 
 function FloatingChat({ sessionUser, seedAd, seedTask, seedUser, onSeedConsumed, navigate }) {
@@ -1059,8 +1116,8 @@ function FloatingChat({ sessionUser, seedAd, seedTask, seedUser, onSeedConsumed,
 
   if (!open || minimized) {
     return (
-      <button type="button" className="chatLauncher" onClick={() => { unlockChatAudio(); setOpen(true); setMinimized(false); loadThreads().catch(() => {}); }} title="Abrir conversas de parceria">
-        <span>Chat</span>
+      <button type="button" className={`chatLauncher ${unreadTotal > 0 ? "hasUnread" : "isQuiet"}`} onClick={() => { unlockChatAudio(); setOpen(true); setMinimized(false); loadThreads().catch(() => {}); }} title="Abrir conversas de parceria">
+        {unreadTotal > 0 ? <span>Chat</span> : <span className="chatLauncherSymbol" aria-hidden="true">{"\u2709"}</span>}
         {unreadTotal > 0 && <strong>{unreadTotal}</strong>}
       </button>
     );
@@ -1154,9 +1211,10 @@ function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAc
 	"company-manage": <CompanyManage />,
     "invite-accept": <InviteAccept navigate={navigate} />,
     "company-review": <CompanyReview />,
-    "my-profile": <MyProfile refreshSession={refreshSession} />,
+    "my-profile": <MyProfile refreshSession={refreshSession} sessionUser={sessionUser} />,
     "company-dashboard": <CompanyDashboard navigate={navigate} sessionUser={sessionUser} />,
     "my-assembly-tasks": <MyAssemblyTasks navigate={navigate} openChatForTask={openChatForTask} />,
+    "notification-history": <NotificationHistory navigate={navigate} openPublicationManager={openPublicationManager} openTenderInterestCompanies={openTenderInterestCompanies} />,
     "company-profile-edit": <CompanyProfileEdit refreshSession={refreshSession} />,
     "company-users": <CompanyUsers navigate={navigate} openUserAction={openUserAction} openUserProfile={openUserProfile} sessionUser={sessionUser} />,
     "company-user-profile": <CompanyUserProfile selectedUserProfile={selectedUserProfile} navigate={navigate} />,
@@ -1172,8 +1230,10 @@ function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAc
     "radar-new": <RadarNewConnected navigate={navigate} />,
     "radar-manage": <RadarManage />,
     "tender-admin": <TenderAdmin navigate={navigate} />,
+    "pncp-capture": <PNCPCapture navigate={navigate} />,
     "tender-new": <TenderNew navigate={navigate} />,
     "tender-list": <TenderList navigate={navigate} openTenderInterestCompanies={openTenderInterestCompanies} />,
+	"assembly-center": <AssemblyCenter navigate={navigate} />,
 	"tender-calendar": <AssemblyCalendar navigate={navigate} />,
     "tender-detail": <TenderDetail navigate={navigate} sessionUser={sessionUser} openTenderInterestCompanies={openTenderInterestCompanies} />,
     "tender-challenge": <TenderChallenge navigate={navigate} />,
@@ -1225,6 +1285,8 @@ function getPageHelp(title) {
     "Novo convite de empresa": "Cadastre a empresa que será convidada. CNPJ e nome fantasia identificam a empresa de forma única.",
     "Lista de convites": "Veja o andamento dos convites enviados, identifique pendências e acompanhe quem já iniciou cadastro.",
     "Central de Montagem da Licitação": "Organize entregas, responsáveis, prazos, revisões e documentos do consórcio em fases permanentes.",
+    "Central de montagens": "Acesse e acompanhe todas as montagens individuais e consorciais da sua empresa em um só lugar.",
+    "Histórico de alertas": "Consulte acontecimentos anteriores e retorne diretamente ao conteúdo relacionado.",
     "Análise e aprovação da empresa": "Revise os dados enviados pela empresa e decida se ela entra, ajusta informações ou será recusada.",
     "Dashboard da empresa": "Resumo operacional da empresa: oportunidades, matches, comunidade e próximos passos em um só lugar.",
     "Editar perfil da empresa": "Mantenha a vitrine institucional atualizada. Essas informações aparecem na comunidade e no match.",
@@ -2115,7 +2177,7 @@ function CompanyDashboard({ navigate, sessionUser }) {
   );
 }
 
-function MyProfile({ refreshSession }) {
+function MyProfile({ refreshSession, sessionUser }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -2215,6 +2277,7 @@ function MyProfile({ refreshSession }) {
   };
 
   const initials = initialsFromName(form.fullName);
+  const canEditJobTitle = sessionUser?.roleKey === "company_admin";
 
   return (
     <Page label="Conta" title="Meu perfil" actions={<Button onClick={save} disabled={saving || loading}>{saving ? "Salvando..." : "Salvar meu perfil"}</Button>}>
@@ -2241,7 +2304,7 @@ function MyProfile({ refreshSession }) {
               <Field label="Nome"><input value={form.fullName || ""} onChange={(event) => updateField("fullName", event.target.value)} /></Field>
               <Field label="E-mail"><input type="email" value={form.email || ""} onChange={(event) => updateField("email", event.target.value)} /></Field>
               <Field label="Telefone"><input value={form.phone || ""} onChange={(event) => updateField("phone", event.target.value)} /></Field>
-              <Field label="Cargo ou função" hint="Somente o administrador da empresa pode alterar o cargo."><input value={form.jobTitle || ""} readOnly /></Field>
+              <Field label="Cargo ou função" hint={canEditJobTitle ? "Você pode atualizar este dado como administrador da empresa." : "Somente o administrador da empresa pode alterar o cargo."}><input value={form.jobTitle || ""} onChange={(event) => updateField("jobTitle", event.target.value)} readOnly={!canEditJobTitle} /></Field>
               <Field label="Empresa"><input value={form.companyName || ""} readOnly /></Field>
               <Field label="Perfil de acesso"><input value={form.roleName || ""} readOnly /></Field>
             </FormGrid>
@@ -2378,7 +2441,7 @@ function CompanyProfileEdit({ refreshSession }) {
             <Field label="CNPJ" hint="Único."><input value={formatCNPJ(form.cnpj)} readOnly /></Field>
             <Field label="Site"><input value={form.website || ""} onChange={(event) => updateField("website", event.target.value)} placeholder="https://www.empresa.com.br" /></Field>
             <Field label="Porte"><select value={form.companySize || ""} onChange={(event) => updateField("companySize", event.target.value)}><option value="">Não informado</option><option value="small">Pequena</option><option value="medium">Média</option><option value="large">Grande</option></select></Field>
-            <Field label="UF"><input value={form.state || ""} onChange={(event) => updateField("state", event.target.value.toUpperCase().slice(0, 2))} maxLength={2} /></Field>
+            <Field label="UF"><StateSelect value={form.state || ""} onChange={(event) => updateField("state", event.target.value)} /></Field>
             <Field label="Cidade"><input value={form.city || ""} onChange={(event) => updateField("city", event.target.value)} /></Field>
           </FormGrid>
           <Field label="Descrição institucional"><textarea value={form.institutionalDescription || ""} onChange={(event) => updateField("institutionalDescription", event.target.value)} placeholder="Resumo profissional da atuação da empresa" /></Field>
@@ -3051,7 +3114,7 @@ function PostCard({ id, companyId = "", category, company, region = "BR", compan
             {postComments.map((comment) => (
               <div className="commentItem" key={comment.id || `${comment.company}-${comment.text}`}>
                 <div className="commentItemHeader">
-                  <strong>{comment.company}</strong>
+                  <strong>{comment.userName ? `${comment.userName}${comment.company ? ` · ${comment.company}` : ""}` : comment.company}</strong>
                   <div className="commentItemActions">
                     {comment.canEdit && <button type="button" className="iconButton secondaryIcon" title="Editar comentário" aria-label="Editar comentário" onClick={(event) => startEditComment(event, comment)}>{"\u270E"}</button>}
                     {comment.canDelete && <button type="button" className="iconButton dangerIcon" title="Excluir comentário" aria-label="Excluir comentário" onClick={(event) => deleteComment(event, comment)}>{"\u00D7"}</button>}
@@ -3442,9 +3505,25 @@ function PublicationManagerCard({ publication, initiallyOpen = false, highlighte
       const response = await fetch(`${API_BASE_URL}/api/community/posts/${encodeURIComponent(publication.id)}/archive`, { method: "PATCH", credentials: "include" });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Não foi possível arquivar.");
-      onRemoved?.(publication.id);
+      onUpdated?.({ ...publication, status: "archived" });
     } catch (error) {
       setMessage({ type: "error", text: error.message || "Não foi possível arquivar agora." });
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const publishPost = async () => {
+    setSaving("publish");
+    setMessage(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/community/posts/${encodeURIComponent(publication.id)}/publish`, { method: "PATCH", credentials: "include" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Não foi possível republicar.");
+      onUpdated?.({ ...publication, ...result, status: "published" });
+      setMessage({ type: "success", text: "Publicação voltou para a comunidade." });
+    } catch (error) {
+      setMessage({ type: "error", text: error.message || "Não foi possível republicar agora." });
     } finally {
       setSaving("");
     }
@@ -3529,12 +3608,12 @@ function PublicationManagerCard({ publication, initiallyOpen = false, highlighte
             <div className="commentPanelHeader"><strong>Comentários recebidos</strong><button type="button" className="commentCloseButton" title="Recolher detalhes" aria-label="Recolher detalhes" onClick={() => setOpen(false)}>{"\u00D7"}</button></div>
             <div className="commentList">
               {publicationComments.length === 0 && <p className="emptyComments">Nenhum comentário ainda.</p>}
-              {publicationComments.map((comment) => <div className="commentItem" key={comment.id || `${comment.company}-${comment.text}`}><strong>{comment.company}</strong><p>{comment.text}</p></div>)}
+              {publicationComments.map((comment) => <div className="commentItem" key={comment.id || `${comment.company}-${comment.text}`}><strong>{comment.userName ? `${comment.userName}${comment.company ? ` · ${comment.company}` : ""}` : comment.company}</strong><p>{comment.text}</p></div>)}
             </div>
           </div>
           <div className="postActions compactPostActions">
             <button className="iconButton secondaryIcon" title="Editar publicação" aria-label="Editar publicação" disabled={Boolean(saving)} onClick={() => setEditing((current) => !current)}>{"\u270E"}</button>
-            <button className="iconButton warningIcon" title="Arquivar publicação" aria-label="Arquivar publicação" disabled={Boolean(saving)} onClick={archivePost}>!</button>
+            {publication.status === "archived" ? <button className="iconButton successIcon" title="Republicar na comunidade" aria-label="Republicar na comunidade" disabled={Boolean(saving)} onClick={publishPost}>{"\u21BB"}</button> : <button className="iconButton warningIcon" title="Arquivar publicação" aria-label="Arquivar publicação" disabled={Boolean(saving)} onClick={archivePost}>!</button>}
             <button className="iconButton dangerIcon" title="Excluir publicação" aria-label="Excluir publicação" disabled={Boolean(saving)} onClick={deletePost}>{"\u00D7"}</button>
           </div>
         </div>
@@ -4087,6 +4166,121 @@ function TenderAdmin({ navigate }) {
   return <Page label="Editais" title="Painel administrativo de editais" actions={<Button onClick={() => navigate("tender-new")}>Cadastrar edital</Button>}><Stats items={[["Publicados", String(count("published"))], ["Ocorridos", String(count("occurred"))], ["Rascunhos", String(count("draft"))], ["Suspensos", String(count("suspended"))]]} /><Card className="compactFilters tenderAdminFiltersSticky"><FormGrid><Field label="Buscar edital"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Órgão, número, objeto, cidade ou critério" /></Field><Field label="Status"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos</option><option value="draft">Rascunho</option><option value="published">Publicado</option><option value="under_review">Em análise</option><option value="suspended">Suspenso</option><option value="challenged">Impugnado</option><option value="occurred">Ocorrido</option><option value="closed">Encerrado</option><option value="cancelled">Cancelado</option></select></Field><Field label="Estado"><StateSelect value={filters.state} onChange={(event) => setFilters((current) => ({ ...current, state: event.target.value }))} /></Field><Field label="Modalidade"><select value={filters.modality} onChange={(event) => setFilters((current) => ({ ...current, modality: event.target.value }))}><option value="">Todas</option>{tenderModalityOptions.map((option) => <option value={option} key={option}>{option}</option>)}</select></Field></FormGrid></Card>{loading&&<Card><p>Carregando editais...</p></Card>}{error&&<Card className="dangerNotice"><p>{error}</p></Card>}{!loading&&!error&&filteredItems.length===0&&<Card><p>Nenhum edital encontrado com esses filtros.</p></Card>}{!loading&&!error&&filteredItems.length>0&&<Table columns={["Órgão","Número","Objeto","Abertura","Critério","Status","Ação"]} rows={filteredItems.map((item)=>[item.agency,item.number,item.object,date(item.openingDate),item.judgmentCriterion||"-",item.status,<div className="rowActions compactRowActions" key={item.id}><button className="iconButton secondaryIcon" title="Ver detalhe" onClick={()=>navigate(`tender-detail?id=${item.id}`)}>{"\u25C9"}</button><button className="iconButton partnerIcon" title="Editar edital" onClick={()=>navigate(`tender-new?id=${item.id}`)}>{"\u270E"}</button><button className="iconButton dangerIcon" title="Excluir edital" onClick={()=>deleteTender(item)}>{"\u00D7"}</button></div>])}/>}</Page>;
 }
 
+function PNCPCapture({ navigate }) {
+  const localISO = () => new Date().toISOString().slice(0, 10);
+  const sevenDaysAgo = () => { const date = new Date(); date.setDate(date.getDate() - 7); return date.toISOString().slice(0, 10); };
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [capturing, setCapturing] = useState(false);
+  const [discardingAll, setDiscardingAll] = useState(false);
+  const [actingId, setActingId] = useState("");
+  const [message, setMessage] = useState(null);
+  const [filters, setFilters] = useState({ startDate: sevenDaysAgo(), endDate: localISO(), state: "", source: "pncp", status: "captured", relevance: "relevant", search: "", minValue: "", maxValue: "" });
+  const load = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/pncp/captures`, { credentials: "include" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível carregar a fila de captação.");
+      setItems(Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : []);
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
+  const capture = async () => {
+    setCapturing(true); setMessage(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/pncp/captures`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ startDate: filters.startDate, endDate: filters.endDate, state: filters.state, source: filters.source }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível consultar a fonte escolhida.");
+      setMessage({ type: "success", text: `${data.captured || 0} oportunidade(s) capturada(s). Revise a fila antes de publicar.` });
+	  setFilters((current) => ({ ...current, status: "captured", relevance: "all", search: "" }));
+      await load();
+    } catch (error) { setMessage({ type: "error", text: error.message }); }
+    finally { setCapturing(false); }
+  };
+  const decide = async (item, action) => {
+    const preparing = action === "prepare";
+    const label = preparing ? "preparar o cadastro" : "descartar";
+    if (!window.confirm(`Deseja ${label} o edital ${item.number}?`)) return;
+    setActingId(item.id); setMessage(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/pncp/captures/${encodeURIComponent(item.id)}/decision`, { method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ action }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível atualizar a captação.");
+      if (preparing) {
+        navigate(`tender-new?id=${encodeURIComponent(data.tenderId)}`);
+        return;
+      }
+      setMessage({ type: "success", text: "Captação descartada." });
+      await load();
+    } catch (error) { setMessage({ type: "error", text: error.message }); }
+    finally { setActingId(""); }
+  };
+  const discardAllPending = async () => {
+    const pendingCount = items.filter((item) => item.status === "captured").length;
+    if (pendingCount === 0) return;
+    if (!window.confirm(`Descartar as ${pendingCount} oportunidade(s) pendente(s)? Esta ação não altera editais preparados ou publicados.`)) return;
+    setDiscardingAll(true); setMessage(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/pncp/captures/discard-pending`, { method: "POST", credentials: "include" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível descartar as captações pendentes.");
+      setMessage({ type: "success", text: `${data.discarded || 0} oportunidade(s) pendente(s) foram descartadas.` });
+      await load();
+    } catch (error) { setMessage({ type: "error", text: error.message }); }
+    finally { setDiscardingAll(false); }
+  };
+  const filtered = items.filter((item) => {
+    const term = filters.search.trim().toLowerCase();
+    const matchesTerm = !term || [item.agency, item.number, item.object, item.city].some((value) => String(value || "").toLowerCase().includes(term));
+    const matchesStatus = !filters.status || item.status === filters.status;
+    const matchesRelevance = filters.relevance !== "relevant" || Number(item.relevanceScore || 0) >= 45;
+    const value = Number(item.estimatedValue);
+    const matchesMinValue = !filters.minValue || (Number.isFinite(value) && value >= Number(filters.minValue));
+    const matchesMaxValue = !filters.maxValue || (Number.isFinite(value) && value <= Number(filters.maxValue));
+    return matchesTerm && matchesStatus && matchesRelevance && matchesMinValue && matchesMaxValue;
+  });
+  const relevanceLabel = (score) => Number(score || 0) >= 70 ? "Alta aderência" : Number(score || 0) >= 45 ? "Possível aderência" : "Baixa aderência";
+  const statusLabel = (status) => ({ captured: "Aguardando decisão", prepared: "Em edição", approved: "Publicado", discarded: "Descartado" }[status] || status);
+  const pendingCount = items.filter((item) => item.status === "captured").length;
+  return <Page label="Editais" title="Captação de oportunidades" actions={<><Button variant="secondary" onClick={load}>Recarregar fila</Button><Button variant="secondary" onClick={discardAllPending} disabled={discardingAll || pendingCount === 0}>{discardingAll ? "Descartando..." : `Descartar pendentes (${pendingCount})`}</Button><Button variant="secondary" onClick={() => navigate("tender-admin")}>Admin de editais</Button></>}>
+    <Card className="pncpIntro"><span className="eyebrow">Fontes oficiais</span><h3>Fila de revisão da engenharia consultiva</h3><p>Consulte o PNCP ou o Compras.gov.br, filtre a aderência técnica e publique somente os editais revisados pelo administrador.</p></Card>
+    {message && <Card className={`formFeedback ${message.type === "success" ? "success" : "dangerNotice"}`}><p>{message.text}</p></Card>}
+    <Card className="compactFilters pncpFiltersSticky"><FormGrid>
+      <Field label="Publicados de"><input type="date" value={filters.startDate} max={filters.endDate} onChange={(event) => setFilters((current) => ({ ...current, startDate: event.target.value }))} /></Field>
+      <Field label="Até"><input type="date" value={filters.endDate} min={filters.startDate} max={localISO()} onChange={(event) => setFilters((current) => ({ ...current, endDate: event.target.value }))} /></Field>
+      <Field label="Estado"><StateSelect value={filters.state} onChange={(event) => setFilters((current) => ({ ...current, state: event.target.value }))} /></Field>
+      <Field label="Fonte"><select value={filters.source} onChange={(event) => setFilters((current) => ({ ...current, source: event.target.value }))}><option value="pncp">PNCP</option><option value="comprasgov">Compras.gov.br</option></select></Field>
+      <Field label="Consulta"><Button onClick={capture} disabled={capturing}>{capturing ? "Consultando..." : filters.source === "comprasgov" ? "Buscar no Compras.gov.br" : "Buscar no PNCP"}</Button></Field>
+    </FormGrid></Card>
+    <Card className="compactFilters pncpQueueFiltersSticky"><FormGrid>
+      <Field label="Buscar na fila"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Órgão, número, objeto ou cidade" /></Field>
+      <Field label="Valor mínimo"><input type="number" min="0" step="0.01" value={filters.minValue} onChange={(event) => setFilters((current) => ({ ...current, minValue: event.target.value }))} placeholder="R$ 0,00" /></Field>
+      <Field label="Valor máximo"><input type="number" min="0" step="0.01" value={filters.maxValue} onChange={(event) => setFilters((current) => ({ ...current, maxValue: event.target.value }))} placeholder="Sem limite" /></Field>
+      <Field label="Situação"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todas</option><option value="captured">Aguardando decisão</option><option value="prepared">Em edição</option><option value="approved">Publicados</option><option value="discarded">Descartados</option></select></Field>
+      <Field label="Aderência"><select value={filters.relevance} onChange={(event) => setFilters((current) => ({ ...current, relevance: event.target.value }))}><option value="relevant">Somente possíveis aderentes</option><option value="all">Todas as capturas</option></select></Field>
+    </FormGrid></Card>
+    {!loading && <div className="pncpQueueSummary"><strong>{filtered.length}</strong> de <strong>{items.length}</strong> oportunidade(s) exibida(s) na fila.</div>}
+    {loading && <Card><p>Carregando fila de captação...</p></Card>}
+    {!loading && filtered.length === 0 && <Card><p>Nenhuma oportunidade encontrada. Faça uma consulta na fonte escolhida ou amplie os filtros.</p></Card>}
+    {!loading && filtered.length > 0 && <div className="pncpCaptureList">{filtered.map((item) => <Card className="pncpCaptureCard" key={item.id}>
+      <div className="pncpCaptureHeader"><div><span className="eyebrow">{item.agency}</span><h3>{item.number}</h3><span className="captureSource">{item.source === "comprasgov" ? "Compras.gov.br / Dados Abertos" : "PNCP"}</span></div><span className={`pncpRelevance score-${Number(item.relevanceScore || 0) >= 70 ? "high" : Number(item.relevanceScore || 0) >= 45 ? "medium" : "low"}`}>{relevanceLabel(item.relevanceScore)}</span></div>
+      <p className="pncpObject">{item.object}</p>
+      <div className="pncpInfoGrid">
+        <div className="pncpInfo"><span>Modalidade</span><strong>{item.modality || "Não informada"}</strong></div>
+        <div className="pncpInfo"><span>Julgamento</span><strong>{item.judgmentCriterion || "Não informado"}</strong></div>
+        <div className="pncpInfo"><span>Local</span><strong>{[item.city, item.state].filter(Boolean).join(" - ") || "Não informado"}</strong></div>
+        <div className="pncpInfo"><span>Sessão</span><strong>{item.openingDate ? new Date(item.openingDate).toLocaleDateString("pt-BR") : "Não informada"}</strong></div>
+        <div className="pncpValue"><span>Valor estimado</span><strong>{item.estimatedValue !== null && item.estimatedValue !== undefined ? formatCurrencyBRFromNumber(item.estimatedValue) : "Não informado"}</strong></div>
+      </div>
+      <div className="pncpReasons">{(item.relevanceReasons || []).map((reason) => <span key={reason}>{reason}</span>)}</div>
+      <div className="pncpActions"><a className="textLink" href={item.externalUrl || "#"} target="_blank" rel="noreferrer">Ver fonte oficial</a>{item.status === "captured" && <><Button onClick={() => decide(item, "prepare")} disabled={actingId === item.id}>{actingId === item.id ? "Preparando..." : "Preparar cadastro"}</Button><Button variant="secondary" onClick={() => decide(item, "discard")} disabled={actingId === item.id}>Descartar</Button></>}{item.status !== "captured" && <span className={`statusBadge status-${item.status}`}>{statusLabel(item.status)}</span>}{item.status === "prepared" && item.publishedTenderId && <Button variant="secondary" onClick={() => navigate(`tender-new?id=${encodeURIComponent(item.publishedTenderId)}`)}>Continuar cadastro</Button>}{item.status === "approved" && item.publishedTenderId && <Button variant="secondary" onClick={() => navigate(`tender-detail?id=${encodeURIComponent(item.publishedTenderId)}`)}>Ver edital</Button>}</div>
+    </Card>)}</div>}
+  </Page>;
+}
+
 function TenderNew({ navigate }) {
   const editId = currentHashParams().get("id") || "";
   const isEditing = Boolean(editId);
@@ -4185,6 +4379,20 @@ function TenderNew({ navigate }) {
     return failures;
   };
   const formatDocumentSize = (bytes) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
+  const confirmSameValuePublication = async (payload) => {
+    if (payload.status !== "published" || !payload.estimatedValue) return true;
+    const response = await fetch(`${API_BASE_URL}/api/tenders/value-conflicts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ estimatedValue: payload.estimatedValue, excludeTenderId: isEditing ? editId : "" })
+    });
+    const conflicts = await response.json().catch(() => []);
+    if (!response.ok) throw new Error(conflicts.error || "Não foi possível verificar editais com valor semelhante.");
+    if (!Array.isArray(conflicts) || conflicts.length === 0) return true;
+    const details = conflicts.slice(0, 5).map((item) => `• Edital ${item.number}\n  Órgão: ${item.agency}\n  Objeto: ${item.object}`).join("\n\n");
+    return window.confirm(`Atenção: há ${conflicts.length} edital(is) publicado(s) com o mesmo valor estimado (${formatCurrencyBRFromNumber(payload.estimatedValue)}).\n\n${details}\n\nDeseja publicar mesmo assim?`);
+  };
   const submit = async () => {
     setSaving(true);
     setMessage(null);
@@ -4197,6 +4405,9 @@ function TenderNew({ navigate }) {
         estimatedValue: parseCurrencyBR(form.estimatedValue),
         status: isPastDateISO(form.openingDate) && !["closed", "cancelled"].includes(form.status) ? "occurred" : form.status
       };
+      const confirmedValueConflict = await confirmSameValuePublication(payload);
+      if (!confirmedValueConflict) return;
+      payload.confirmValueConflict = payload.status === "published";
       const response = await fetch(isEditing ? `${API_BASE_URL}/api/tenders/${editId}` : `${API_BASE_URL}/api/tenders`, { method: isEditing ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(payload) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível salvar o edital.");
@@ -4242,6 +4453,69 @@ function TenderNew({ navigate }) {
       <div className="formActionBar"><Button onClick={submit} disabled={saving}>{saving ? "Salvando..." : isEditing ? "Salvar alterações" : "Cadastrar edital"}</Button></div>
     </Page>
   );
+}
+
+function AssemblyCenter({ navigate }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filters, setFilters] = useState({ search: "", type: "", status: "" });
+  const [sort, setSort] = useState("opening_asc");
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/assembly-list`, { credentials: "include" })
+      .then(async (response) => {
+        const data = await response.json().catch(() => []);
+        if (!response.ok) throw new Error(data.error || "Não foi possível carregar as montagens.");
+        return data;
+      })
+      .then((data) => setItems(Array.isArray(data) ? data : []))
+      .catch((loadError) => setError(loadError.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const statusLabels = { preparing: "Planejamento", in_progress: "Em andamento", under_review: "Em revisão", ready_to_submit: "Pronta para envio", submitted: "Enviada" };
+  const progressTone = (progress) => Number(progress || 0) > 70 ? "progressGood" : Number(progress || 0) > 30 ? "progressAttention" : "progressCritical";
+  const formatDate = (value) => value ? new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR") : "Sem sessão informada";
+  const visibleItems = useMemo(() => {
+    const term = filters.search.trim().toLocaleLowerCase("pt-BR");
+    const filtered = items.filter((item) => {
+      const matchesSearch = !term || [item.tenderNumber, item.agency, item.tenderObject, item.leadCompanyName].some((value) => String(value || "").toLocaleLowerCase("pt-BR").includes(term));
+      return matchesSearch && (!filters.type || item.assemblyType === filters.type) && (!filters.status || item.status === filters.status);
+    });
+    return [...filtered].sort((left, right) => {
+      if (sort === "progress_desc") return Number(right.progress || 0) - Number(left.progress || 0);
+      if (sort === "updated_desc") return new Date(right.updatedAt || 0) - new Date(left.updatedAt || 0);
+      return new Date(left.openingDate || "9999-12-31") - new Date(right.openingDate || "9999-12-31");
+    });
+  }, [items, filters, sort]);
+
+  return <Page label="Editais" title="Central de montagens" actions={<Button variant="secondary" onClick={() => navigate("tender-calendar")}>Ver calendário</Button>}>
+    <section className="assemblyCenterHero">
+      <div><span className="eyebrow">Acompanhamento operacional</span><h3>Todas as licitações em montagem</h3><p>Consulte rapidamente o andamento de participações individuais e consórcios. Cada item abre o plano completo da licitação.</p></div>
+      <div className="assemblyCenterSummary"><strong>{items.length}</strong><span>montagem{items.length === 1 ? "" : "ens"} ativa{items.length === 1 ? "" : "s"}</span></div>
+    </section>
+    <Card className="compactFilters assemblyCenterFilters">
+      <FormGrid>
+        <Field label="Buscar"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Edital, órgão, objeto ou empresa líder" /></Field>
+        <Field label="Tipo"><select value={filters.type} onChange={(event) => setFilters((current) => ({ ...current, type: event.target.value }))}><option value="">Todos</option><option value="individual">Participação individual</option><option value="consortium">Consórcio</option></select></Field>
+        <Field label="Andamento"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos</option>{Object.entries(statusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></Field>
+        <Field label="Ordenar por"><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="opening_asc">Data da sessão</option><option value="updated_desc">Atualização mais recente</option><option value="progress_desc">Maior percentual concluído</option></select></Field>
+      </FormGrid>
+    </Card>
+    {error && <Card className="dangerNotice"><p>{error}</p></Card>}
+    {loading ? <Card><p>Carregando as montagens...</p></Card> : <section className="assemblyCenterGrid">
+      {visibleItems.map((item) => { const progress = Math.max(0, Math.min(100, Number(item.progress || 0))); const members = Array.isArray(item.members) ? item.members : []; return <article className="assemblyCenterCard" key={item.id}>
+        <div className="assemblyCenterCardHead"><span className={`assemblyTypeBadge ${item.assemblyType}`}>{item.assemblyType === "individual" ? "Individual" : "Consórcio"}</span><span className="assemblyStatusBadge">{statusLabels[item.status] || item.status}</span></div>
+        <button type="button" className="assemblyCenterOpen" onClick={() => navigate(`assembly-board?assemblyId=${encodeURIComponent(item.id)}`)} title="Abrir Central de Montagem"><strong>{item.tenderNumber} · {item.agency}</strong><span>{item.tenderObject}</span></button>
+        <dl className="assemblyCenterInfo"><div><dt>Sessão</dt><dd>{formatDate(item.openingDate)}</dd></div><div><dt>{item.assemblyType === "individual" ? "Responsável" : "Empresa líder"}</dt><dd>{item.leadCompanyName || "Não definida"}</dd></div><div><dt>Tarefas abertas</dt><dd>{item.openTaskCount || 0}</dd></div></dl>
+        {item.assemblyType === "consortium" && members.length > 0 && <div className="assemblyCenterMembers"><span>Participantes</span><p>{members.map((member) => member.companyName).filter(Boolean).join(" · ")}</p></div>}
+        <div className="assemblyCenterProgress"><div><span>Concluído</span><strong>{progress}%</strong></div><em className={progressTone(progress)}><i style={{ width: `${progress}%` }} /></em></div>
+        <Button variant="secondary" onClick={() => navigate(`assembly-board?assemblyId=${encodeURIComponent(item.id)}`)}>Abrir montagem</Button>
+      </article>; })}
+    </section>}
+    {!loading && !error && visibleItems.length === 0 && <Card className="assemblyCenterEmpty"><p>Nenhuma montagem ativa encontrada para os filtros selecionados.</p><Button variant="secondary" onClick={() => navigate("tender-list")}>Ver lista de editais</Button></Card>}
+  </Page>;
 }
 
 function AssemblyCalendar({ navigate }) {
@@ -4322,6 +4596,7 @@ function TenderList({ navigate, openTenderInterestCompanies }) {
   const [filters, setFilters] = useState({ search: "", status: "", state: "", modality: "" });
   useEffect(() => { fetch(`${API_BASE_URL}/api/tenders`, { credentials: "include" }).then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error); return d; }).then(setItems).catch((e) => setError(e.message)).finally(() => setLoading(false)); }, []);
   const date = (value) => value ? new Date(value).toLocaleDateString("pt-BR") : "-";
+  const tenderStatusLabels = { draft: "Rascunho", published: "Publicado", under_review: "Em análise", suspended: "Suspenso", challenged: "Impugnado", occurred: "Ocorrido", closed: "Encerrado", cancelled: "Cancelado" };
   const orderedItems = items.filter((item) => {
     const term = filters.search.trim().toLocaleLowerCase("pt-BR");
     const matchesSearch = !term || [item.agency, item.number, item.object, item.city, item.judgmentCriterion].some((value) => String(value || "").toLocaleLowerCase("pt-BR").includes(term));
@@ -4334,7 +4609,7 @@ function TenderList({ navigate, openTenderInterestCompanies }) {
     if (sort === "opening_desc") return new Date(b.openingDate || 0).getTime() - new Date(a.openingDate || 0).getTime();
     return new Date(a.openingDate || "9999-12-31").getTime() - new Date(b.openingDate || "9999-12-31").getTime();
   });
-  return <Page label="Editais" title="Lista de editais"><Card className="compactFilters tenderListSortSticky"><FormGrid><Field label="Buscar edital"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Órgão, número, objeto ou cidade" /></Field><Field label="Status"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos</option><option value="published">Publicado</option><option value="under_review">Em análise</option><option value="suspended">Suspenso</option><option value="challenged">Impugnado</option><option value="occurred">Ocorrido</option><option value="closed">Encerrado</option><option value="cancelled">Cancelado</option></select></Field><Field label="Interesse"><select value={filters.interest} onChange={(event) => setFilters((current) => ({ ...current, interest: event.target.value }))}><option value="">Todos</option><option value="registered">Interesse registrado</option><option value="not_registered">Ainda não registrado</option></select></Field><Field label="Estado"><StateSelect value={filters.state} onChange={(event) => setFilters((current) => ({ ...current, state: event.target.value }))} /></Field><Field label="Modalidade"><select value={filters.modality} onChange={(event) => setFilters((current) => ({ ...current, modality: event.target.value }))}><option value="">Todas</option>{tenderModalityOptions.map((option) => <option value={option} key={option}>{option}</option>)}</select></Field><Field label="Ordenar por"><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="opening_asc">Abertura mais próxima</option><option value="opening_desc">Abertura mais distante</option><option value="value_desc">Maior valor estimado</option><option value="value_asc">Menor valor estimado</option><option value="agency_asc">Órgão A-Z</option></select></Field></FormGrid></Card>{loading && <Card><p>Carregando editais...</p></Card>}{error && <Card className="dangerNotice"><p>{error}</p></Card>}{!loading && !error && orderedItems.length === 0 && <Card><p>Nenhum edital encontrado com esses filtros.</p></Card>}{!loading && !error && orderedItems.length > 0 && <Table columns={["Órgão", "Número", "Objeto", "Local", "Abertura", "Critério", "Status", "Ações"]} rows={orderedItems.map((item) => [item.agency, item.number, item.object, [item.city,item.state].filter(Boolean).join(" / ") || "-", date(item.openingDate), item.judgmentCriterion || "-", item.status, <div className="rowActions compactRowActions" key={item.id}><button className="iconButton secondaryIcon" title="Ver detalhe do edital" onClick={() => navigate(`tender-detail?id=${item.id}`)}>{"\u25C9"}</button>{item.hasMyInterest ? <span className="statusPill open" title="Você já registrou interesse neste edital">Interesse registrado</span> : <button className="iconButton successIcon" title="Registrar interesse" onClick={() => navigate(`tender-interest?id=${item.id}`)}>{"\u2713"}</button>}<button className="iconButton partnerIcon" title="Ver empresas interessadas" onClick={() => openTenderInterestCompanies(item.id)}>{"\u2637"}</button></div>])} />}</Page>;
+  return <Page label="Editais" title="Lista de editais"><Card className="compactFilters tenderListSortSticky"><FormGrid><Field label="Buscar edital"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Órgão, número, objeto ou cidade" /></Field><Field label="Status"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos</option><option value="published">Publicado</option><option value="under_review">Em análise</option><option value="suspended">Suspenso</option><option value="challenged">Impugnado</option><option value="occurred">Ocorrido</option><option value="closed">Encerrado</option><option value="cancelled">Cancelado</option></select></Field><Field label="Interesse"><select value={filters.interest} onChange={(event) => setFilters((current) => ({ ...current, interest: event.target.value }))}><option value="">Todos</option><option value="registered">Interesse registrado</option><option value="not_registered">Ainda não registrado</option></select></Field><Field label="Estado"><StateSelect value={filters.state} onChange={(event) => setFilters((current) => ({ ...current, state: event.target.value }))} /></Field><Field label="Modalidade"><select value={filters.modality} onChange={(event) => setFilters((current) => ({ ...current, modality: event.target.value }))}><option value="">Todas</option>{tenderModalityOptions.map((option) => <option value={option} key={option}>{option}</option>)}</select></Field><Field label="Ordenar por"><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="opening_asc">Abertura mais próxima</option><option value="opening_desc">Abertura mais distante</option><option value="value_desc">Maior valor estimado</option><option value="value_asc">Menor valor estimado</option><option value="agency_asc">Órgão A-Z</option></select></Field></FormGrid></Card>{loading && <Card><p>Carregando editais...</p></Card>}{error && <Card className="dangerNotice"><p>{error}</p></Card>}{!loading && !error && orderedItems.length === 0 && <Card><p>Nenhum edital encontrado com esses filtros.</p></Card>}{!loading && !error && orderedItems.length > 0 && <Table columns={["Órgão", "Número", "Objeto", "Local", "Abertura", "Valor referencial", "Critério", "Status", "Ações"]} rows={orderedItems.map((item) => [item.agency, item.number, item.object, [item.city,item.state].filter(Boolean).join(" / ") || "-", date(item.openingDate), formatCurrencyBRFromNumber(item.estimatedValue) || "-", item.judgmentCriterion || "-", item.status, <div className="rowActions compactRowActions" key={item.id}><button className="iconButton secondaryIcon" title="Ver detalhe do edital" onClick={() => navigate(`tender-detail?id=${item.id}`)}>{"\u25C9"}</button>{item.hasMyInterest ? <span className="statusPill open" title="Você já registrou interesse neste edital">Interesse registrado</span> : item.status === "published" ? <button className="iconButton successIcon" title="Registrar interesse" onClick={() => navigate(`tender-interest?id=${item.id}`)}>{"\u2713"}</button> : <span className="statusPill review" title={`Interesse indisponível: edital ${tenderStatusLabels[item.status] || item.status}`}>Indisponível</span>}<button className="iconButton partnerIcon" title="Ver empresas interessadas" onClick={() => openTenderInterestCompanies(item.id)}>{"\u2637"}</button></div>])} />}</Page>;
 }
 
 function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
@@ -4967,9 +5242,9 @@ function TenderInterest({ navigate }) {
       </div>
 
       <div className="interestSummaryGrid">
-        <Field label={form.participationMode === "seeking_partners" ? "Resumo do anúncio para possíveis parceiros" : "Resumo da participação"}>
+        {form.participationMode !== "individual" && <Field label={form.participationMode === "seeking_partners" ? "Resumo do anúncio para possíveis parceiros" : "Resumo da participação"}>
           <textarea value={form.publicSummary} onChange={(event) => setForm((current) => ({ ...current, publicSummary: event.target.value }))} placeholder={form.participationMode === "seeking_partners" ? "Escreva um resumo claro do anúncio que será visto por possíveis parceiros." : "Registre um resumo objetivo da estratégia de participação da empresa."} />
-        </Field>
+        </Field>}
         <Field label="Observação interna">
           <textarea value={form.internalNote} onChange={(event) => setForm((current) => ({ ...current, internalNote: event.target.value }))} placeholder="Anotação privada da sua empresa, não exibida para outros participantes." />
         </Field>
@@ -5569,7 +5844,7 @@ function MatchList({ sessionUser, navigate }) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível definir o líder.");
-      loadMatches();
+      navigate(`assembly-board?matchId=${encodeURIComponent(match.id)}`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -5678,6 +5953,13 @@ function MatchList({ sessionUser, navigate }) {
             const members = companiesFor(match);
             const isOpen = openMatchId === match.id;
             const isLeader = match.leadCompanyId && match.leadCompanyId === sessionUser?.companyId;
+            const tenderStatusLabels = { draft: "rascunho", published: "publicado", under_review: "em análise", suspended: "suspenso", challenged: "impugnado", occurred: "ocorrido", closed: "encerrado", cancelled: "cancelado" };
+            const tenderStatus = String(match.tenderStatus || match.tender?.status || "").trim().toLowerCase();
+            const tenderIsPublished = tenderStatus === "published";
+            const tenderStatusLabel = tenderStatusLabels[tenderStatus] || "em atualização";
+            const tenderAssemblyMessage = tenderIsPublished
+              ? ""
+              : `A montagem está pausada porque o edital está ${tenderStatusLabel}.`;
             const adFormOpen = Boolean(adFormsOpen[match.id]);
             const applications = Array.isArray(match.applications) ? match.applications : [];
             const pendingApplications = applications.filter((application) => application.status === "interested");
@@ -5691,19 +5973,20 @@ function MatchList({ sessionUser, navigate }) {
                   <div className="wide consortiumCompanies"><small>Empresas consorciadas</small><strong>{members.map((company) => company.companyName).join(" • ")}</strong></div>
                   <div className="consortiumActions">
                     {isLeader && pendingApplications.length > 0 && <span className="statusPill review">{pendingApplications.length} candidata{pendingApplications.length > 1 ? "s" : ""} aguardando</span>}
-                    <button
+                    {tenderIsPublished && <button
                       type="button"
                       className="assemblyEntryButton"
                       disabled={!match.leadCompanyId}
-                      title={match.leadCompanyId ? "Abrir a Central de Montagem desta licitação" : "Defina primeiro a empresa líder do consórcio"}
+                      title={!match.leadCompanyId ? "Defina primeiro a empresa líder do consórcio" : "Abrir a Central de Montagem desta licitação"}
                       onClick={() => match.leadCompanyId && navigate(`assembly-board?matchId=${match.id}`)}
                     >
-                      {match.leadCompanyId ? (isLeader && ["company_admin", "commercial"].includes(sessionUser?.roleKey) ? "Seguir para montagem" : "Acompanhar montagem") : "Defina a liderança"}
-                    </button>
-                    <button className="iconButton secondaryIcon" title="Gerenciar consórcio" aria-label="Gerenciar consórcio" onClick={() => setOpenMatchId(isOpen ? "" : match.id)}>{isOpen ? "\u2212" : "\u002B"}</button>
+                      {!match.leadCompanyId ? "Defina a liderança" : (isLeader && ["company_admin", "commercial"].includes(sessionUser?.roleKey) ? "Seguir para montagem" : "Acompanhar montagem")}
+                    </button>}
+                    {!tenderIsPublished && <small className="consortiumAssemblyUnavailable">{tenderAssemblyMessage}</small>}
+                    {tenderIsPublished && <button className="iconButton secondaryIcon" title="Gerenciar consórcio" aria-label="Gerenciar consórcio" onClick={() => setOpenMatchId(isOpen ? "" : match.id)}>{isOpen ? "\u2212" : "\u002B"}</button>}
                   </div>
                 </div>
-                {isOpen && (
+                {isOpen && tenderIsPublished && (
                   <div className="consortiumDrawer">
                     <div>
                       <h3>Definir líder do consórcio</h3>

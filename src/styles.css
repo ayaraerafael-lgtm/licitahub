@@ -625,24 +625,6 @@ textarea::placeholder {
   font-size: 13px;
 }
 
-.menuToggle {
-  width: 38px;
-  height: 38px;
-  margin: 14px 0 0;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #eaf4f3;
-  cursor: pointer;
-  font-size: 24px;
-  line-height: 1;
-}
-
-.menuCollapsed .menuToggle {
-  margin-left: auto;
-  margin-right: auto;
-}
-
 .roleSwitch select {
   width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -751,6 +733,155 @@ textarea::placeholder {
   align-items: center;
   gap: 8px;
 }
+
+.assemblyCenterHero {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 4px 2px 18px;
+}
+
+.assemblyCenterHero h3 {
+  margin: 4px 0 6px;
+  font-size: 24px;
+}
+
+.assemblyCenterHero p {
+  max-width: 680px;
+  margin: 0;
+  color: var(--muted);
+}
+
+.assemblyCenterSummary {
+  min-width: 122px;
+  display: grid;
+  gap: 2px;
+  padding: 13px 16px;
+  border: 1px solid #d4e2df;
+  border-radius: 8px;
+  background: #f5faf8;
+  text-align: center;
+}
+
+.assemblyCenterSummary strong {
+  color: #0d5658;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.assemblyCenterSummary span {
+  color: #5b7074;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.assemblyCenterFilters {
+  position: sticky;
+  top: 82px;
+  z-index: 20;
+  margin-bottom: 18px;
+}
+
+.assemblyCenterGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
+  gap: 16px;
+}
+
+.assemblyCenterCard {
+  display: grid;
+  align-content: start;
+  gap: 15px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 10px 26px rgba(21, 46, 49, 0.06);
+}
+
+.assemblyCenterCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.assemblyTypeBadge,
+.assemblyStatusBadge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 4px 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.assemblyTypeBadge.individual { background: #eef5f7; color: #30616a; }
+.assemblyTypeBadge.consortium { background: #eef6ef; color: #27704d; }
+.assemblyStatusBadge { background: #f2f5f5; color: #5a696d; }
+
+.assemblyCenterOpen {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.assemblyCenterOpen strong {
+  color: #183c40;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.assemblyCenterOpen span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.assemblyCenterOpen:hover strong { color: #0d7773; }
+
+.assemblyCenterInfo {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 11px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.assemblyCenterInfo div { min-width: 0; }
+.assemblyCenterInfo dt { color: #718287; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.assemblyCenterInfo dd { margin: 4px 0 0; overflow: hidden; color: #29464b; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+
+.assemblyCenterMembers { display: grid; gap: 4px; }
+.assemblyCenterMembers span { color: #718287; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.assemblyCenterMembers p { margin: 0; color: #52676c; font-size: 12px; line-height: 1.45; }
+
+.assemblyCenterProgress { display: grid; gap: 7px; }
+.assemblyCenterProgress > div { display: flex; justify-content: space-between; color: #56696e; font-size: 12px; }
+.assemblyCenterProgress strong { color: #26454a; }
+.assemblyCenterProgress em { display: block; height: 7px; overflow: hidden; border-radius: 99px; background: #e6eeee; }
+.assemblyCenterProgress em i { display: block; height: 100%; border-radius: inherit; background: currentColor; }
+.assemblyCenterProgress em.progressCritical { color: #c9453d; }
+.assemblyCenterProgress em.progressAttention { color: #d39a1b; }
+.assemblyCenterProgress em.progressGood { color: #23845b; }
+
+.assemblyCenterEmpty { display: grid; justify-items: center; gap: 10px; margin-top: 18px; color: var(--muted); text-align: center; }
 
 .assemblyCalendarHero {
   display: flex;
@@ -1152,6 +1283,9 @@ textarea::placeholder {
   right: 0;
   z-index: 50;
   width: min(360px, calc(100vw - 40px));
+  max-height: min(560px, calc(100vh - 92px));
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -1160,6 +1294,7 @@ textarea::placeholder {
 }
 
 .alertDropdownHeader {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1172,6 +1307,30 @@ textarea::placeholder {
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
+}
+
+.alertDropdownHeader > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.alertHistoryButton {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #0d7773;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.alertHistoryButton:hover { text-decoration: underline; }
+
+.alertDropdownList {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .alertItem {
@@ -1209,6 +1368,81 @@ textarea::placeholder {
   color: var(--muted);
   line-height: 1.4;
 }
+
+.notificationHistoryHero {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 4px 2px 18px;
+}
+
+.notificationHistoryHero h3 { margin: 4px 0 6px; font-size: 24px; }
+.notificationHistoryHero p { max-width: 680px; margin: 0; color: var(--muted); }
+
+.notificationHistoryTotal {
+  min-width: 112px;
+  display: grid;
+  gap: 2px;
+  padding: 13px 16px;
+  border: 1px solid #d4e2df;
+  border-radius: 8px;
+  background: #f5faf8;
+  text-align: center;
+}
+
+.notificationHistoryTotal strong { color: #0d5658; font-size: 25px; line-height: 1; }
+.notificationHistoryTotal span { color: #5b7074; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+
+.notificationHistoryFilters {
+  position: sticky;
+  top: 82px;
+  z-index: 20;
+  margin-bottom: 18px;
+}
+
+.notificationHistoryList { display: grid; gap: 10px; }
+
+.notificationHistoryItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+  width: 100%;
+  padding: 15px 17px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.notificationHistoryItem:hover { border-color: #9bbdb9; background: #f7fbfa; }
+.notificationHistoryItem.isUnread { border-left: 4px solid #d39a1b; }
+.notificationHistoryItem.isRead { opacity: 0.82; }
+
+.notificationHistoryType {
+  display: inline-flex;
+  width: fit-content;
+  padding: 4px 7px;
+  border-radius: 99px;
+  background: #edf4f2;
+  color: #47666a;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.notificationHistoryItem > div { min-width: 0; display: grid; gap: 4px; }
+.notificationHistoryItem strong { color: #263f44; }
+.notificationHistoryItem p { margin: 0; color: var(--muted); line-height: 1.45; }
+.notificationHistoryItem small { color: #77878b; font-size: 11px; font-weight: 700; }
+.notificationHistoryItem em { padding-top: 2px; color: #66777b; font-size: 11px; font-style: normal; font-weight: 800; }
+.notificationHistoryItem.isUnread em { color: #a66c00; }
+
+.notificationHistoryEmpty { color: var(--muted); text-align: center; }
+.notificationPagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 20px; color: var(--muted); font-size: 13px; font-weight: 700; }
 
 .eyebrow {
   color: var(--brand);
@@ -2107,6 +2341,13 @@ tbody tr:hover {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.consortiumAssemblyUnavailable {
+  flex-basis: 100%;
+  color: #8a5a12;
+  font-size: .78rem;
+  text-align: right;
 }
 
 .assemblyEntryButton {
@@ -4067,6 +4308,8 @@ tbody tr:hover {
 
 .userFiltersSticky,
 .tenderAdminFiltersSticky,
+.pncpFiltersSticky,
+.pncpQueueFiltersSticky,
 .consortiumFiltersSticky,
 .inviteFiltersSticky,
 .partnerFiltersSticky,
@@ -4111,6 +4354,33 @@ tbody tr:hover {
 .newsManageFiltersSticky {
   z-index: 35;
 }
+
+.pncpIntro { border-left: 4px solid var(--accent, #d4a72c); }
+.pncpIntro h3 { margin: 4px 0 8px; }
+.pncpIntro p { margin: 0; color: var(--muted); max-width: 760px; }
+.pncpCaptureList { display: grid; gap: 14px; }
+.pncpQueueSummary { margin: 2px 0 14px; color: var(--muted); font-size: .9rem; }
+.pncpQueueSummary strong { color: var(--text); }
+.pncpCaptureCard { display: grid; gap: 12px; }
+.pncpCaptureHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.pncpCaptureHeader h3 { margin: 2px 0 0; }
+.pncpRelevance { white-space: nowrap; padding: 5px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+.pncpRelevance.score-high { color: #176f4d; background: #e4f4eb; }
+.pncpRelevance.score-medium { color: #86630a; background: #fff4cc; }
+.pncpRelevance.score-low { color: #81555a; background: #f7e9eb; }
+.pncpObject { margin: 0; line-height: 1.55; }
+.pncpInfoGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.pncpInfo, .pncpValue { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; min-height: 64px; gap: 4px; padding: 10px 12px; border: 1px solid var(--border, #d9e1e5); border-radius: 6px; background: var(--surface-muted, #f5f7f8); }
+.pncpInfo span, .pncpValue span { color: var(--muted); font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.pncpInfo strong { color: var(--text); font-size: .9rem; line-height: 1.25; }
+.pncpValue { border-color: #b9d6cf; border-left: 4px solid #167767; background: #f1faf7; }
+.pncpValue span { color: #40645d; }
+.pncpValue strong { color: #0e4c42; font-size: 1.08rem; line-height: 1.15; }
+.pncpReasons, .pncpActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pncpReasons span { background: var(--surface-muted, #f1f4f7); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: .78rem; }
+.pncpActions { padding-top: 4px; }
+@media (max-width: 860px) { .pncpInfoGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .pncpCaptureHeader { flex-direction: column; gap: 8px; } .pncpInfoGrid { grid-template-columns: 1fr; } }
 
 .partnerFilterBar {
   display: grid;
@@ -4880,22 +5150,47 @@ tbody tr:hover {
 
 .chatLauncher {
   position: fixed;
-  right: 18px;
+  right: 8px;
   bottom: 152px;
   z-index: 45;
-  min-width: 76px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   border: 1px solid rgba(13, 41, 43, 0.14);
   border-radius: 999px;
-  background: #0d292b;
-  color: #ffffff;
-  box-shadow: 0 18px 42px rgba(13, 41, 43, 0.24);
+  background: #ffffff;
+  color: #1f6f6a;
+  box-shadow: 0 10px 24px rgba(13, 41, 43, 0.16);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
   cursor: pointer;
   font-weight: 900;
+}
+
+.chatLauncher:hover {
+  border-color: #77aaa3;
+  background: #f1fbf9;
+}
+
+.chatLauncherSymbol {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.chatLauncher.hasUnread {
+  right: 18px;
+  min-width: 76px;
+  width: auto;
+  height: 42px;
+  gap: 8px;
+  background: #0d292b;
+  color: #ffffff;
+  box-shadow: 0 18px 42px rgba(13, 41, 43, 0.24);
+}
+
+.chatLauncher.hasUnread:hover {
+  background: #0d292b;
+  border-color: rgba(13, 41, 43, 0.14);
 }
 
 .chatLauncher strong {
@@ -5285,10 +5580,26 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
+  .notificationHistoryHero,
+  .assemblyCenterHero,
   .assemblyCalendarHero {
     align-items: flex-start;
     flex-direction: column;
   }
+
+  .assemblyCenterSummary { text-align: left; }
+
+  .notificationHistoryTotal { text-align: left; }
+
+  .notificationHistoryItem { grid-template-columns: 1fr auto; }
+
+  .notificationHistoryType { grid-column: 1; }
+
+  .notificationHistoryItem > div { grid-column: 1 / -1; }
+
+  .notificationHistoryItem em { grid-column: 2; grid-row: 1; }
+
+  .assemblyCenterInfo { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   .assemblyCalendarLegend {
     justify-content: flex-start;

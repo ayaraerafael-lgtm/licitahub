@@ -77,6 +77,7 @@ Nao publique senhas, tokens ou credenciais no GitHub.
 - Registrar interesse usa linguagem de requisitos e pontuacao.
 - Radar com filtro fixo, paginacao e limite de titulo/resumo.
 - Usuarios vinculados e admin de editais com filtros fixos.
+- Captacao de editais por PNCP e Compras.gov.br, com fonte, valor e criterio de julgamento.
 
 ## Documentacao funcional
 
@@ -88,3 +89,9 @@ Consulte [docs/SISTEMA.md](docs/SISTEMA.md) para ver os fluxos, regras de acesso
 - Manter a janela do backend aberta.
 - Se alterar o frontend, rodar `npm.cmd run build` antes de testar pela URL do backend.
 - Testar com perfis diferentes: administrador da plataforma, administrador da empresa, comercial, tecnico e leitor.
+
+## Integracoes externas planejadas
+
+- A captacao consulta PNCP e Compras.gov.br/Dados Abertos, sem publicacao automatica.
+- A integracao de alertas por WhatsApp ainda depende de conta Meta Business, numero dedicado, templates aprovados e token protegido no backend.
+- Nao versionar tokens, senhas ou chaves de API.

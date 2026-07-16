@@ -203,7 +203,8 @@ Fluxo da empresa:
 5. Empresa registra interesse e define sua estrategia: participar sozinha, buscar parceiros ou apenas acompanhar.
 6. Empresa informa o que tem, o que atende parcialmente, o que nao se aplica e o que busca em parceiros.
 7. Apenas a estrategia de buscar parceiros gera anuncio para empresas interessadas e vitrine.
-8. A participacao individual permanece privada e pode iniciar a Central de Montagem com os profissionais da propria empresa.
+8. A participacao individual permanece privada e cria automaticamente a Central de Montagem com os profissionais da propria empresa no momento em que o interesse e salvo. O prazo geral da montagem assume a data da sessao do edital.
+9. Ao definir a empresa lider de um consorcio, a Central de Montagem consorcial tambem e criada automaticamente. O prazo geral assume a data da sessao do edital e todos os membros ativos podem acompanhar o plano.
 9. Enquanto nao houver consorcio fechado, a empresa pode trocar a estrategia para buscar parceiros ou desistir da participacao. Ao sair da participacao individual, a montagem e as tarefas ficam bloqueadas, encerradas e fora da operacao; o historico permanece guardado. A desistência encerra o anuncio e a montagem individual associada.
 
 Regras principais:
@@ -227,6 +228,16 @@ Uso principal: acompanhar, por mes, todas as licitacoes que a empresa esta monta
 - O card mostra numero, orgao, objeto resumido, tipo de participacao e percentual concluido.
 - A barra de percentual usa vermelho ate 30%, amarelo entre 31% e 70% e verde acima de 70%.
 - O filtro permite ver todas as montagens, somente individuais ou somente consorcios.
+
+### Central de montagens
+
+Uso principal: recuperar e acompanhar qualquer montagem ativa sem depender do caminho pelo edital ou pelo consorcio.
+
+- Disponivel no menu lateral em **Editais > Central de montagens**.
+- Lista participacoes individuais e consorciais nas quais a empresa possui acesso.
+- Permite buscar por edital, orgao, objeto ou empresa lider e filtrar por tipo e andamento.
+- Cada card mostra a sessao, empresas participantes, tarefas abertas e percentual concluido.
+- Cada item abre diretamente a Central de Montagem da licitacao correspondente.
 
 ## Empresas interessadas
 
@@ -299,6 +310,14 @@ Regra principal:
 - Quando o anuncio pertence a empresa logada, o detalhe nao mostra acao para avaliar candidata.
 - Quando o anuncio pertence a outra empresa, o nome da anunciante ou da lider do consorcio exibe um icone de chat para abrir a conversa geral ja existente entre as empresas.
 
+## Pausa por status do edital
+
+Anuncios de parceria e montagens existem operacionalmente apenas enquanto o edital esta com status `Publicado`.
+
+1. Ao mudar para qualquer status nao publicado, o sistema pausa anuncios que estavam publicados e a Central de Montagem, preservando tarefas, documentos e historico.
+2. Enquanto estiver pausado, o edital nao aparece na vitrine nem nas centrais ou calendario de montagem e nao gera alertas de prazo.
+3. Ao retornar para `Publicado`, anuncios e montagens pausados pelo sistema sao restaurados no estado anterior; anuncios fechados manualmente nao sao reabertos.
+
 ## Avaliacao, match e consorcio
 
 Fluxo:
@@ -363,8 +382,11 @@ Eventos previstos:
 Regra principal:
 
 - O alerta aparece para o usuario destinatario.
+- Alertas pessoais sao visiveis apenas para o usuario destinatario. Um alerta geral da empresa so aparece para todos quando for gravado sem destinatario individual.
 - Ao abrir o sino, o contador zera.
 - Alertas lidos nao voltam como novos para aquele usuario.
+- O botao **Historico** no sino abre o arquivo de alertas, com busca por texto, filtros por tipo, situacao de leitura e periodo.
+- O historico permanece gravado no banco e cada registro leva de volta para a origem quando houver uma tela relacionada.
 
 ## Banco de dados
 
@@ -456,6 +478,19 @@ Regras principais:
 
 ## Roteiro de teste manual
 
+## Captação PNCP
+
+O administrador da plataforma possui, em `Editais > Captação PNCP`, uma fila separada para oportunidades originadas no Portal Nacional de Contratações Públicas.
+
+1. Define o período de publicação e, opcionalmente, o estado.
+2. Consulta o PNCP e registra os resultados apenas como capturas internas.
+3. O LicitaHub atribui uma aderência preliminar a partir de termos ligados à engenharia consultiva, como projetos, supervisão, meio ambiente, arqueologia, saneamento e infraestrutura.
+4. O administrador pode consultar o registro original no PNCP, preparar seu cadastro ou descartar.
+5. Ao preparar, o LicitaHub cria um rascunho já preenchido e abre o cadastro de edital para revisão, complementação de dados e inclusão de documentos.
+6. O edital só fica visível para as empresas associadas e gera a notificação de novo edital quando o administrador conclui o cadastro e o salva com status `Publicado`.
+
+O filtro de aderência é apenas apoio de triagem. A decisão de publicar é sempre humana e manual.
+
 O teste manual deve passar por:
 
 1. Login com todos os perfis.
@@ -504,3 +539,17 @@ Fluxos principais validados em ambiente local:
 - Avaliacao, match e meus consorcios.
 
 Novas funcionalidades e ajustes finos serao tratados em rodadas posteriores.
+
+## Atualizacao: captacao por fontes oficiais
+
+Em `Editais > Captacao de editais`, o administrador pode consultar duas fontes: `PNCP` e `Compras.gov.br`. As oportunidades entram primeiro em uma fila de revisao e nunca sao publicadas automaticamente.
+
+Na fila, e possivel filtrar por texto, situacao, aderencia e valor estimado minimo ou maximo. Cada registro pode exibir fonte, orgao, numero, objeto, modalidade, criterio de julgamento, local, sessao e valor estimado, conforme os dados retornados pela fonte.
+
+O administrador pode abrir a fonte oficial, preparar o cadastro ou descartar a oportunidade. A captura permanece no banco com seu status e sua origem; descartar retira o registro da fila pendente, mas preserva o historico. Ao preparar, a origem e o criterio de julgamento sao levados para o rascunho do edital.
+
+A API publica do Compras.gov.br fornece dados estruturados disponibilizados, mas esta integracao nao le nem envia mensagens privadas, diligencias ou chat da sala de disputa em tempo real. Para essas operacoes, o usuario deve acessar o processo oficial.
+
+## Atualizacao: WhatsApp planejado
+
+A integracao oficial de alertas por WhatsApp ainda nao esta ativa. O desenho previsto usa a WhatsApp Business Platform/Cloud API como canal opcional, mediante telefone confirmado e consentimento do usuario. Tokens e credenciais deverao ficar somente em variaveis protegidas do backend, nunca no frontend ou no GitHub.

@@ -323,6 +323,8 @@ CREATE TABLE IF NOT EXISTS tenders (
   opening_date timestamptz,
   status varchar(40) NOT NULL DEFAULT 'draft',
   cloud_folder_url text,
+  source varchar(40) NOT NULL DEFAULT 'manual',
+  source_reference varchar(220),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
@@ -330,6 +332,44 @@ CREATE TABLE IF NOT EXISTS tenders (
     'draft', 'published', 'under_review', 'suspended', 'challenged', 'occurred', 'closed', 'cancelled'
   ))
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS tenders_source_reference_uk
+  ON tenders(source, source_reference)
+  WHERE source_reference IS NOT NULL AND deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS pncp_captures (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  source varchar(40) NOT NULL DEFAULT 'pncp',
+  source_key varchar(220) NOT NULL UNIQUE,
+  agency varchar(220) NOT NULL,
+  number varchar(120) NOT NULL,
+  object text NOT NULL,
+  modality varchar(120),
+  judgment_criterion varchar(120),
+  state varchar(2),
+  city varchar(120),
+  opening_date timestamptz,
+  estimated_value numeric(16, 2),
+  external_url text,
+  relevance_score integer NOT NULL DEFAULT 0,
+  relevance_reasons jsonb NOT NULL DEFAULT '[]'::jsonb,
+  raw_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status varchar(40) NOT NULL DEFAULT 'captured',
+  captured_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  approved_at timestamptz,
+  approved_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  discarded_at timestamptz,
+  discarded_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  published_tender_id uuid REFERENCES tenders(id) ON DELETE SET NULL,
+  CONSTRAINT pncp_captures_status_chk CHECK (status IN ('captured', 'prepared', 'approved', 'discarded'))
+);
+
+ALTER TABLE pncp_captures ADD COLUMN IF NOT EXISTS source varchar(40) NOT NULL DEFAULT 'pncp';
+ALTER TABLE pncp_captures ADD COLUMN IF NOT EXISTS judgment_criterion varchar(120);
+
+CREATE INDEX IF NOT EXISTS idx_pncp_captures_status_relevance
+  ON pncp_captures(status, relevance_score DESC, opening_date ASC);
 
 CREATE TABLE IF NOT EXISTS tender_files (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -477,6 +517,7 @@ CREATE TABLE IF NOT EXISTS partnership_ads (
   offer_summary text,
   seek_summary text,
   status varchar(40) NOT NULL DEFAULT 'draft',
+  paused_by_tender boolean NOT NULL DEFAULT false,
   published_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -658,12 +699,13 @@ CREATE TABLE IF NOT EXISTS bid_assemblies (
   lead_company_id uuid NOT NULL REFERENCES companies(id),
   title varchar(220) NOT NULL,
   status varchar(40) NOT NULL DEFAULT 'preparing',
+  status_before_pause varchar(40),
   start_date date NOT NULL DEFAULT CURRENT_DATE,
   due_date date,
   created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT bid_assemblies_status_chk CHECK (status IN ('preparing', 'in_progress', 'under_review', 'ready_to_submit', 'submitted', 'cancelled')),
+  CONSTRAINT bid_assemblies_status_chk CHECK (status IN ('preparing', 'in_progress', 'under_review', 'ready_to_submit', 'submitted', 'paused', 'cancelled')),
   CONSTRAINT bid_assemblies_type_chk CHECK (assembly_type IN ('consortium', 'individual')),
   CONSTRAINT bid_assemblies_consortium_uk UNIQUE (consortium_intention_id)
 );

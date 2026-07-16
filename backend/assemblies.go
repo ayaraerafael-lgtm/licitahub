@@ -114,6 +114,10 @@ func (a *app) handleMyAssemblyTasks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if err := a.refreshOccurredTenders(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel atualizar a situacao dos editais")
+		return
+	}
 	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
 		SELECT COALESCE(json_agg(row_to_json(item) ORDER BY item."dueAt" NULLS LAST, item."updatedAt" DESC), '[]'::json)
 		FROM (
@@ -135,7 +139,7 @@ func (a *app) handleMyAssemblyTasks(w http.ResponseWriter, r *http.Request) {
 				COALESCE((SELECT count(*) FROM bid_assembly_task_evidences evidence WHERE evidence.task_id = task.id), 0)::int AS "evidenceCount"
 			FROM bid_assembly_tasks task
 			JOIN bid_assembly_stages stage ON stage.id = task.stage_id
-			JOIN bid_assemblies ba ON ba.id = stage.assembly_id AND ba.status <> 'cancelled'
+			JOIN bid_assemblies ba ON ba.id = stage.assembly_id AND ba.status NOT IN ('cancelled', 'paused')
 			LEFT JOIN consortium_intentions ci ON ci.id = ba.consortium_intention_id
 			JOIN tenders t ON t.id = ba.tender_id
 			JOIN bid_assembly_participants participant ON participant.assembly_id = ba.id
@@ -144,6 +148,7 @@ func (a *app) handleMyAssemblyTasks(w http.ResponseWriter, r *http.Request) {
 				AND participant.status = 'active'
 			WHERE task.responsible_user_id = %s::uuid
 			  AND task.status <> 'not_applicable'
+			  AND t.status = 'published'
 		) item;
 	`, sqlQuote(session.CompanyID), sqlQuote(session.UserID)))
 	if err != nil {
@@ -164,6 +169,18 @@ func (a *app) handleAssemblyCalendar(w http.ResponseWriter, r *http.Request) {
 	}
 	if session.CompanyID == "" {
 		writeError(w, http.StatusForbidden, "usuario sem empresa vinculada")
+		return
+	}
+	if err := a.refreshOccurredTenders(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel atualizar a situacao dos editais")
+		return
+	}
+	if err := a.ensureCompanyIndividualAssemblies(r.Context(), session); err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel preparar as montagens individuais")
+		return
+	}
+	if err := a.ensureCompanyConsortiumAssemblies(r.Context(), session); err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel preparar as montagens dos consorcios")
 		return
 	}
 	month := strings.TrimSpace(r.URL.Query().Get("month"))
@@ -208,8 +225,9 @@ func (a *app) handleAssemblyCalendar(w http.ResponseWriter, r *http.Request) {
 				AND participant.status = 'active'
 			JOIN tenders t ON t.id = ba.tender_id
 			LEFT JOIN companies lead ON lead.id = ba.lead_company_id
-			WHERE ba.status <> 'cancelled'
+			WHERE ba.status NOT IN ('cancelled', 'paused')
 			  AND t.deleted_at IS NULL
+			  AND t.status = 'published'
 			  AND t.opening_date >= %s::date
 			  AND t.opening_date < (%s::date + interval '1 month')
 		) item;
@@ -221,9 +239,92 @@ func (a *app) handleAssemblyCalendar(w http.ResponseWriter, r *http.Request) {
 	writeRawJSON(w, http.StatusOK, payload)
 }
 
+func (a *app) handleAssemblyList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	session, ok := a.currentSessionUser(w, r)
+	if !ok {
+		return
+	}
+	if session.CompanyID == "" {
+		writeError(w, http.StatusForbidden, "usuario sem empresa vinculada")
+		return
+	}
+	if err := a.refreshOccurredTenders(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel atualizar a situacao dos editais")
+		return
+	}
+	if err := a.ensureCompanyIndividualAssemblies(r.Context(), session); err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel preparar as montagens individuais")
+		return
+	}
+	if err := a.ensureCompanyConsortiumAssemblies(r.Context(), session); err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel preparar as montagens dos consorcios")
+		return
+	}
+	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		SELECT COALESCE(json_agg(row_to_json(item) ORDER BY item."openingDate" NULLS LAST, item."updatedAt" DESC), '[]'::json)
+		FROM (
+			SELECT
+				ba.id::text AS id,
+				ba.assembly_type AS "assemblyType",
+				ba.status,
+				ba.updated_at AS "updatedAt",
+				t.number AS "tenderNumber",
+				t.agency,
+				t.object AS "tenderObject",
+				t.opening_date AS "openingDate",
+				COALESCE(lead.trade_name, '') AS "leadCompanyName",
+				COALESCE((
+					SELECT round(
+						100 * sum(CASE WHEN task.status = 'completed' THEN task.weight ELSE 0 END) /
+						NULLIF(sum(CASE WHEN task.status <> 'not_applicable' THEN task.weight ELSE 0 END), 0)
+					)::int
+					FROM bid_assembly_tasks task
+					JOIN bid_assembly_stages stage ON stage.id = task.stage_id
+					WHERE stage.assembly_id = ba.id
+				), 0) AS progress,
+				COALESCE((
+					SELECT count(*)::int
+					FROM bid_assembly_tasks task
+					JOIN bid_assembly_stages stage ON stage.id = task.stage_id
+					WHERE stage.assembly_id = ba.id AND task.status NOT IN ('completed', 'not_applicable')
+				), 0) AS "openTaskCount",
+				COALESCE((
+					SELECT json_agg(member_item ORDER BY member_item->>'companyName')
+					FROM (
+						SELECT json_build_object('companyName', company.trade_name) AS member_item
+						FROM bid_assembly_participants member
+						JOIN companies company ON company.id = member.company_id
+						WHERE member.assembly_id = ba.id AND member.user_id IS NULL AND member.status = 'active'
+					) listed_members
+				), '[]'::json) AS members
+			FROM bid_assemblies ba
+			JOIN bid_assembly_participants participant ON participant.assembly_id = ba.id
+				AND participant.company_id = %s::uuid
+				AND participant.user_id IS NULL
+				AND participant.status = 'active'
+			JOIN tenders t ON t.id = ba.tender_id
+			LEFT JOIN companies lead ON lead.id = ba.lead_company_id
+			WHERE ba.status NOT IN ('cancelled', 'paused') AND t.deleted_at IS NULL AND t.status = 'published'
+		) item;
+	`, sqlQuote(session.CompanyID)))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel carregar as montagens")
+		return
+	}
+	writeRawJSON(w, http.StatusOK, payload)
+}
+
 func (a *app) handleAssemblyByPath(w http.ResponseWriter, r *http.Request) {
 	session, ok := a.currentSessionUser(w, r)
 	if !ok {
+		return
+	}
+	if err := a.refreshOccurredTenders(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel atualizar a situacao dos editais")
 		return
 	}
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/assemblies/"), "/")
@@ -233,6 +334,15 @@ func (a *app) handleAssemblyByPath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	assemblyID := parts[0]
+	available, err := a.assemblyTenderIsPublished(r.Context(), assemblyID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel verificar a situacao da montagem")
+		return
+	}
+	if !available {
+		writeError(w, http.StatusConflict, "esta montagem esta pausada porque o edital nao esta publicado")
+		return
+	}
 	if len(parts) == 1 && r.Method == http.MethodGet {
 		a.getAssemblyByID(w, r, assemblyID, session)
 		return
@@ -269,6 +379,30 @@ func (a *app) handleAssemblyByPath(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeError(w, http.StatusNotFound, "recurso da montagem nao encontrado")
+}
+
+func (a *app) assemblyTenderIsPublished(ctx context.Context, assemblyID string) (bool, error) {
+	payload, err := a.queryJSON(ctx, fmt.Sprintf(`
+		SELECT json_build_object('available', EXISTS (
+			SELECT 1
+			FROM bid_assemblies assembly
+			JOIN tenders tender ON tender.id = assembly.tender_id
+			WHERE assembly.id = %s::uuid
+			  AND assembly.status NOT IN ('cancelled', 'paused')
+			  AND tender.deleted_at IS NULL
+			  AND tender.status = 'published'
+		));
+	`, sqlQuote(assemblyID)))
+	if err != nil {
+		return false, err
+	}
+	var result struct {
+		Available bool `json:"available"`
+	}
+	if err := json.Unmarshal(payload, &result); err != nil {
+		return false, err
+	}
+	return result.Available, nil
 }
 
 func (a *app) getAssemblyByMatch(w http.ResponseWriter, r *http.Request, matchID string, session sessionUser) {
@@ -308,11 +442,20 @@ func (a *app) getAssemblyByMatch(w http.ResponseWriter, r *http.Request, matchID
 		return
 	}
 	var info struct {
-		AssemblyID string `json:"assemblyId"`
-		Exists     bool   `json:"exists"`
+		AssemblyID    string `json:"assemblyId"`
+		LeadCompanyID string `json:"leadCompanyId"`
+		Exists        bool   `json:"exists"`
 	}
 	if json.Unmarshal(payload, &info) == nil && info.Exists && info.AssemblyID != "" {
 		a.getAssemblyByID(w, r, info.AssemblyID, session)
+		return
+	}
+	if info.LeadCompanyID != "" {
+		if err := a.ensureConsortiumAssembly(r.Context(), matchID, session); err != nil {
+			writeError(w, http.StatusInternalServerError, "nao foi possivel preparar a montagem do consorcio")
+			return
+		}
+		a.getAssemblyByMatch(w, r, matchID, session)
 		return
 	}
 	writeRawJSON(w, http.StatusOK, payload)
@@ -350,6 +493,7 @@ func (a *app) getAssemblyByInterest(w http.ResponseWriter, r *http.Request, inte
 			  AND ti.status = 'published'
 			  AND ti.deleted_at IS NULL
 			  AND t.deleted_at IS NULL
+			  AND t.status = 'published'
 			LIMIT 1
 		) item;
 	`, sqlQuote(session.CompanyID), sqlBool(session.canCoordinateAssembly()), sqlQuote(interestID), sqlQuote(session.CompanyID)))
@@ -411,7 +555,7 @@ func (a *app) createAssembly(w http.ResponseWriter, r *http.Request, session ses
 		}
 		dueDateSQL = sqlQuote(req.DueDate) + "::date"
 	}
-	payload, err := a.queryJSON(r.Context(), buildCreateAssemblySQL(req, session, dueDateSQL))
+	payload, err := a.queryJSON(r.Context(), buildCreateAssemblySQL(req, session, dueDateSQL, true))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "nao foi possivel iniciar a montagem: "+err.Error())
 		return
@@ -431,7 +575,7 @@ func (a *app) createAssembly(w http.ResponseWriter, r *http.Request, session ses
 }
 
 func (a *app) createIndividualAssembly(w http.ResponseWriter, r *http.Request, session sessionUser, req createAssemblyRequest) {
-	dueDateSQL := "NULL"
+	dueDateSQL := "selected.opening_date"
 	if req.DueDate != "" {
 		openingDate, err := a.tenderOpeningDateForInterest(r.Context(), req.InterestID, session.CompanyID)
 		if err != nil {
@@ -461,6 +605,103 @@ func (a *app) createIndividualAssembly(w http.ResponseWriter, r *http.Request, s
 		return
 	}
 	a.getAssemblyByID(w, r, created.ID, session)
+}
+
+func (a *app) ensureIndividualAssembly(ctx context.Context, interestID string, session sessionUser) error {
+	payload, err := a.queryJSON(ctx, buildCreateIndividualAssemblySQL(createAssemblyRequest{InterestID: interestID}, session, "selected.opening_date"))
+	if err != nil {
+		return err
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if strings.TrimSpace(string(payload)) == "null" || json.Unmarshal(payload, &created) != nil || created.ID == "" {
+		return errors.New("a participacao individual nao esta disponivel para iniciar a montagem")
+	}
+	return nil
+}
+
+func (a *app) ensureConsortiumAssembly(ctx context.Context, matchID string, session sessionUser) error {
+	payload, err := a.queryJSON(ctx, buildCreateAssemblySQL(createAssemblyRequest{MatchID: matchID}, session, "selected.opening_date", false))
+	if err != nil {
+		return err
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if strings.TrimSpace(string(payload)) == "null" || json.Unmarshal(payload, &created) != nil || created.ID == "" {
+		return errors.New("o consorcio nao esta disponivel para iniciar a montagem")
+	}
+	return nil
+}
+
+func (a *app) ensureCompanyIndividualAssemblies(ctx context.Context, session sessionUser) error {
+	payload, err := a.queryJSON(ctx, fmt.Sprintf(`
+		SELECT COALESCE(json_agg(item.id::text), '[]'::json)
+		FROM (
+			SELECT ti.id
+			FROM tender_interests ti
+			JOIN tenders t ON t.id = ti.tender_id
+			WHERE ti.company_id = %s::uuid
+			  AND ti.participation_mode = 'individual'
+			  AND ti.status = 'published'
+			  AND ti.deleted_at IS NULL
+			  AND t.deleted_at IS NULL
+			  AND NOT EXISTS (
+				SELECT 1 FROM bid_assemblies ba
+				WHERE ba.tender_id = ti.tender_id
+				  AND ba.owner_company_id = ti.company_id
+				  AND ba.assembly_type = 'individual'
+				  AND ba.status <> 'cancelled'
+			)
+		) item;
+	`, sqlQuote(session.CompanyID)))
+	if err != nil {
+		return err
+	}
+	var interestIDs []string
+	if err := json.Unmarshal(payload, &interestIDs); err != nil {
+		return err
+	}
+	for _, interestID := range interestIDs {
+		if err := a.ensureIndividualAssembly(ctx, interestID, session); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a *app) ensureCompanyConsortiumAssemblies(ctx context.Context, session sessionUser) error {
+	payload, err := a.queryJSON(ctx, fmt.Sprintf(`
+		SELECT COALESCE(json_agg(item.match_id::text), '[]'::json)
+		FROM (
+			SELECT ci.match_id
+			FROM consortium_intentions ci
+			JOIN matches m ON m.id = ci.match_id AND m.status = 'active'
+			JOIN tenders t ON t.id = ci.tender_id AND t.deleted_at IS NULL AND t.status = 'published'
+			JOIN consortium_members member ON member.consortium_intention_id = ci.id
+			WHERE member.company_id = %s::uuid
+			  AND member.status = 'active'
+			  AND ci.lead_company_id IS NOT NULL
+			  AND NOT EXISTS (
+				SELECT 1 FROM bid_assemblies ba
+				WHERE ba.consortium_intention_id = ci.id AND ba.status <> 'cancelled'
+			)
+		) item;
+	`, sqlQuote(session.CompanyID)))
+	if err != nil {
+		return err
+	}
+	var matchIDs []string
+	if err := json.Unmarshal(payload, &matchIDs); err != nil {
+		return err
+	}
+	for _, matchID := range matchIDs {
+		if err := a.ensureConsortiumAssembly(ctx, matchID, session); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *app) getAssemblyByID(w http.ResponseWriter, r *http.Request, assemblyID string, session sessionUser) {
@@ -791,6 +1032,13 @@ func (a *app) syncAssemblyParticipants(ctx context.Context, assemblyID string) e
 		  AND (ba.assembly_type = 'individual' OR cm.id IS NOT NULL)
 		ON CONFLICT DO NOTHING;
 		UPDATE bid_assembly_participants bap
+		SET role = CASE WHEN ba.assembly_type = 'individual' OR bap.company_id = ba.lead_company_id THEN 'coordinator' ELSE 'collaborator' END
+		FROM bid_assemblies ba
+		WHERE bap.assembly_id = ba.id
+		  AND ba.id = %s::uuid
+		  AND bap.user_id IS NULL
+		  AND bap.status = 'active';
+		UPDATE bid_assembly_participants bap
 		SET status = 'removed', removed_at = now()
 		FROM bid_assemblies ba
 		WHERE bap.assembly_id = ba.id AND ba.id = %s::uuid AND ba.assembly_type = 'consortium' AND bap.user_id IS NULL
@@ -800,7 +1048,7 @@ func (a *app) syncAssemblyParticipants(ctx context.Context, assemblyID string) e
 			WHERE cm.consortium_intention_id = ba.consortium_intention_id
 			  AND cm.company_id = bap.company_id AND cm.status = 'active'
 		  );
-	`, sqlQuote(assemblyID), sqlQuote(assemblyID)))
+	`, sqlQuote(assemblyID), sqlQuote(assemblyID), sqlQuote(assemblyID)))
 	return err
 }
 
@@ -817,7 +1065,10 @@ func (a *app) createAssemblyDeadlineNotifications(ctx context.Context, assemblyI
 			FROM bid_assembly_tasks bat
 			JOIN bid_assembly_stages stage ON stage.id = bat.stage_id
 			JOIN bid_assemblies basm ON basm.id = stage.assembly_id
+			JOIN tenders tender ON tender.id = basm.tender_id
 			WHERE basm.id = %s::uuid
+			  AND basm.status NOT IN ('cancelled', 'paused')
+			  AND tender.status = 'published'
 			  AND bat.responsible_user_id IS NOT NULL
 			  AND bat.due_at IS NOT NULL
 			  AND bat.status NOT IN ('completed', 'not_applicable')
@@ -930,23 +1181,33 @@ func validateAssemblyDueDate(value, openingDate, fieldName string) error {
 	return nil
 }
 
-func buildCreateAssemblySQL(req createAssemblyRequest, session sessionUser, dueDateSQL string) string {
-	titleSQL := "t.number || ' - ' || t.agency"
+func buildCreateAssemblySQL(req createAssemblyRequest, session sessionUser, dueDateSQL string, requireLeader bool) string {
+	titleSQL := "selected.number || ' - ' || selected.agency"
 	if req.Title != "" {
 		titleSQL = sqlQuote(req.Title)
 	}
-	return fmt.Sprintf(`
-		WITH selected AS (
-			SELECT ci.*, t.number, t.agency, t.object
-			FROM matches m
-			JOIN consortium_intentions ci ON ci.match_id = m.id
-			JOIN tenders t ON t.id = ci.tender_id
-			WHERE m.id = %s::uuid AND m.status = 'active'
+	accessCondition := fmt.Sprintf(`
+			  AND EXISTS (
+				SELECT 1 FROM consortium_members cm
+				WHERE cm.consortium_intention_id = ci.id AND cm.company_id = %s::uuid AND cm.status = 'active'
+			  )`, sqlQuote(session.CompanyID))
+	if requireLeader {
+		accessCondition = fmt.Sprintf(`
 			  AND ci.lead_company_id = %s::uuid
 			  AND EXISTS (
 				SELECT 1 FROM consortium_members cm
 				WHERE cm.consortium_intention_id = ci.id AND cm.company_id = %s::uuid AND cm.status = 'active'
-			  )
+			  )`, sqlQuote(session.CompanyID), sqlQuote(session.CompanyID))
+	}
+	return fmt.Sprintf(`
+		WITH selected AS (
+			SELECT ci.*, t.number, t.agency, t.object, t.opening_date
+			FROM matches m
+			JOIN consortium_intentions ci ON ci.match_id = m.id
+			JOIN tenders t ON t.id = ci.tender_id
+			WHERE m.id = %s::uuid AND m.status = 'active'
+			  AND t.deleted_at IS NULL
+			  AND t.status = 'published'%s
 			LIMIT 1
 		), template AS (
 			SELECT id FROM bid_assembly_templates WHERE is_system = true AND name = 'Modelo LicitaHub' AND is_active = true LIMIT 1
@@ -1003,23 +1264,23 @@ func buildCreateAssemblySQL(req createAssemblyRequest, session sessionUser, dueD
 		)
 		SELECT row_to_json(item)
 		FROM (SELECT assembly.id::text AS id FROM assembly) item;
-	`, sqlQuote(req.MatchID), sqlQuote(session.CompanyID), sqlQuote(session.CompanyID), titleSQL, dueDateSQL,
+	`, sqlQuote(req.MatchID), accessCondition, titleSQL, dueDateSQL,
 		sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(session.UserID), sqlQuote(session.CompanyID))
 }
 
 func buildCreateIndividualAssemblySQL(req createAssemblyRequest, session sessionUser, dueDateSQL string) string {
-	titleSQL := "t.number || ' - ' || t.agency || ' | Participacao individual'"
+	titleSQL := "selected.number || ' - ' || selected.agency || ' | Participacao individual'"
 	if req.Title != "" {
 		titleSQL = sqlQuote(req.Title)
 	}
 	return fmt.Sprintf(`
 		WITH selected AS (
-			SELECT ti.tender_id
+			SELECT ti.tender_id, t.number, t.agency, t.opening_date
 			FROM tender_interests ti
 			JOIN tenders t ON t.id = ti.tender_id
 			WHERE ti.id = %s::uuid AND ti.company_id = %s::uuid
 			  AND ti.participation_mode IN ('individual', 'seeking_partners') AND ti.status = 'published'
-			  AND ti.deleted_at IS NULL AND t.deleted_at IS NULL
+			  AND ti.deleted_at IS NULL AND t.deleted_at IS NULL AND t.status = 'published'
 			LIMIT 1
 		), template AS (
 			SELECT id FROM bid_assembly_templates WHERE is_system = true AND name = 'Modelo LicitaHub' AND is_active = true LIMIT 1
@@ -1181,7 +1442,8 @@ func buildAssemblyDetailSQL(assemblyID string, session sessionUser) string {
 			JOIN companies lead ON lead.id = ba.lead_company_id
 			JOIN bid_assembly_participants access ON access.assembly_id = ba.id
 				AND access.company_id = %s::uuid AND access.user_id IS NULL AND access.status = 'active'
-			WHERE ba.id = %s::uuid AND ba.status <> 'cancelled'
+			WHERE ba.id = %s::uuid AND ba.status NOT IN ('cancelled', 'paused')
+			  AND t.status = 'published'
 			LIMIT 1
 		) item;
 	`, sqlQuote(session.CompanyID), sqlBool(session.canCoordinateAssembly()), sqlBool(session.canWorkOnAssembly()),
@@ -1415,10 +1677,10 @@ CREATE TABLE IF NOT EXISTS bid_assemblies (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), consortium_intention_id uuid REFERENCES consortium_intentions(id) ON DELETE RESTRICT,
   tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE RESTRICT, template_id uuid REFERENCES bid_assembly_templates(id) ON DELETE SET NULL,
   assembly_type varchar(30) NOT NULL DEFAULT 'consortium', owner_company_id uuid REFERENCES companies(id),
-  lead_company_id uuid NOT NULL REFERENCES companies(id), title varchar(220) NOT NULL, status varchar(40) NOT NULL DEFAULT 'preparing',
+  lead_company_id uuid NOT NULL REFERENCES companies(id), title varchar(220) NOT NULL, status varchar(40) NOT NULL DEFAULT 'preparing', status_before_pause varchar(40),
   start_date date NOT NULL DEFAULT CURRENT_DATE, due_date date, created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT bid_assemblies_status_chk CHECK (status IN ('preparing','in_progress','under_review','ready_to_submit','submitted','cancelled')),
+  CONSTRAINT bid_assemblies_status_chk CHECK (status IN ('preparing','in_progress','under_review','ready_to_submit','submitted','paused','cancelled')),
   CONSTRAINT bid_assemblies_type_chk CHECK (assembly_type IN ('consortium','individual')),
   CONSTRAINT bid_assemblies_consortium_uk UNIQUE (consortium_intention_id)
 );
