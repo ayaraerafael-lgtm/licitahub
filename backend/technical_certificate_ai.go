@@ -16,6 +16,14 @@ import (
 type technicalCertificateAIRequest struct {
 	CertificateIDs []string `json:"certificateIds"`
 	Prompt         string   `json:"prompt"`
+	Provider       string   `json:"provider"`
+}
+
+type technicalCertificateAIResult struct {
+	Text       string
+	ResponseID string
+	Provider   string
+	Model      string
 }
 
 func (a *app) handleTechnicalCertificateAIAnalyses(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +63,7 @@ func (a *app) handleTechnicalCertificateAIAnalysisByPath(w http.ResponseWriter, 
 	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
 		SELECT COALESCE(row_to_json(item), 'null'::json)
 		FROM (
-			SELECT id::text AS id, status, model, prompt, certificate_ids AS "certificateIds",
+			SELECT id::text AS id, status, provider, model, prompt, certificate_ids AS "certificateIds",
 				COALESCE(result_text, '') AS "resultText", COALESCE(error_message, '') AS "errorMessage",
 				created_at AS "createdAt", started_at AS "startedAt", completed_at AS "completedAt"
 			FROM technical_certificate_ai_analyses
@@ -70,10 +78,6 @@ func (a *app) handleTechnicalCertificateAIAnalysisByPath(w http.ResponseWriter, 
 }
 
 func (a *app) startTechnicalCertificateAIAnalysis(w http.ResponseWriter, r *http.Request, session sessionUser) {
-	if strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) == "" {
-		writeError(w, http.StatusPreconditionFailed, "a IA ainda nao foi configurada nesta instalacao")
-		return
-	}
 	var input technicalCertificateAIRequest
 	if err := json.NewDecoder(ioLimitReader(r.Body, 256*1024)).Decode(&input); err != nil {
 		writeError(w, http.StatusBadRequest, "dados da analise invalidos")
@@ -86,6 +90,15 @@ func (a *app) startTechnicalCertificateAIAnalysis(w http.ResponseWriter, r *http
 	}
 	if len(input.Prompt) > 16000 {
 		writeError(w, http.StatusBadRequest, "o roteiro da analise pode ter no maximo 16.000 caracteres")
+		return
+	}
+	input.Provider = normalizeTechnicalCertificateAIProvider(input.Provider)
+	if input.Provider == "" {
+		writeError(w, http.StatusBadRequest, "provedor de IA invalido")
+		return
+	}
+	if !technicalCertificateAIProviderConfigured(input.Provider) {
+		writeError(w, http.StatusPreconditionFailed, technicalCertificateAIProviderConfigurationMessage(input.Provider))
 		return
 	}
 	input.CertificateIDs = uniqueTechnicalCertificateAIIDs(input.CertificateIDs)
@@ -105,7 +118,7 @@ func (a *app) startTechnicalCertificateAIAnalysis(w http.ResponseWriter, r *http
 	}
 	idsJSON, _ := json.Marshal(input.CertificateIDs)
 	idsSQL := technicalCertificateAIIDListSQL(input.CertificateIDs)
-	model := strings.TrimSpace(getenv("OPENAI_TECHNICAL_ANALYSIS_MODEL", getenv("OPENAI_ANALYSIS_MODEL", "gpt-5.6")))
+	initialProvider, initialModel := technicalCertificateAIInitialProvider(input.Provider)
 	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
 		WITH selected AS (
 			SELECT count(*)::integer AS total
@@ -113,9 +126,9 @@ func (a *app) startTechnicalCertificateAIAnalysis(w http.ResponseWriter, r *http
 			WHERE company_id = %s::uuid AND deleted_at IS NULL AND id IN (%s)
 		), inserted AS (
 			INSERT INTO technical_certificate_ai_analyses (
-				company_id, requested_by_user_id, certificate_ids, prompt, status, model
+				company_id, requested_by_user_id, certificate_ids, prompt, status, provider, model
 			)
-			SELECT %s::uuid, %s::uuid, %s::jsonb, %s, 'queued', %s
+			SELECT %s::uuid, %s::uuid, %s::jsonb, %s, 'queued', %s, %s
 			FROM selected
 			WHERE total = %d
 			  AND NOT EXISTS (
@@ -127,7 +140,7 @@ func (a *app) startTechnicalCertificateAIAnalysis(w http.ResponseWriter, r *http
 		SELECT COALESCE(row_to_json(item), 'null'::json) FROM (
 			SELECT id::text AS id, status FROM inserted
 		) item;
-	`, sqlQuote(session.CompanyID), idsSQL, sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(string(idsJSON)), sqlQuote(input.Prompt), sqlQuote(model), len(input.CertificateIDs), sqlQuote(session.CompanyID)))
+	`, sqlQuote(session.CompanyID), idsSQL, sqlQuote(session.CompanyID), sqlQuote(session.UserID), sqlQuote(string(idsJSON)), sqlQuote(input.Prompt), sqlQuote(initialProvider), sqlQuote(initialModel), len(input.CertificateIDs), sqlQuote(session.CompanyID)))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "nao foi possivel iniciar a analise dos atestados")
 		return
@@ -143,11 +156,11 @@ func (a *app) startTechnicalCertificateAIAnalysis(w http.ResponseWriter, r *http
 		writeError(w, http.StatusInternalServerError, "nao foi possivel preparar a analise")
 		return
 	}
-	go a.runTechnicalCertificateAIAnalysis(created.ID, session.CompanyID, model)
+	go a.runTechnicalCertificateAIAnalysis(created.ID, session.CompanyID, input.Provider)
 	writeRawJSON(w, http.StatusAccepted, payload)
 }
 
-func (a *app) runTechnicalCertificateAIAnalysis(analysisID, companyID, model string) {
+func (a *app) runTechnicalCertificateAIAnalysis(analysisID, companyID, requestedProvider string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 	fail := func(cause error) {
@@ -218,22 +231,57 @@ func (a *app) runTechnicalCertificateAIAnalysis(analysisID, companyID, model str
 		"\nROTEIRO INFORMADO PELO USUARIO:\n" + request.Prompt,
 		"\nJSON DOS ATESTADOS:\n" + string(snapshot),
 	}, "\n\n")
-	result, responseID, err := a.requestTechnicalCertificateAI(ctx, model, instruction)
+	result, err := a.requestTechnicalCertificateAI(ctx, requestedProvider, instruction)
 	if err != nil {
 		fail(err)
 		return
 	}
 	_, err = a.runPSQL(ctx, fmt.Sprintf(`
 		UPDATE technical_certificate_ai_analyses
-		SET status='completed', input_snapshot=%s::jsonb, result_text=%s, response_id=%s, completed_at=now(), error_message=NULL
+		SET status='completed', input_snapshot=%s::jsonb, result_text=%s, response_id=%s,
+			provider=%s, model=%s, completed_at=now(), error_message=NULL
 		WHERE id=%s::uuid;
-	`, sqlQuote(string(snapshot)), sqlQuote(result), sqlQuote(responseID), sqlQuote(analysisID)))
+	`, sqlQuote(string(snapshot)), sqlQuote(result.Text), sqlQuote(result.ResponseID), sqlQuote(result.Provider), sqlQuote(result.Model), sqlQuote(analysisID)))
 	if err != nil {
 		fail(errors.New("a IA respondeu, mas nao foi possivel salvar o resultado"))
 	}
 }
 
-func (a *app) requestTechnicalCertificateAI(ctx context.Context, model, input string) (string, string, error) {
+func (a *app) requestTechnicalCertificateAI(ctx context.Context, requestedProvider, input string) (technicalCertificateAIResult, error) {
+	providers := []string{requestedProvider}
+	if requestedProvider == "automatic" {
+		providers = []string{"openai", "gemini", "groq"}
+	}
+	failures := make([]string, 0, len(providers))
+	for _, provider := range providers {
+		if !technicalCertificateAIProviderConfigured(provider) {
+			continue
+		}
+		var result technicalCertificateAIResult
+		var err error
+		switch provider {
+		case "openai":
+			result, err = a.requestTechnicalCertificateOpenAI(ctx, technicalCertificateAIOpenAIModel(), input)
+		case "gemini":
+			result, err = a.requestTechnicalCertificateGemini(ctx, technicalCertificateAIGeminiModel(), input)
+		case "groq":
+			result, err = a.requestGroqText(ctx, groqTechnicalCertificateModel(), input)
+		}
+		if err == nil {
+			return result, nil
+		}
+		failures = append(failures, technicalCertificateAIProviderLabel(provider)+": "+err.Error())
+		if requestedProvider != "automatic" {
+			break
+		}
+	}
+	if len(failures) == 0 {
+		return technicalCertificateAIResult{}, errors.New("nenhum provedor de IA esta configurado nesta instalacao")
+	}
+	return technicalCertificateAIResult{}, errors.New(strings.Join(failures, " | "))
+}
+
+func (a *app) requestTechnicalCertificateOpenAI(ctx context.Context, model, input string) (technicalCertificateAIResult, error) {
 	body, err := json.Marshal(map[string]any{
 		"model": model,
 		"input": []map[string]any{{
@@ -243,29 +291,30 @@ func (a *app) requestTechnicalCertificateAI(ctx context.Context, model, input st
 		"max_output_tokens": 16000,
 	})
 	if err != nil {
-		return "", "", errors.New("nao foi possivel preparar o pedido para a IA")
+		return technicalCertificateAIResult{}, errors.New("nao foi possivel preparar o pedido")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.openai.com/v1/responses", bytes.NewReader(body))
+	baseURL := strings.TrimRight(getenv("OPENAI_API_BASE_URL", "https://api.openai.com/v1"), "/")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/responses", bytes.NewReader(body))
 	if err != nil {
-		return "", "", errors.New("nao foi possivel criar o pedido para a IA")
+		return technicalCertificateAIResult{}, errors.New("nao foi possivel criar o pedido")
 	}
 	req.Header.Set("Authorization", "Bearer "+os.Getenv("OPENAI_API_KEY"))
 	req.Header.Set("Content-Type", "application/json")
 	response, err := a.httpClient.Do(req)
 	if err != nil {
-		return "", "", errors.New("nao foi possivel comunicar com a IA; tente novamente")
+		return technicalCertificateAIResult{}, errors.New("nao foi possivel comunicar com a API; tente novamente")
 	}
 	defer response.Body.Close()
 	responseBody, err := io.ReadAll(io.LimitReader(response.Body, 12*1024*1024))
 	if err != nil {
-		return "", "", errors.New("nao foi possivel ler a resposta da IA")
+		return technicalCertificateAIResult{}, errors.New("nao foi possivel ler a resposta")
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return "", "", technicalCertificateAIProviderError(response.StatusCode, responseBody)
+		return technicalCertificateAIResult{}, technicalCertificateAIOpenAIError(response.StatusCode, responseBody)
 	}
 	var parsed openAIResponse
 	if err := json.Unmarshal(responseBody, &parsed); err != nil {
-		return "", "", errors.New("a IA retornou uma resposta invalida")
+		return technicalCertificateAIResult{}, errors.New("a API retornou uma resposta invalida")
 	}
 	result := strings.TrimSpace(parsed.OutputText)
 	if result == "" {
@@ -278,12 +327,12 @@ func (a *app) requestTechnicalCertificateAI(ctx context.Context, model, input st
 		}
 	}
 	if strings.TrimSpace(result) == "" {
-		return "", "", errors.New("a IA nao retornou uma analise")
+		return technicalCertificateAIResult{}, errors.New("a API nao retornou uma analise")
 	}
-	return strings.TrimSpace(result), parsed.ID, nil
+	return technicalCertificateAIResult{Text: strings.TrimSpace(result), ResponseID: parsed.ID, Provider: "openai", Model: model}, nil
 }
 
-func technicalCertificateAIProviderError(status int, payload []byte) error {
+func technicalCertificateAIOpenAIError(status int, payload []byte) error {
 	var providerError struct {
 		Error struct {
 			Message string `json:"message"`
@@ -295,11 +344,175 @@ func technicalCertificateAIProviderError(status int, payload []byte) error {
 	details := strings.ToLower(strings.Join([]string{providerError.Error.Message, providerError.Error.Type, providerError.Error.Code}, " "))
 	if status == http.StatusTooManyRequests {
 		if strings.Contains(details, "quota") || strings.Contains(details, "billing") || strings.Contains(details, "credit") {
-			return errors.New("a conta da API da OpenAI nao possui credito disponivel ou faturamento ativo")
+			return errors.New("a conta nao possui credito disponivel ou faturamento ativo")
 		}
-		return errors.New("a conta da API da OpenAI atingiu um limite temporario; aguarde alguns minutos e tente novamente")
+		return errors.New("a conta atingiu um limite temporario")
 	}
-	return fmt.Errorf("a IA recusou a analise (codigo %d)", status)
+	return fmt.Errorf("a API recusou a analise (codigo %d)", status)
+}
+
+func (a *app) requestTechnicalCertificateGemini(ctx context.Context, model, input string) (technicalCertificateAIResult, error) {
+	body, err := json.Marshal(map[string]any{
+		"contents": []map[string]any{{
+			"role":  "user",
+			"parts": []map[string]string{{"text": input}},
+		}},
+		"generationConfig": map[string]any{
+			"maxOutputTokens": 16000,
+		},
+	})
+	if err != nil {
+		return technicalCertificateAIResult{}, errors.New("nao foi possivel preparar o pedido")
+	}
+	baseURL := strings.TrimRight(getenv("GEMINI_API_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"), "/")
+	endpoint := baseURL + "/models/" + model + ":generateContent"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return technicalCertificateAIResult{}, errors.New("nao foi possivel criar o pedido")
+	}
+	req.Header.Set("x-goog-api-key", os.Getenv("GEMINI_API_KEY"))
+	req.Header.Set("Content-Type", "application/json")
+	response, err := a.httpClient.Do(req)
+	if err != nil {
+		return technicalCertificateAIResult{}, errors.New("nao foi possivel comunicar com a API; tente novamente")
+	}
+	defer response.Body.Close()
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, 12*1024*1024))
+	if err != nil {
+		return technicalCertificateAIResult{}, errors.New("nao foi possivel ler a resposta")
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return technicalCertificateAIResult{}, technicalCertificateAIGeminiError(response.StatusCode, responseBody)
+	}
+	var parsed struct {
+		ResponseID   string `json:"responseId"`
+		ModelVersion string `json:"modelVersion"`
+		Candidates   []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+	if err := json.Unmarshal(responseBody, &parsed); err != nil {
+		return technicalCertificateAIResult{}, errors.New("a API retornou uma resposta invalida")
+	}
+	var result strings.Builder
+	for _, candidate := range parsed.Candidates {
+		for _, part := range candidate.Content.Parts {
+			result.WriteString(part.Text)
+		}
+		if strings.TrimSpace(result.String()) != "" {
+			break
+		}
+	}
+	if strings.TrimSpace(result.String()) == "" {
+		return technicalCertificateAIResult{}, errors.New("a API nao retornou uma analise")
+	}
+	resolvedModel := model
+	if strings.TrimSpace(parsed.ModelVersion) != "" {
+		resolvedModel = strings.TrimSpace(parsed.ModelVersion)
+	}
+	return technicalCertificateAIResult{
+		Text:       strings.TrimSpace(result.String()),
+		ResponseID: parsed.ResponseID,
+		Provider:   "gemini",
+		Model:      resolvedModel,
+	}, nil
+}
+
+func technicalCertificateAIGeminiError(status int, payload []byte) error {
+	var providerError struct {
+		Error struct {
+			Message string `json:"message"`
+			Status  string `json:"status"`
+			Code    int    `json:"code"`
+		} `json:"error"`
+	}
+	_ = json.Unmarshal(payload, &providerError)
+	details := strings.ToLower(providerError.Error.Message + " " + providerError.Error.Status)
+	if status == http.StatusTooManyRequests {
+		if strings.Contains(details, "quota") || strings.Contains(details, "billing") {
+			return errors.New("a cota gratuita ou o credito da conta foi esgotado")
+		}
+		return errors.New("a conta atingiu um limite temporario")
+	}
+	if status == http.StatusForbidden || status == http.StatusUnauthorized {
+		return errors.New("a chave nao foi aceita ou nao possui permissao")
+	}
+	return fmt.Errorf("a API recusou a analise (codigo %d)", status)
+}
+
+func normalizeTechnicalCertificateAIProvider(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "auto", "automatic", "automatico":
+		return "automatic"
+	case "openai":
+		return "openai"
+	case "gemini", "google":
+		return "gemini"
+	case "groq":
+		return "groq"
+	default:
+		return ""
+	}
+}
+
+func technicalCertificateAIProviderConfigured(provider string) bool {
+	switch provider {
+	case "automatic":
+		return technicalCertificateAIProviderConfigured("openai") || technicalCertificateAIProviderConfigured("gemini") || technicalCertificateAIProviderConfigured("groq")
+	case "openai":
+		return strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != ""
+	case "gemini":
+		return strings.TrimSpace(os.Getenv("GEMINI_API_KEY")) != ""
+	case "groq":
+		return strings.TrimSpace(os.Getenv("GROQ_API_KEY")) != ""
+	default:
+		return false
+	}
+}
+
+func technicalCertificateAIProviderConfigurationMessage(provider string) string {
+	switch provider {
+	case "openai":
+		return "a OpenAI ainda nao foi configurada nesta instalacao"
+	case "gemini":
+		return "o Google Gemini ainda nao foi configurado nesta instalacao"
+	case "groq":
+		return "a Groq ainda nao foi configurada nesta instalacao"
+	default:
+		return "nenhum provedor de IA foi configurado nesta instalacao"
+	}
+}
+
+func technicalCertificateAIInitialProvider(requestedProvider string) (string, string) {
+	if requestedProvider == "groq" || requestedProvider == "automatic" && !technicalCertificateAIProviderConfigured("openai") && !technicalCertificateAIProviderConfigured("gemini") {
+		return "groq", groqTechnicalCertificateModel()
+	}
+	if requestedProvider == "gemini" || requestedProvider == "automatic" && !technicalCertificateAIProviderConfigured("openai") {
+		return "gemini", technicalCertificateAIGeminiModel()
+	}
+	return "openai", technicalCertificateAIOpenAIModel()
+}
+
+func technicalCertificateAIOpenAIModel() string {
+	return strings.TrimSpace(getenv("OPENAI_TECHNICAL_ANALYSIS_MODEL", getenv("OPENAI_ANALYSIS_MODEL", "gpt-5.6")))
+}
+
+func technicalCertificateAIGeminiModel() string {
+	return strings.TrimSpace(getenv("GEMINI_TECHNICAL_ANALYSIS_MODEL", getenv("GEMINI_MODEL", "gemini-3.5-flash")))
+}
+
+func technicalCertificateAIProviderLabel(provider string) string {
+	if provider == "gemini" {
+		return "Google Gemini"
+	}
+	if provider == "groq" {
+		return "Groq"
+	}
+	return "OpenAI"
 }
 
 func technicalCertificateAIInputSQL(ids []string, companyID string) string {

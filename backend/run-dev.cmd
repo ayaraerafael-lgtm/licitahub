@@ -25,6 +25,14 @@ if exist "%~dp0.env.openai" (
   for /f "usebackq tokens=1,* delims==" %%A in ("%~dp0.env.openai") do set "%%A=%%B"
 )
 
+if exist "%~dp0.env.gemini" (
+  for /f "usebackq tokens=1,* delims==" %%A in ("%~dp0.env.gemini") do set "%%A=%%B"
+)
+
+if exist "%~dp0.env.groq" (
+  for /f "usebackq tokens=1,* delims==" %%A in ("%~dp0.env.groq") do set "%%A=%%B"
+)
+
 if "%PGPASSWORD%"=="" (
   set /p PGPASSWORD=Senha do usuario postgres: 
 )

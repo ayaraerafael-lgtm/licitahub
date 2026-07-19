@@ -321,6 +321,13 @@ type openAIResponse struct {
 	} `json:"output"`
 }
 
+type tenderAIAnalysisResult struct {
+	HTML       string
+	ResponseID string
+	Provider   string
+	Model      string
+}
+
 type tenderInterestRequirementRequest struct {
 	RequirementKey string `json:"requirementKey"`
 	StatusKey      string `json:"statusKey"`
@@ -548,6 +555,7 @@ func main() {
 	mux.HandleFunc("/api/tenders", application.handleTenders)
 	mux.HandleFunc("/api/pncp/captures/", application.handlePNCPCaptureByPath)
 	mux.HandleFunc("/api/pncp/captures", application.handlePNCPCaptures)
+	mux.HandleFunc("/api/pncp/ai-analysis", application.handlePNCPAIAnalysis)
 	mux.HandleFunc("/api/tender-challenges/", application.handleTenderChallengeByPath)
 	mux.HandleFunc("/api/tender-challenges", application.handleTenderChallenges)
 	mux.HandleFunc("/api/partnership-ads/", application.handlePartnershipAdByPath)
@@ -3299,7 +3307,7 @@ func (a *app) getTenderAIAnalysis(w http.ResponseWriter, r *http.Request, tender
 	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
 		SELECT COALESCE(row_to_json(job), 'null'::json)
 		FROM (
-			SELECT id::text AS id, status, COALESCE(model, '') AS model,
+			SELECT id::text AS id, status, COALESCE(provider, 'openai') AS provider, COALESCE(model, '') AS model,
 				COALESCE(error_message, '') AS "errorMessage", source_file_count AS "sourceFileCount",
 				created_at AS "createdAt", started_at AS "startedAt", completed_at AS "completedAt"
 			FROM tender_ai_analysis_jobs
@@ -3324,11 +3332,43 @@ func (a *app) startTenderAIAnalysis(w http.ResponseWriter, r *http.Request, tend
 		writeError(w, http.StatusForbidden, "apenas administrador da plataforma pode gerar a pre-analise com IA")
 		return
 	}
-	if strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) == "" {
+	if !technicalCertificateAIProviderConfigured("automatic") {
 		writeError(w, http.StatusPreconditionFailed, "a IA ainda nao foi configurada nesta instalacao")
 		return
 	}
-	model := strings.TrimSpace(getenv("OPENAI_ANALYSIS_MODEL", "gpt-5.6"))
+	availabilityPayload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
+		SELECT json_build_object(
+			'exists', EXISTS (
+				SELECT 1 FROM tenders
+				WHERE id = %s::uuid AND deleted_at IS NULL
+			),
+			'hasAnalysis', EXISTS (
+				SELECT 1 FROM tender_files
+				WHERE tender_id = %s::uuid AND file_type = 'analysis_html'
+			)
+		);
+	`, sqlQuote(tenderID), sqlQuote(tenderID)))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel verificar a pre-analise do edital")
+		return
+	}
+	var availability struct {
+		Exists      bool `json:"exists"`
+		HasAnalysis bool `json:"hasAnalysis"`
+	}
+	if err := json.Unmarshal(availabilityPayload, &availability); err != nil {
+		writeError(w, http.StatusInternalServerError, "nao foi possivel verificar a pre-analise do edital")
+		return
+	}
+	if !availability.Exists {
+		writeError(w, http.StatusNotFound, "edital nao encontrado")
+		return
+	}
+	if availability.HasAnalysis {
+		writeError(w, http.StatusConflict, "este edital ja possui uma pre-analise HTML")
+		return
+	}
+	initialProvider, initialModel := tenderAIInitialProvider()
 	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
 		WITH selected_tender AS (
 			SELECT id FROM tenders WHERE id = %s::uuid AND deleted_at IS NULL
@@ -3338,11 +3378,15 @@ func (a *app) startTenderAIAnalysis(w http.ResponseWriter, r *http.Request, tend
 			WHERE tf.file_type = 'tender_document'
 		), inserted_job AS (
 			INSERT INTO tender_ai_analysis_jobs (
-				tender_id, requested_by_user_id, status, model, prompt_version, source_file_count
+				tender_id, requested_by_user_id, status, provider, model, prompt_version, source_file_count
 			)
-			SELECT st.id, %s::uuid, 'queued', %s, 'analise-primaria-v1', input_files.total
+			SELECT st.id, %s::uuid, 'queued', %s, %s, 'analise-primaria-v1', input_files.total
 			FROM selected_tender st CROSS JOIN input_files
 			WHERE input_files.total > 0
+			  AND NOT EXISTS (
+				SELECT 1 FROM tender_files analysis
+				WHERE analysis.tender_id = st.id AND analysis.file_type = 'analysis_html'
+			  )
 			  AND NOT EXISTS (
 				SELECT 1 FROM tender_ai_analysis_jobs active
 				WHERE active.tender_id = st.id AND active.status IN ('queued', 'processing')
@@ -3353,7 +3397,7 @@ func (a *app) startTenderAIAnalysis(w http.ResponseWriter, r *http.Request, tend
 			SELECT id::text AS id, tender_id::text AS "tenderId", source_file_count AS "sourceFileCount", 'queued' AS status
 			FROM inserted_job
 		) item;
-	`, sqlQuote(tenderID), sqlQuote(session.UserID), sqlQuote(model)))
+	`, sqlQuote(tenderID), sqlQuote(session.UserID), sqlQuote(initialProvider), sqlQuote(initialModel)))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "nao foi possivel iniciar a pre-analise")
 		return
@@ -3369,11 +3413,11 @@ func (a *app) startTenderAIAnalysis(w http.ResponseWriter, r *http.Request, tend
 		writeError(w, http.StatusInternalServerError, "nao foi possivel preparar a analise")
 		return
 	}
-	go a.runTenderAIAnalysis(job.ID, tenderID, session.UserID, model)
+	go a.runTenderAIAnalysis(job.ID, tenderID, session.UserID)
 	writeRawJSON(w, http.StatusAccepted, payload)
 }
 
-func (a *app) runTenderAIAnalysis(jobID, tenderID, userID, model string) {
+func (a *app) runTenderAIAnalysis(jobID, tenderID, userID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 	if _, err := a.runPSQL(ctx, fmt.Sprintf(`UPDATE tender_ai_analysis_jobs SET status='processing', started_at=now(), error_message=NULL WHERE id=%s::uuid;`, sqlQuote(jobID))); err != nil {
@@ -3452,11 +3496,12 @@ func (a *app) runTenderAIAnalysis(jobID, tenderID, userID, model string) {
 		fail(errors.New("nenhum documento em formato analisavel foi encontrado; anexe ao menos PDF, Word, planilha, texto ou imagem"))
 		return
 	}
-	html, responseID, err := a.requestTenderAnalysis(ctx, model, content)
+	analysisResult, err := a.requestTenderAnalysis(ctx, content)
 	if err != nil {
 		fail(err)
 		return
 	}
+	html := analysisResult.HTML
 	html, err = validateAIAnalysisHTML(html)
 	if err != nil {
 		fail(err)
@@ -3474,37 +3519,39 @@ func (a *app) runTenderAIAnalysis(jobID, tenderID, userID, model string) {
 			RETURNING id
 		)
 		UPDATE tender_ai_analysis_jobs
-		SET status='completed', response_id=%s, analysis_file_id=(SELECT id FROM inserted_file), completed_at=now(), error_message=NULL
+		SET status='completed', response_id=%s, provider=%s, model=%s,
+			analysis_file_id=(SELECT id FROM inserted_file), completed_at=now(), error_message=NULL
 		WHERE id=%s::uuid;
-	`, sqlQuote(tenderID), sqlQuote(analysisURL), sqlQuote(userID), sqlQuote(responseID), sqlQuote(jobID)))
+	`, sqlQuote(tenderID), sqlQuote(analysisURL), sqlQuote(userID), sqlQuote(analysisResult.ResponseID), sqlQuote(analysisResult.Provider), sqlQuote(analysisResult.Model), sqlQuote(jobID)))
 	if err != nil {
 		fail(errors.New("a analise foi gerada, mas nao foi possivel salva-la no edital"))
 	}
 }
 
-func (a *app) requestTenderAnalysis(ctx context.Context, model string, content []map[string]any) (string, string, error) {
+func (a *app) requestTenderAnalysisOpenAI(ctx context.Context, model string, content []map[string]any) (tenderAIAnalysisResult, error) {
 	body, err := json.Marshal(map[string]any{
 		"model":             model,
 		"input":             []map[string]any{{"role": "user", "content": content}},
 		"max_output_tokens": 32000,
 	})
 	if err != nil {
-		return "", "", errors.New("nao foi possivel preparar o pedido para a IA")
+		return tenderAIAnalysisResult{}, errors.New("nao foi possivel preparar o pedido")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.openai.com/v1/responses", bytes.NewReader(body))
+	baseURL := strings.TrimRight(getenv("OPENAI_API_BASE_URL", "https://api.openai.com/v1"), "/")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/responses", bytes.NewReader(body))
 	if err != nil {
-		return "", "", errors.New("nao foi possivel criar o pedido para a IA")
+		return tenderAIAnalysisResult{}, errors.New("nao foi possivel criar o pedido")
 	}
 	req.Header.Set("Authorization", "Bearer "+os.Getenv("OPENAI_API_KEY"))
 	req.Header.Set("Content-Type", "application/json")
 	response, err := a.httpClient.Do(req)
 	if err != nil {
-		return "", "", errors.New("nao foi possivel comunicar com a IA; tente novamente")
+		return tenderAIAnalysisResult{}, errors.New("nao foi possivel comunicar com a API; tente novamente")
 	}
 	defer response.Body.Close()
 	responseBody, err := io.ReadAll(io.LimitReader(response.Body, 12*1024*1024))
 	if err != nil {
-		return "", "", errors.New("nao foi possivel ler a resposta da IA")
+		return tenderAIAnalysisResult{}, errors.New("nao foi possivel ler a resposta")
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		var providerError struct {
@@ -3518,15 +3565,15 @@ func (a *app) requestTenderAnalysis(ctx context.Context, model string, content [
 		providerDetails := strings.ToLower(strings.Join([]string{providerError.Error.Message, providerError.Error.Type, providerError.Error.Code}, " "))
 		if response.StatusCode == http.StatusTooManyRequests {
 			if strings.Contains(providerDetails, "quota") || strings.Contains(providerDetails, "billing") || strings.Contains(providerDetails, "credit") {
-				return "", "", errors.New("a conta da API da OpenAI nao possui credito disponivel ou faturamento ativo")
+				return tenderAIAnalysisResult{}, errors.New("a conta nao possui credito disponivel ou faturamento ativo")
 			}
-			return "", "", errors.New("a conta da API da OpenAI atingiu um limite temporario; aguarde alguns minutos e tente novamente")
+			return tenderAIAnalysisResult{}, errors.New("a conta atingiu um limite temporario")
 		}
-		return "", "", fmt.Errorf("a IA recusou a analise (codigo %d)", response.StatusCode)
+		return tenderAIAnalysisResult{}, fmt.Errorf("a API recusou a analise (codigo %d)", response.StatusCode)
 	}
 	var parsed openAIResponse
 	if err := json.Unmarshal(responseBody, &parsed); err != nil {
-		return "", "", errors.New("a IA retornou uma resposta invalida")
+		return tenderAIAnalysisResult{}, errors.New("a API retornou uma resposta invalida")
 	}
 	result := strings.TrimSpace(parsed.OutputText)
 	if result == "" {
@@ -3539,9 +3586,9 @@ func (a *app) requestTenderAnalysis(ctx context.Context, model string, content [
 		}
 	}
 	if result == "" {
-		return "", "", errors.New("a IA nao retornou o HTML da analise")
+		return tenderAIAnalysisResult{}, errors.New("a API nao retornou o HTML da analise")
 	}
-	return result, parsed.ID, nil
+	return tenderAIAnalysisResult{HTML: result, ResponseID: parsed.ID, Provider: "openai", Model: model}, nil
 }
 
 func (a *app) uploadTenderDocument(w http.ResponseWriter, r *http.Request, tenderID string) {
@@ -3663,6 +3710,12 @@ func (a *app) listTenders(w http.ResponseWriter, r *http.Request) {
 				t.status,
 				COALESCE(t.cloud_folder_url, '') AS "cloudFolderUrl",
 				t.created_at AS "createdAt",
+				EXISTS (
+					SELECT 1
+					FROM tender_files tf
+					WHERE tf.tender_id = t.id
+					  AND tf.file_type = 'analysis_html'
+				) AS "hasAnalysis",
 				%s AS "hasMyInterest"
 			FROM tenders t
 			WHERE t.deleted_at IS NULL
@@ -4227,7 +4280,7 @@ func tenderDetailSQL(id string, session sessionUser) string {
 				COALESCE((
 					SELECT row_to_json(ai_job)
 					FROM (
-						SELECT id::text AS id, status, COALESCE(model, '') AS model,
+						SELECT id::text AS id, status, COALESCE(provider, 'openai') AS provider, COALESCE(model, '') AS model,
 							COALESCE(error_message, '') AS "errorMessage", source_file_count AS "sourceFileCount",
 							created_at AS "createdAt", started_at AS "startedAt", completed_at AS "completedAt"
 						FROM tender_ai_analysis_jobs
@@ -6430,6 +6483,45 @@ func (a *app) ensureDatabaseMigrations(ctx context.Context) error {
 			ON pncp_captures(status, relevance_score DESC, opening_date ASC);
 		CREATE INDEX IF NOT EXISTS idx_pncp_captures_control_number
 			ON pncp_captures(pncp_control_number) WHERE pncp_control_number IS NOT NULL;
+		CREATE TABLE IF NOT EXISTS pncp_capture_ai_jobs (
+			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+			requested_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+			capture_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+			status varchar(30) NOT NULL DEFAULT 'queued',
+			total_count integer NOT NULL DEFAULT 0,
+			processed_count integer NOT NULL DEFAULT 0,
+			success_count integer NOT NULL DEFAULT 0,
+			failure_count integer NOT NULL DEFAULT 0,
+			prompt_version varchar(80) NOT NULL,
+			error_message text,
+			created_at timestamptz NOT NULL DEFAULT now(),
+			started_at timestamptz,
+			completed_at timestamptz,
+			CONSTRAINT pncp_capture_ai_jobs_status_chk CHECK (status IN ('queued', 'processing', 'completed', 'failed'))
+		);
+		CREATE TABLE IF NOT EXISTS pncp_capture_ai_analyses (
+			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+			job_id uuid REFERENCES pncp_capture_ai_jobs(id) ON DELETE SET NULL,
+			capture_id uuid NOT NULL REFERENCES pncp_captures(id) ON DELETE CASCADE,
+			classification varchar(30) NOT NULL,
+			confidence integer NOT NULL,
+			justification text NOT NULL,
+			areas jsonb NOT NULL DEFAULT '[]'::jsonb,
+			provider varchar(30) NOT NULL,
+			model varchar(120) NOT NULL,
+			response_id varchar(180),
+			prompt_version varchar(80) NOT NULL,
+			created_at timestamptz NOT NULL DEFAULT now(),
+			CONSTRAINT pncp_capture_ai_classification_chk CHECK (classification IN ('consultiva', 'relacionada', 'nao_consultiva', 'duvidosa')),
+			CONSTRAINT pncp_capture_ai_confidence_chk CHECK (confidence BETWEEN 0 AND 100)
+		);
+		CREATE INDEX IF NOT EXISTS idx_pncp_capture_ai_jobs_created
+			ON pncp_capture_ai_jobs(created_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_pncp_capture_ai_analyses_capture_created
+			ON pncp_capture_ai_analyses(capture_id, created_at DESC);
+		UPDATE pncp_capture_ai_jobs
+		SET status='failed', error_message='processamento interrompido pelo reinicio do backend', completed_at=now()
+		WHERE status IN ('queued', 'processing');
 		UPDATE notifications
 		SET destination_screen = 'tender-detail'
 		WHERE title = 'Novo edital publicado'
@@ -6443,6 +6535,7 @@ func (a *app) ensureDatabaseMigrations(ctx context.Context) error {
 			tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
 			requested_by_user_id uuid REFERENCES users(id),
 			status varchar(30) NOT NULL DEFAULT 'queued',
+			provider varchar(30) NOT NULL DEFAULT 'openai',
 			model varchar(120),
 			prompt_version varchar(80) NOT NULL DEFAULT 'analise-primaria-v1',
 			source_file_count integer NOT NULL DEFAULT 0,
@@ -6454,6 +6547,8 @@ func (a *app) ensureDatabaseMigrations(ctx context.Context) error {
 			completed_at timestamptz,
 			CONSTRAINT tender_ai_analysis_jobs_status_chk CHECK (status IN ('queued', 'processing', 'completed', 'failed'))
 		);
+		ALTER TABLE tender_ai_analysis_jobs
+			ADD COLUMN IF NOT EXISTS provider varchar(30) NOT NULL DEFAULT 'openai';
 		CREATE INDEX IF NOT EXISTS idx_tender_ai_analysis_jobs_tender_created
 			ON tender_ai_analysis_jobs(tender_id, created_at DESC);
 		CREATE TABLE IF NOT EXISTS tender_challenges (
@@ -6771,6 +6866,7 @@ func (a *app) ensureDatabaseMigrations(ctx context.Context) error {
 			prompt text NOT NULL,
 			input_snapshot jsonb,
 			status varchar(30) NOT NULL DEFAULT 'queued',
+			provider varchar(30) NOT NULL DEFAULT 'openai',
 			model varchar(120) NOT NULL,
 			response_id varchar(180),
 			result_text text,
@@ -6780,6 +6876,8 @@ func (a *app) ensureDatabaseMigrations(ctx context.Context) error {
 			completed_at timestamptz,
 			CONSTRAINT technical_certificate_ai_analyses_status_chk CHECK (status IN ('queued', 'processing', 'completed', 'failed'))
 		);
+		ALTER TABLE technical_certificate_ai_analyses
+			ADD COLUMN IF NOT EXISTS provider varchar(30) NOT NULL DEFAULT 'openai';
 		CREATE INDEX IF NOT EXISTS idx_technical_certificate_ai_analyses_company_created
 			ON technical_certificate_ai_analyses(company_id, created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_technical_certificates_search ON technical_certificates USING GIN (

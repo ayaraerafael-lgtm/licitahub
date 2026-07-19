@@ -4,7 +4,7 @@ title LicitaHub - Commit e envio ao GitHub
 cd /d "%~dp0"
 
 set "GIT=C:\Program Files\Git\cmd\git.exe"
-set "COMMIT_MESSAGE=Atualiza modulos, regras de negocio e documentacao"
+set "COMMIT_MESSAGE=Aprimora captacao de editais e integracoes de IA"
 
 echo.
 echo ================================================
@@ -47,6 +47,8 @@ if errorlevel 1 (
 echo Validando a protecao de arquivos locais...
 for %%P in (
   "backend/.env.openai"
+  "backend/.env.gemini"
+  "backend/.env.groq"
   "backend/uploads"
   "backend/private_uploads"
   "backend/.tmp-go-build"
@@ -75,7 +77,7 @@ echo Validando o conteudo preparado...
 if errorlevel 1 goto error
 
 echo Conferindo se algum segredo foi preparado para envio...
-"%GIT%" diff --cached --name-only | findstr /I /R /C:"^backend/\.env\.openai$" /C:"^\.env$" /C:"^backend/uploads/" /C:"^backend/private_uploads/" /C:"^backend/tools/" >nul
+"%GIT%" diff --cached --name-only | findstr /I /R /C:"^backend/\.env\.openai$" /C:"^backend/\.env\.gemini$" /C:"^backend/\.env\.groq$" /C:"^\.env$" /C:"^backend/uploads/" /C:"^backend/private_uploads/" /C:"^backend/tools/" >nul
 if not errorlevel 1 (
   echo Um arquivo privado foi encontrado no commit.
   echo O envio foi interrompido.

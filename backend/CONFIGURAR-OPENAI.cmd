@@ -19,6 +19,7 @@ if "%OPENAI_ANALYSIS_MODEL%"=="" set "OPENAI_ANALYSIS_MODEL=gpt-5.6"
 
 > ".env.openai" echo OPENAI_API_KEY=%OPENAI_API_KEY%
 >> ".env.openai" echo OPENAI_ANALYSIS_MODEL=%OPENAI_ANALYSIS_MODEL%
+>> ".env.openai" echo OPENAI_CAPTURE_CLASSIFICATION_MODEL=%OPENAI_ANALYSIS_MODEL%
 
 echo.
 echo Configuracao salva. Feche e abra novamente o arquivo run-dev.cmd.

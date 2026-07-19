@@ -184,6 +184,10 @@ Preparar antes de iniciar:
 | PN-04 | Descarte | Descartar uma captura pendente | Registro e removido da fila e do banco, o contador diminui e nenhum edital e criado. |
 | PN-05 | Duplicidade | Repetir uma consulta que já retornou o mesmo registro do PNCP | A fila atualiza a mesma captura sem duplicar o edital. |
 | PN-06 | Fonte indisponível | Consultar quando a fonte externa não responder | Sistema mostra mensagem clara e não altera a fila existente. |
+| PN-07 | Página seguinte | Consultar a página 1 e depois acionar a próxima página | Cada comando consulta apenas a página indicada; os resultados anteriores permanecem na fila. |
+| PN-08 | Multimodalidade | Consultar PNCP com quatro modalidades selecionadas | O backend solicita a mesma página de cada modalidade, com até 50 registros por modalidade, e unifica repetições. |
+| PN-09 | Saneamento por ordem | Captar um processo no Compras.gov.br e depois no PNCP; repetir em ordem inversa com outro processo | Quando o número de controle PNCP é idêntico, cada par resulta em um único item saneado, independentemente da ordem. |
+| PN-10 | Sem controle comum | Captar registros parecidos das duas fontes sem número de controle PNCP comum | Os itens permanecem separados para revisão; objeto, órgão, número e valor não provocam unificação aproximada. |
 
 ## 13B. Seguranca e regressao
 
@@ -233,6 +237,33 @@ Preparar antes de iniciar:
 | CT-08 | Pesquisa | Buscar termo existente em varios atestados | Sistema retorna somente os registros cujo texto ou dados contenham o termo. |
 | CT-09 | Selecao IA | Marcar varios atestados e abrir Analise com IA | Tela recebe somente os atestados selecionados e monta o conjunto estruturado para analise. |
 | CT-10 | IA indisponivel | Solicitar analise sem chave ou credito | Sistema preserva os dados e mostra erro compreensivel sem travar o modulo. |
+| CT-11 | OpenAI | Escolher somente OpenAI e concluir uma analise | Resultado identifica OpenAI e o modelo utilizado. |
+| CT-12 | Gemini | Escolher somente Google Gemini e concluir uma analise | Resultado identifica Google Gemini e o modelo utilizado. |
+| CT-13 | Fallback | Usar modo automatico com OpenAI indisponivel e Gemini configurado | Gemini assume a solicitacao; resultado identifica o provedor real sem duplicar a analise. |
+| CT-14 | Groq | Escolher somente Groq e concluir uma analise | Resultado identifica Groq e o modelo utilizado. |
+| CT-15 | Fallback completo | Usar modo automatico com OpenAI e Gemini indisponiveis e Groq configurada | Groq assume a solicitacao e o historico identifica o provedor real. |
+
+### Pre-analise de editais com IA
+
+| ID | Cenario | Acao | Resultado esperado |
+|---|---|---|---|
+| IA-ED-01 | OpenAI disponivel | Gerar a pre-analise de um edital com documentos anexados | HTML e salvo no edital e o resultado identifica OpenAI e o modelo. |
+| IA-ED-02 | Fallback Gemini | Simular falta de credito ou indisponibilidade da OpenAI com Gemini configurado | Os mesmos documentos e roteiro seguem para o Gemini; o HTML e salvo e identifica Google Gemini e o modelo. |
+| IA-ED-03 | Falha dos dois provedores | Tornar OpenAI e Gemini indisponiveis | Job termina como falhou e apresenta as duas causas sem perder os documentos do edital. |
+| IA-ED-04 | Substituicao manual | Anexar um HTML depois de uma analise automatica | O novo HTML passa a ser exibido e continua disponivel para download. |
+
+### Triagem da captacao com IA
+
+| ID | Cenario | Acao | Resultado esperado |
+|---|---|---|---|
+| IA-CAP-01 | Toda a fila | Acionar `Analisar pendentes` | Job percorre todos os registros pendentes em lotes e mostra o progresso. |
+| IA-CAP-02 | Selecao | Marcar oportunidades e acionar `Analisar selecionadas` | Somente os identificadores marcados recebem nova classificacao. |
+| IA-CAP-03 | Fallback | Simular falha da OpenAI com Gemini configurado | Gemini classifica o lote e seu nome/modelo ficam registrados em cada resultado. |
+| IA-CAP-04 | JSON invalido | Simular resposta sem todos os identificadores ou com identificador externo | Resposta e recusada e nenhum resultado inconsistente e gravado. |
+| IA-CAP-05 | Filtros | Filtrar por consultiva, relacionada, duvidosa, nao consultiva e pendente | A fila apresenta somente a classificacao escolhida. |
+| IA-CAP-06 | Fallback Groq | Simular falha da OpenAI e do Gemini com Groq configurada | Groq classifica o lote em JSON estrito e seu nome/modelo ficam registrados. |
+| IA-CAP-06 | Decisao humana | Classificar uma oportunidade como nao consultiva | O sistema nao descarta nem publica automaticamente; os botoes administrativos continuam disponiveis. |
+| CT-14 | Resposta desfavoravel | Receber conclusao valida que nao atende ao roteiro | Sistema preserva a resposta e nao chama outro provedor apenas por discordancia do conteudo. |
 
 ## 13E. Academia LicitaHub
 

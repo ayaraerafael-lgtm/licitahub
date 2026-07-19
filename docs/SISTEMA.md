@@ -220,7 +220,12 @@ Uso principal: organizar profissionais e atestados tecnicos como insumos para av
 - A lista de atestados permite selecionar ate dez registros para analise conjunta.
 - A tela de analise recebe um roteiro escrito pelo usuario e envia para a IA os dados estruturados e o texto capturado dos atestados selecionados.
 - A resposta fica gravada no historico da analise, com situacao de fila, processamento, conclusao ou falha.
-- Essa funcao depende de chave da API da OpenAI configurada somente no backend e de creditos ativos na conta da API. Os documentos originais nao sao enviados nessa etapa; segue apenas o texto ja extraido e os dados cadastrais selecionados.
+- O usuario pode escolher selecao automatica, somente OpenAI, somente Google Gemini ou somente Groq.
+- No modo automatico, a ordem e OpenAI, Google Gemini e Groq. Se ocorrer falha tecnica, indisponibilidade, limite ou falta de credito, o backend tenta o provedor seguinte que estiver configurado.
+- Uma resposta valida, mesmo desfavoravel ao conteudo analisado, nao aciona outro provedor. O fallback existe apenas para falha de processamento.
+- O resultado identifica de forma visivel o provedor e o modelo que realmente responderam. O banco preserva esses dados no historico.
+- Essa funcao depende de ao menos uma chave de API configurada somente no backend. Os documentos originais nao sao enviados nessa etapa; segue apenas o texto ja extraido e os dados cadastrais selecionados.
+- A camada gratuita do Gemini deve ser usada somente com dados adequados as suas condicoes de privacidade. Antes da producao, o tratamento de documentos reais deve ser revisado conforme LGPD e termos do provedor.
 
 ## Modulo Academia LicitaHub
 
@@ -550,8 +555,12 @@ O administrador da plataforma pode anexar quantos documentos forem necessarios a
 - Cada tentativa fica registrada com situacao: aguardando, em processamento, concluida ou falhou.
 - O processamento usa somente os documentos diretamente anexados ao edital. Arquivos compactados e arquivos tecnicos sem conteudo textual nao entram na analise automatica.
 - A analise deve receber arquivos de ate 22 MB cada e 50 MB somados em uma unica solicitacao. Para maior fidelidade de tabelas, imagens e diagramas, prefira documentos em PDF.
-- A chave da API fica apenas no arquivo local `backend/.env.openai`, que e ignorado pelo Git. Ela nunca deve ser adicionada ao frontend ou enviada ao repositorio.
-- Para configurar no computador local, abra `backend/CONFIGURAR-OPENAI.cmd` e depois reinicie `backend/run-dev.cmd`.
+- A OpenAI e consultada primeiro. Se houver falta de credito, limite, indisponibilidade ou falha tecnica, o backend tenta automaticamente o Google Gemini.
+- O Gemini recebe os mesmos documentos e o mesmo roteiro. Os arquivos temporarios enviados ao servico sao removidos ao final da tentativa.
+- O provedor e o modelo que efetivamente geraram o HTML ficam registrados no banco e visiveis no detalhe do edital.
+- As chaves ficam apenas nos arquivos locais `backend/.env.openai`, `backend/.env.gemini` e `backend/.env.groq`, ignorados pelo Git. Elas nunca devem ser adicionadas ao frontend ou enviadas ao repositorio.
+- Para configurar no computador local, abra o arquivo `CONFIGURAR` correspondente ao provedor; depois reinicie `backend/run-dev.cmd`.
+- A Groq e utilizada somente nos fluxos baseados em texto e JSON. A pre-analise dos documentos de editais continua usando OpenAI e Gemini.
 
 ## Pedido de Impugnacao de Edital
 
@@ -671,6 +680,31 @@ Na fila, e possivel filtrar por texto, situacao, aderencia e valor estimado mini
 
 O administrador pode abrir a fonte oficial, preparar o cadastro ou descartar a oportunidade. Descartar remove a captura pendente da fila e do banco, reduzindo o contador e evitando acumulo de registros sem utilidade. Ao preparar, a origem e o criterio de julgamento sao levados para o rascunho do edital.
 
+### Paginacao das fontes
+
+- A consulta e controlada pelo administrador e processa somente a pagina indicada em cada comando.
+- No PNCP, o LicitaHub solicita ate 50 registros por pagina para cada modalidade selecionada.
+- Com as quatro modalidades padrao selecionadas, um comando pode receber ate 200 registros brutos: 50 de cada modalidade.
+- O total efetivamente salvo pode ser menor por causa da ultima pagina, registros incompletos ou repetidos.
+- Depois de receber uma pagina, o sistema prepara o comando para a pagina seguinte. Nao existe varredura automatica ilimitada.
+- Alterar periodo, estado, fonte ou modalidades reinicia a consulta na pagina 1.
+
+### Triagem da fila com IA
+
+O administrador pode solicitar a classificacao das oportunidades pendentes por inteligencia artificial, analisando toda a fila ou somente registros marcados.
+
+- O backend divide a selecao em lotes de 10 oportunidades e acompanha o progresso em segundo plano, reduzindo risco de resposta truncada.
+- A ordem de tentativa e OpenAI, Google Gemini e Groq. Se houver falha tecnica, falta de credito, limite ou resposta JSON inconsistente, o mesmo lote e encaminhado ao proximo provedor configurado.
+- O Gemini recebe um esquema de resposta `application/json` obrigatorio; se a primeira resposta ainda for inconsistente, o backend realiza uma segunda tentativa estruturada antes de encerrar o lote com falha.
+- A Groq recebe um esquema JSON estrito e atua como terceira alternativa, preservando a mesma validacao de identificadores e categorias antes da gravacao.
+- Cada oportunidade recebe uma classificacao: `consultiva`, `relacionada`, `nao_consultiva` ou `duvidosa`.
+- O resultado registra confianca de 0 a 100, justificativa, areas tecnicas identificadas, provedor, modelo, versao do roteiro e data.
+- A pontuacao por palavras do LicitaHub permanece separada da classificacao feita pela IA.
+- A fila permite filtrar somente engenharia consultiva, relacionadas, duvidosas, nao consultivas ou ainda nao analisadas.
+- A IA nunca publica nem descarta uma oportunidade. A decisao final continua exclusiva do administrador.
+- Os textos vindos das fontes oficiais sao tratados como dados nao confiaveis; eventuais instrucoes contidas no objeto devem ser ignoradas pelos provedores.
+- Novas analises criam historico e nao apagam resultados anteriores.
+
 A API publica do Compras.gov.br fornece dados estruturados disponibilizados, mas esta integracao nao le nem envia mensagens privadas, diligencias ou chat da sala de disputa em tempo real. Para essas operacoes, o usuario deve acessar o processo oficial.
 
 ## Atualizacao: WhatsApp planejado
@@ -687,6 +721,18 @@ Movimentacoes de interesse, match, consorcio e montagem sao filtradas pela empre
 
 As captacoes do PNCP e do Compras.gov.br sao unificadas na fila pelo numero de controle PNCP (`numeroControlePNCP`). Esse e o identificador principal e evita que a mesma contratacao apareca duas vezes.
 
-Quando o numero de controle nao estiver disponivel, a unificacao somente pode ocorrer com a combinacao exata de orgao, numero do edital e valor estimado. O objeto nao e usado em comparacao aproximada, pois editais de trechos diferentes podem ter textos semelhantes.
+O saneamento independe da ordem de consulta. Se o Compras.gov.br for consultado primeiro e o PNCP depois, ou vice-versa, o segundo registro encontra o primeiro pelo mesmo numero de controle e atualiza o item existente.
+
+Quando uma das fontes nao fornecer o numero de controle PNCP, o sistema nao unifica os registros entre fontes por semelhanca de objeto, orgao, numero ou valor. Eles permanecem separados para revisao humana, evitando unir indevidamente licitacoes parecidas de trechos ou escopos diferentes.
 
 No saneamento, os dados do PNCP sao a referencia principal. O Compras.gov.br complementa apenas campos ausentes, como modalidade, criterio de julgamento, valor, sessao, local ou outros dados estruturados. O item passa a indicar `PNCP + Compras.gov.br / saneado`, e o payload bruto das duas fontes permanece armazenado para rastreabilidade.
+
+## Atualizacao: outros portais de licitacao
+
+O LicitaHub nao presume que todos os portais oferecam uma API publica. As fontes sao tratadas em tres grupos:
+
+1. APIs publicas ou dados abertos, que podem ser integrados diretamente apos validacao tecnica e juridica.
+2. APIs privadas para compradores, clientes ou parceiros, que exigem credenciais, contrato ou autorizacao do portal.
+3. Portais apenas com consulta web ou area autenticada, que nao devem ser automatizados sem permissao e verificacao dos termos de uso.
+
+PNCP e Compras.gov.br permanecem como fontes automaticas ativas. Licitacoes-e, Portal de Compras Publicas, BNC, BLL, BEC/SP, Licitacoes CAIXA e Petronect sao fontes potenciais para estudo futuro. Uma integracao so deve entrar no produto quando houver meio oficial, estavel e autorizado de consulta. Captura por raspagem de pagina nao faz parte da arquitetura planejada.

@@ -17,7 +17,7 @@ O sistema ainda nao deve ser tratado como producao publica. Antes da hospedagem 
 - Banco: PostgreSQL 17.
 - Arquivos: diretorio local `backend/uploads/`.
 - OCR: Tesseract instalado no servidor.
-- IA opcional: API da OpenAI configurada apenas no backend.
+- IA opcional: APIs da OpenAI, Google Gemini e Groq configuradas apenas no backend.
 - Fontes oficiais: PNCP e Compras.gov.br/Dados Abertos.
 
 ## Estrutura
@@ -101,7 +101,7 @@ As permissoes sao verificadas no menu e novamente no backend. Esconder um comand
 
 ### Editais e parcerias
 
-- Cadastro, edicao, documentos, HTML de pre-analise e ciclo de vida do edital.
+- Cadastro, edicao, documentos, HTML de pre-analise e ciclo de vida do edital, com OpenAI e fallback automatico para Google Gemini.
 - Lista, detalhe, linha do tempo e registro de interesse.
 - Participacao individual, busca de parceiros ou acompanhamento.
 - Empresas interessadas, vitrine, avaliacao reciproca, match e consorcio.
@@ -124,16 +124,19 @@ As permissoes sao verificadas no menu e novamente no backend. Esconder um comand
 ### Captacao oficial
 
 - Consulta PNCP e Compras.gov.br.
+- Consulta paginada e comandada pelo administrador, sem varredura automatica ilimitada.
+- No PNCP, cada comando solicita uma pagina de ate 50 registros por modalidade selecionada.
 - Fila administrativa sem publicacao automatica.
 - Aderencia por termos de engenharia consultiva.
-- Preparacao de rascunho, descarte e saneamento objetivo entre fontes.
+- Preparacao de rascunho, descarte e saneamento entre fontes exclusivamente pelo numero de controle PNCP.
+- Classificacao opcional da fila por OpenAI, Google Gemini e Groq, mantendo a decisao final com o administrador.
 
 ### Capacidade tecnica
 
 - Profissionais, formacoes e contatos.
 - Atestados, CAT, quantitativos, documentos e texto completo.
 - Extracao de PDF, OCR e correcao manual.
-- Selecao de atestados e analise opcional pela API da OpenAI.
+- Selecao de atestados e analise opcional por OpenAI, Google Gemini ou Groq, com fallback automatico e identificacao do provedor no resultado.
 
 ### Academia LicitaHub
 
@@ -151,7 +154,7 @@ As permissoes sao verificadas no menu e novamente no backend. Esconder um comand
 - O usuario administrativo local padrao e `admin@licitahub.local`.
 - Senhas, tokens e chaves reais nao devem ser documentados nem enviados ao GitHub.
 - O arquivo `backend/.env.example` contem somente nomes de variaveis.
-- A chave da OpenAI, quando utilizada, fica em `backend/.env.openai`, ignorado pelo Git.
+- As chaves da OpenAI, Gemini e Groq, quando utilizadas, ficam em arquivos locais ignorados pelo Git.
 
 ## Comandos de verificacao
 

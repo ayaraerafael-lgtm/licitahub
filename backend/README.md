@@ -58,7 +58,16 @@ Banco e servidor:
 Integracoes:
 
 - `OPENAI_API_KEY`: chave opcional da OpenAI.
-- `OPENAI_MODEL`: modelo opcional usado pelas rotinas de IA.
+- `OPENAI_TECHNICAL_ANALYSIS_MODEL`: modelo da OpenAI usado na analise de atestados.
+- `GEMINI_API_KEY`: chave opcional do Google Gemini.
+- `GEMINI_TECHNICAL_ANALYSIS_MODEL`: modelo do Gemini usado na analise de atestados.
+- `GEMINI_TENDER_ANALYSIS_MODEL`: modelo de reserva usado na pre-analise dos editais.
+- `OPENAI_CAPTURE_CLASSIFICATION_MODEL`: modelo principal usado na triagem da fila captada.
+- `GEMINI_CAPTURE_CLASSIFICATION_MODEL`: modelo de reserva usado na triagem da fila captada.
+- `GROQ_API_KEY`: chave opcional da Groq.
+- `GROQ_MODEL`: modelo padrao da Groq.
+- `GROQ_TECHNICAL_ANALYSIS_MODEL`: modelo da Groq usado na analise de atestados.
+- `GROQ_CAPTURE_CLASSIFICATION_MODEL`: segundo modelo de reserva usado na triagem da fila captada.
 - Variaveis de fontes oficiais e limites podem ser adicionadas por ambiente conforme a implantacao.
 
 `backend/.env.example` nao contem segredos. Chaves e senhas reais devem ficar no ambiente do processo ou em gerenciador de segredos.
@@ -74,6 +83,7 @@ Integracoes:
 - `technical_certificates.go`: atestados e OCR.
 - `technical_certificate_ai.go`: analise opcional de atestados por IA.
 - `pncp.go`: captacao PNCP e Compras.gov.br.
+- `pncp_ai.go`: classificacao em lotes da fila captada por OpenAI, com fallback para Gemini e Groq.
 - `prompts/`: roteiros de IA mantidos pelo produto.
 - `uploads/`: arquivos locais enviados.
 - `logs/`: logs locais quando configurados.
@@ -160,6 +170,18 @@ Avaliacao das associadas:
 - O envio da distribuicao e idempotente: repetir uma confirmacao ja gravada nao duplica votos.
 - Somente rodadas encerradas podem ser excluidas pelo administrador da plataforma.
 - O fechamento de uma rodada ocorre quando todas concluem ou quando o prazo termina.
+- A analise de atestados aceita selecao automatica, OpenAI, Google Gemini ou Groq.
+- No modo automatico, a ordem e OpenAI, Google Gemini e Groq. O provedor seguinte assume quando ocorre falha tecnica, limite ou indisponibilidade.
+- Cada resultado de IA registra e devolve explicitamente o provedor e o modelo que produziram a resposta.
+- A Groq atua nos fluxos baseados em texto e JSON. A pre-analise de documentos de editais permanece em OpenAI e Gemini.
+
+Captacao oficial:
+
+- Cada comando do PNCP consulta uma pagina por modalidade selecionada, com ate 50 registros por modalidade.
+- A pagina seguinte somente e consultada quando o administrador aciona o comando novamente.
+- Resultados repetidos da mesma fonte sao atualizados pela chave de origem.
+- PNCP e Compras.gov.br somente sao unificados entre si quando apresentam exatamente o mesmo numero de controle PNCP.
+- A ordem das consultas nao altera o saneamento. O PNCP permanece como referencia e o Compras.gov.br complementa campos ausentes.
 
 ## Testes e compilacao
 

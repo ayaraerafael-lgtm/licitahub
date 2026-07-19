@@ -304,6 +304,7 @@ CREATE TABLE IF NOT EXISTS technical_certificate_ai_analyses (
   prompt text NOT NULL,
   input_snapshot jsonb,
   status varchar(30) NOT NULL DEFAULT 'queued',
+  provider varchar(30) NOT NULL DEFAULT 'openai',
   model varchar(120) NOT NULL,
   response_id varchar(180),
   result_text text,
@@ -313,6 +314,9 @@ CREATE TABLE IF NOT EXISTS technical_certificate_ai_analyses (
   completed_at timestamptz,
   CONSTRAINT technical_certificate_ai_analyses_status_chk CHECK (status IN ('queued', 'processing', 'completed', 'failed'))
 );
+
+ALTER TABLE technical_certificate_ai_analyses
+  ADD COLUMN IF NOT EXISTS provider varchar(30) NOT NULL DEFAULT 'openai';
 
 CREATE INDEX IF NOT EXISTS idx_technical_certificate_ai_analyses_company_created
   ON technical_certificate_ai_analyses(company_id, created_at DESC);
@@ -632,6 +636,49 @@ CREATE INDEX IF NOT EXISTS idx_pncp_captures_control_number ON pncp_captures(pnc
 CREATE INDEX IF NOT EXISTS idx_pncp_captures_status_relevance
   ON pncp_captures(status, relevance_score DESC, opening_date ASC);
 
+CREATE TABLE IF NOT EXISTS pncp_capture_ai_jobs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  requested_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  capture_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+  status varchar(30) NOT NULL DEFAULT 'queued',
+  total_count integer NOT NULL DEFAULT 0,
+  processed_count integer NOT NULL DEFAULT 0,
+  success_count integer NOT NULL DEFAULT 0,
+  failure_count integer NOT NULL DEFAULT 0,
+  prompt_version varchar(80) NOT NULL,
+  error_message text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  started_at timestamptz,
+  completed_at timestamptz,
+  CONSTRAINT pncp_capture_ai_jobs_status_chk CHECK (status IN ('queued', 'processing', 'completed', 'failed'))
+);
+
+CREATE TABLE IF NOT EXISTS pncp_capture_ai_analyses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id uuid REFERENCES pncp_capture_ai_jobs(id) ON DELETE SET NULL,
+  capture_id uuid NOT NULL REFERENCES pncp_captures(id) ON DELETE CASCADE,
+  classification varchar(30) NOT NULL,
+  confidence integer NOT NULL,
+  justification text NOT NULL,
+  areas jsonb NOT NULL DEFAULT '[]'::jsonb,
+  provider varchar(30) NOT NULL,
+  model varchar(120) NOT NULL,
+  response_id varchar(180),
+  prompt_version varchar(80) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT pncp_capture_ai_classification_chk CHECK (classification IN ('consultiva', 'relacionada', 'nao_consultiva', 'duvidosa')),
+  CONSTRAINT pncp_capture_ai_confidence_chk CHECK (confidence BETWEEN 0 AND 100)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pncp_capture_ai_jobs_created
+  ON pncp_capture_ai_jobs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pncp_capture_ai_analyses_capture_created
+  ON pncp_capture_ai_analyses(capture_id, created_at DESC);
+
+UPDATE pncp_capture_ai_jobs
+SET status='failed', error_message='processamento interrompido pelo reinicio do backend', completed_at=now()
+WHERE status IN ('queued', 'processing');
+
 CREATE TABLE IF NOT EXISTS tender_files (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
@@ -651,6 +698,7 @@ CREATE TABLE IF NOT EXISTS tender_ai_analysis_jobs (
   tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
   requested_by_user_id uuid REFERENCES users(id),
   status varchar(30) NOT NULL DEFAULT 'queued',
+  provider varchar(30) NOT NULL DEFAULT 'openai',
   model varchar(120),
   prompt_version varchar(80) NOT NULL DEFAULT 'analise-primaria-v1',
   source_file_count integer NOT NULL DEFAULT 0,
@@ -662,6 +710,9 @@ CREATE TABLE IF NOT EXISTS tender_ai_analysis_jobs (
   completed_at timestamptz,
   CONSTRAINT tender_ai_analysis_jobs_status_chk CHECK (status IN ('queued', 'processing', 'completed', 'failed'))
 );
+
+ALTER TABLE tender_ai_analysis_jobs
+  ADD COLUMN IF NOT EXISTS provider varchar(30) NOT NULL DEFAULT 'openai';
 
 CREATE TABLE IF NOT EXISTS tender_challenges (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

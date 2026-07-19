@@ -135,7 +135,7 @@ Referencia: [OWASP - File Upload Security](https://cheatsheetseries.owasp.org/ch
 
 ## Fase 6 - Segredos, operacao e privacidade
 
-- Manter senha do banco, chave da OpenAI e demais segredos somente em gerenciador de segredos ou variaveis do ambiente de hospedagem.
+- Manter senha do banco, chaves da OpenAI, Google Gemini e Groq e demais segredos somente em gerenciador de segredos ou variaveis do ambiente de hospedagem.
 - Nunca enviar segredos ao GitHub, frontend, URL, mensagens de erro ou log.
 - Usar banco gerenciado com backup automatico, criptografia, restauracao testada e acesso restrito por rede.
 - Logs estruturados foram iniciados no backend: acessos HTTP, erros da API, falhas de banco, login, logout e tentativas de login recusadas.

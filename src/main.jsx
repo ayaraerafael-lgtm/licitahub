@@ -5171,6 +5171,11 @@ function TenderAdmin({ navigate }) {
   };
   const count = (status) => items.filter((item) => item.status === status).length;
   const date = (value) => value ? new Date(value).toLocaleDateString("pt-BR") : "-";
+  const compactObject = (value) => {
+    const fullText = String(value || "").trim() || "Objeto não informado";
+    const visibleText = fullText.length > 140 ? `${fullText.slice(0, 137).trimEnd()}...` : fullText;
+    return <span className="tenderObjectCell" title={fullText}>{visibleText}</span>;
+  };
   const filteredItems = items.filter((item) => {
     const term = filters.search.trim().toLowerCase();
     const matchesSearch = !term || [item.agency, item.number, item.object, item.city, item.judgmentCriterion].some((value) => String(value || "").toLowerCase().includes(term));
@@ -5339,6 +5344,7 @@ function TechnicalCertificateAI({ navigate }) {
   });
   const [certificates, setCertificates] = useState([]);
   const [prompt, setPrompt] = useState("");
+  const [provider, setProvider] = useState("automatic");
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -5379,7 +5385,7 @@ function TechnicalCertificateAI({ navigate }) {
     if (!certificates.length) { setMessage({ type: "error", text: "Nenhum atestado selecionado está disponível para análise." }); return; }
     setSending(true); setMessage({ type: "info", text: "Preparando o JSON e enviando os atestados selecionados para análise." });
     try {
-      const response = await fetch(`${API_BASE_URL}/api/technical-certificate-ai-analyses`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ certificateIds: certificates.map((item) => item.id), prompt: prompt.trim() }) });
+      const response = await fetch(`${API_BASE_URL}/api/technical-certificate-ai-analyses`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ certificateIds: certificates.map((item) => item.id), prompt: prompt.trim(), provider }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível iniciar a análise por IA.");
       window.sessionStorage.removeItem("licitahubTechnicalCertificateAISelection");
@@ -5389,12 +5395,13 @@ function TechnicalCertificateAI({ navigate }) {
     finally { setSending(false); }
   };
   const statusLabel = { queued: "Aguardando processamento", processing: "IA analisando os atestados", completed: "Análise concluída", failed: "Análise não concluída" };
+  const providerLabel = { openai: "OpenAI", gemini: "Google Gemini", groq: "Groq", automatic: "Seleção automática" };
   return <Page label="Capacidade técnica" title="Análise de atestados por IA" actions={<Button variant="secondary" onClick={() => navigate("technical-certificates")}>Voltar aos atestados</Button>}>
     <Card className="certificateIntro"><span className="eyebrow">Análise privada da empresa</span><h3>Capacidade técnica assistida por IA</h3><p>O sistema envia somente os dados estruturados e o texto capturado dos atestados marcados. O roteiro abaixo orienta a análise.</p></Card>
     {message && <Card className={`formFeedback ${message.type === "success" ? "success" : message.type === "info" ? "infoNotice" : "dangerNotice"}`}><p>{message.text}</p></Card>}
     {loading ? <Card><p>Carregando os atestados selecionados...</p></Card> : certificates.length === 0 ? <Card className="dangerNotice"><p>Selecione um ou mais atestados na tela anterior antes de abrir a análise por IA.</p></Card> : <><Card className="aiCertificateSelection"><div className="sectionTitle"><div><span className="eyebrow">Seleção enviada</span><h3>{certificates.length} atestado(s)</h3></div><span className="statusPill open">Dados da sua empresa</span></div><div className="aiCertificateList">{certificates.map((item) => <div key={item.id}><strong>{item.certificateNumber || item.fileName}</strong><span>{item.object}</span><small>{item.extractionStatus === "ocr_extracted" ? "Leitura OCR" : item.extractionStatus === "extracted" ? "Texto do PDF" : "Texto pendente ou manual"}</small></div>)}</div></Card>
-      <Card className="certificateForm"><Field label="Roteiro da análise" hint={`${prompt.length}/16000 caracteres. Explique o objetivo, os critérios e o formato de resultado desejado.`}><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength="16000" placeholder="Ex.: Analise os atestados e identifique quais comprovam supervisão ambiental em rodovias, relacionando os quantitativos, as limitações do texto e os pontos que precisam de conferência humana." /></Field><div className="formActions"><Button onClick={submit} disabled={sending || !!analysis && ["queued", "processing"].includes(analysis.status)}>{sending ? "Enviando para IA..." : analysis && ["queued", "processing"].includes(analysis.status) ? "Análise em andamento..." : "Analisar atestados"}</Button></div></Card></>}
-    {analysis && <Card className="aiAnalysisResult"><div className="sectionTitle"><div><span className="eyebrow">Resultado da análise</span><h3>{statusLabel[analysis.status] || analysis.status}</h3></div><span className={`statusPill ${analysis.status === "completed" ? "success" : analysis.status === "failed" ? "review" : "open"}`}>{analysis.model || "IA"}</span></div>{["queued", "processing"].includes(analysis.status) && <p>A IA está trabalhando. Esta tela será atualizada automaticamente quando o resultado estiver pronto.</p>}{analysis.status === "failed" && <p className="dangerText">{analysis.errorMessage || "Não foi possível concluir a análise."}</p>}{analysis.status === "completed" && <pre className="aiAnalysisText">{analysis.resultText}</pre>}</Card>}
+      <Card className="certificateForm"><FormGrid><Field label="Provedor de IA" hint="No modo automático, o sistema tenta OpenAI, Google Gemini e Groq, nessa ordem."><select value={provider} onChange={(event) => setProvider(event.target.value)} disabled={sending || !!analysis && ["queued", "processing"].includes(analysis.status)}><option value="automatic">Automático: OpenAI, Gemini e Groq</option><option value="openai">Somente OpenAI</option><option value="gemini">Somente Google Gemini</option><option value="groq">Somente Groq</option></select></Field></FormGrid><Field label="Roteiro da análise" hint={`${prompt.length}/16000 caracteres. Explique o objetivo, os critérios e o formato de resultado desejado.`}><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength="16000" placeholder="Ex.: Analise os atestados e identifique quais comprovam supervisão ambiental em rodovias, relacionando os quantitativos, as limitações do texto e os pontos que precisam de conferência humana." /></Field><div className="formActions"><Button onClick={submit} disabled={sending || !!analysis && ["queued", "processing"].includes(analysis.status)}>{sending ? "Enviando para IA..." : analysis && ["queued", "processing"].includes(analysis.status) ? "Análise em andamento..." : "Analisar atestados"}</Button></div></Card></>}
+    {analysis && <Card className="aiAnalysisResult"><div className="sectionTitle"><div><span className="eyebrow">Resultado da análise</span><h3>{statusLabel[analysis.status] || analysis.status}</h3></div><span className={`statusPill ${analysis.status === "completed" ? "success" : analysis.status === "failed" ? "review" : "open"}`}>{providerLabel[analysis.provider] || "IA"}{analysis.model ? ` · ${analysis.model}` : ""}</span></div>{["queued", "processing"].includes(analysis.status) && <p>A IA está trabalhando. Esta tela será atualizada automaticamente quando o resultado estiver pronto.</p>}{analysis.status === "failed" && <p className="dangerText">{analysis.errorMessage || "Não foi possível concluir a análise."}</p>}{analysis.status === "completed" && <><p className="aiProviderNotice">Resposta gerada por <strong>{providerLabel[analysis.provider] || "IA"}</strong>{analysis.model ? `, usando o modelo ${analysis.model}.` : "."}</p><pre className="aiAnalysisText">{analysis.resultText}</pre></>}</Card>}
   </Page>;
 }
 
@@ -5409,20 +5416,45 @@ function PNCPCapture({ navigate }) {
   const [captureHasMore, setCaptureHasMore] = useState(true);
   const [discardingAll, setDiscardingAll] = useState(false);
   const [actingId, setActingId] = useState("");
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [aiJob, setAIJob] = useState(null);
+  const [startingAI, setStartingAI] = useState(false);
   const [message, setMessage] = useState(null);
-  const [filters, setFilters] = useState({ startDate: sevenDaysAgo(), endDate: localISO(), state: "", source: "pncp", modalities: pncpModalities.map((option) => option.value), status: "captured", relevance: "relevant", search: "", minValue: "", maxValue: "" });
+  const [filters, setFilters] = useState({ startDate: sevenDaysAgo(), endDate: localISO(), state: "", source: "pncp", modalities: pncpModalities.map((option) => option.value), status: "captured", relevance: "relevant", aiClassification: "", search: "", minValue: "", maxValue: "" });
   const load = async () => {
     setLoading(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/pncp/captures`, { credentials: "include" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível carregar a fila de captação.");
-      setItems(Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : []);
+      const loadedItems = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : [];
+      setItems(loadedItems);
+      setSelectedIds((current) => current.filter((id) => loadedItems.some((item) => item.id === id && item.status === "captured")));
     } catch (error) {
       setMessage({ type: "error", text: error.message });
     } finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, []);
+  const loadAIJob = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/pncp/ai-analysis`, { credentials: "include" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível consultar a análise por IA.");
+      setAIJob(data);
+      return data;
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+      return null;
+    }
+  };
+  useEffect(() => { load(); loadAIJob(); }, []);
+  useEffect(() => {
+    if (!aiJob || !["queued", "processing"].includes(aiJob.status)) return undefined;
+    const timer = window.setInterval(async () => {
+      const updated = await loadAIJob();
+      if (updated && ["completed", "failed"].includes(updated.status)) await load();
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [aiJob?.id, aiJob?.status]);
   const resetCapture = () => { setCapturePage(1); setCaptureHasMore(true); };
   const capture = async () => {
     setCapturing(true); setMessage(null);
@@ -5471,6 +5503,30 @@ function PNCPCapture({ navigate }) {
     } catch (error) { setMessage({ type: "error", text: error.message }); }
     finally { setDiscardingAll(false); }
   };
+  const startAIAnalysis = async (onlySelected) => {
+    const captureIds = onlySelected ? selectedIds : [];
+    if (onlySelected && captureIds.length === 0) {
+      setMessage({ type: "error", text: "Marque ao menos uma oportunidade pendente para analisar." });
+      return;
+    }
+    const total = onlySelected ? captureIds.length : items.filter((item) => item.status === "captured").length;
+    if (total === 0) {
+      setMessage({ type: "error", text: "Não existem oportunidades pendentes para analisar." });
+      return;
+    }
+    if (!window.confirm(`Enviar ${total} oportunidade(s) para classificação por IA? O sistema tentará OpenAI, Gemini e Groq, nessa ordem.`)) return;
+    setStartingAI(true); setMessage(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/pncp/ai-analysis`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ captureIds }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível iniciar a análise por IA.");
+      setAIJob(data);
+      setSelectedIds([]);
+      setMessage({ type: "success", text: `Análise iniciada para ${data.totalCount || total} oportunidade(s). Você pode acompanhar o andamento nesta tela.` });
+    } catch (error) { setMessage({ type: "error", text: error.message }); }
+    finally { setStartingAI(false); }
+  };
+  const toggleSelection = (id) => setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   const filtered = items.filter((item) => {
     const term = filters.search.trim().toLowerCase();
     const matchesTerm = !term || [item.agency, item.number, item.object, item.city].some((value) => String(value || "").toLowerCase().includes(term));
@@ -5479,11 +5535,18 @@ function PNCPCapture({ navigate }) {
     const value = Number(item.estimatedValue);
     const matchesMinValue = !filters.minValue || (Number.isFinite(value) && value >= Number(filters.minValue));
     const matchesMaxValue = !filters.maxValue || (Number.isFinite(value) && value <= Number(filters.maxValue));
-    return matchesTerm && matchesStatus && matchesRelevance && matchesMinValue && matchesMaxValue;
+    const matchesAI = !filters.aiClassification || (filters.aiClassification === "pending" ? !item.aiClassification : item.aiClassification === filters.aiClassification);
+    return matchesTerm && matchesStatus && matchesRelevance && matchesMinValue && matchesMaxValue && matchesAI;
   });
   const relevanceLabel = (score) => Number(score || 0) >= 70 ? "Alta aderência" : Number(score || 0) >= 45 ? "Possível aderência" : "Baixa aderência";
+  const aiClassificationLabel = (classification) => ({ consultiva: "IA: Engenharia consultiva", relacionada: "IA: Atividade relacionada", nao_consultiva: "IA: Não consultiva", duvidosa: "IA: Revisão necessária" }[classification] || "Aguardando análise da IA");
+  const providerLabel = (provider) => provider === "gemini" ? "Google Gemini" : provider === "groq" ? "Groq" : provider === "openai" ? "OpenAI" : "IA";
   const statusLabel = (status) => ({ captured: "Aguardando decisão", prepared: "Em edição", approved: "Publicado", discarded: "Descartado" }[status] || status);
   const pendingCount = items.filter((item) => item.status === "captured").length;
+  const aiRunning = aiJob && ["queued", "processing"].includes(aiJob.status);
+  const aiProgress = aiJob?.totalCount ? Math.min(100, Math.round((Number(aiJob.processedCount || 0) / Number(aiJob.totalCount)) * 100)) : 0;
+  const selectableFiltered = filtered.filter((item) => item.status === "captured");
+  const allFilteredSelected = selectableFiltered.length > 0 && selectableFiltered.every((item) => selectedIds.includes(item.id));
   return <Page label="Editais" title="Captação de oportunidades" actions={<><Button variant="secondary" onClick={load}>Recarregar fila</Button><Button variant="secondary" onClick={discardAllPending} disabled={discardingAll || pendingCount === 0}>{discardingAll ? "Descartando..." : `Descartar pendentes (${pendingCount})`}</Button><Button variant="secondary" onClick={() => navigate("tender-admin")}>Admin de editais</Button></>}>
     <Card className="pncpIntro"><span className="eyebrow">Fontes oficiais</span><h3>Fila de revisão da engenharia consultiva</h3><p>Consulte o PNCP ou o Compras.gov.br, filtre a aderência técnica e publique somente os editais revisados pelo administrador.</p></Card>
     {message && <Card className={`formFeedback ${message.type === "success" ? "success" : "dangerNotice"}`}><p>{message.text}</p></Card>}
@@ -5496,18 +5559,24 @@ function PNCPCapture({ navigate }) {
       <Field label="Consulta"><Button onClick={capture} disabled={capturing || !captureHasMore || (filters.source === "pncp" && filters.modalities.length === 0)}>{capturing ? `Consultando página ${capturePage}...` : !captureHasMore ? "Pesquisa concluída" : capturePage === 1 ? "Buscar página 1" : `Buscar próxima página (${capturePage})`}</Button></Field>
     </FormGrid></Card>
     <Card className="pncpProgressCard"><div className="pncpProgressHeader"><div><span className="eyebrow">Andamento da pesquisa</span><strong>{capturing ? `Consultando página ${capturePage}` : captureHasMore ? `Próxima página: ${capturePage}` : "Pesquisa concluída"}</strong></div><span>{capturing ? "Em andamento" : "Pronto"}</span></div><div className={`pncpProgressTrack ${capturing ? "isRunning" : ""}`}><i /></div><small>{capturing ? "Aguarde o retorno da fonte oficial." : "Cada página recebida é salva na fila de captação."}</small></Card>
+    <Card className="pncpAIControl">
+      <div className="pncpAIControlHeader"><div><span className="eyebrow">Triagem assistida</span><h3>Classificação por inteligência artificial</h3><p>O sistema tenta OpenAI, Google Gemini e Groq, nessa ordem. A decisão de publicar ou descartar continua sendo do administrador.</p></div><span className={`statusPill ${aiRunning ? "open" : aiJob?.status === "completed" ? "success" : aiJob?.status === "failed" ? "review" : ""}`}>{aiRunning ? "Em processamento" : aiJob?.status === "completed" ? "Última análise concluída" : aiJob?.status === "failed" ? "Última análise falhou" : "Pronto para analisar"}</span></div>
+      {aiJob && <div className="pncpAIProgress"><div><span>Progresso</span><strong>{Number(aiJob.processedCount || 0)} de {Number(aiJob.totalCount || 0)}</strong></div><div className="pncpAIProgressTrack"><i style={{ width: `${aiProgress}%` }} /></div><small>{aiJob.status === "failed" ? aiJob.errorMessage || "A análise não foi concluída." : `${Number(aiJob.successCount || 0)} classificada(s) e ${Number(aiJob.failureCount || 0)} com falha.`}</small></div>}
+      <div className="pncpAIActions"><Button onClick={() => startAIAnalysis(false)} disabled={startingAI || aiRunning || pendingCount === 0}>{startingAI ? "Iniciando análise..." : `Analisar pendentes (${pendingCount})`}</Button><Button variant="secondary" onClick={() => startAIAnalysis(true)} disabled={startingAI || aiRunning || selectedIds.length === 0}>Analisar selecionadas ({selectedIds.length})</Button></div>
+    </Card>
     <Card className="compactFilters pncpQueueFiltersSticky"><FormGrid>
       <Field label="Buscar na fila"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Órgão, número, objeto ou cidade" /></Field>
       <Field label="Valor mínimo"><input type="number" min="0" step="0.01" value={filters.minValue} onChange={(event) => setFilters((current) => ({ ...current, minValue: event.target.value }))} placeholder="R$ 0,00" /></Field>
       <Field label="Valor máximo"><input type="number" min="0" step="0.01" value={filters.maxValue} onChange={(event) => setFilters((current) => ({ ...current, maxValue: event.target.value }))} placeholder="Sem limite" /></Field>
       <Field label="Situação"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todas</option><option value="captured">Aguardando decisão</option><option value="prepared">Em edição</option><option value="approved">Publicados</option><option value="discarded">Descartados</option></select></Field>
       <Field label="Aderência"><select value={filters.relevance} onChange={(event) => setFilters((current) => ({ ...current, relevance: event.target.value }))}><option value="relevant">Somente possíveis aderentes</option><option value="all">Todas as capturas</option></select></Field>
+      <Field label="Classificação da IA"><select value={filters.aiClassification} onChange={(event) => setFilters((current) => ({ ...current, aiClassification: event.target.value }))}><option value="">Todas</option><option value="consultiva">Somente engenharia consultiva</option><option value="relacionada">Atividade relacionada</option><option value="duvidosa">Revisão necessária</option><option value="nao_consultiva">Não consultiva</option><option value="pending">Ainda não analisada</option></select></Field>
     </FormGrid></Card>
-    {!loading && <div className="pncpQueueSummary"><strong>{filtered.length}</strong> de <strong>{items.length}</strong> oportunidade(s) exibida(s) na fila.</div>}
+    {!loading && <div className="pncpQueueSummary"><span><strong>{filtered.length}</strong> de <strong>{items.length}</strong> oportunidade(s) exibida(s) na fila.</span>{selectableFiltered.length > 0 && <label className="pncpSelectAll"><input type="checkbox" checked={allFilteredSelected} onChange={() => setSelectedIds((current) => allFilteredSelected ? current.filter((id) => !selectableFiltered.some((item) => item.id === id)) : Array.from(new Set([...current, ...selectableFiltered.map((item) => item.id)])))} /> Selecionar pendentes exibidas</label>}</div>}
     {loading && <Card><p>Carregando fila de captação...</p></Card>}
     {!loading && filtered.length === 0 && <Card><p>Nenhuma oportunidade encontrada. Faça uma consulta na fonte escolhida ou amplie os filtros.</p></Card>}
-    {!loading && filtered.length > 0 && <div className="pncpCaptureList">{filtered.map((item) => <Card className="pncpCaptureCard" key={item.id}>
-      <div className="pncpCaptureHeader"><div><span className="eyebrow">{item.agency}</span><h3>{item.number}</h3><span className="captureSource">{item.source === "pncp+comprasgov" ? "PNCP + Compras.gov.br / saneado" : item.source === "comprasgov" ? "Compras.gov.br / Dados Abertos" : "PNCP"}</span>{item.pncpControlNumber && <small className="captureControlNumber">Controle PNCP: {item.pncpControlNumber}</small>}</div><span className={`pncpRelevance score-${Number(item.relevanceScore || 0) >= 70 ? "high" : Number(item.relevanceScore || 0) >= 45 ? "medium" : "low"}`}>{relevanceLabel(item.relevanceScore)}</span></div>
+    {!loading && filtered.length > 0 && <div className="pncpCaptureList">{filtered.map((item) => <Card className={`pncpCaptureCard ${selectedIds.includes(item.id) ? "isSelected" : ""}`} key={item.id}>
+      <div className="pncpCaptureHeader"><div className="pncpCaptureIdentity">{item.status === "captured" && <label className="pncpCaptureSelect" title="Selecionar para análise por IA"><input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelection(item.id)} /><span>Selecionar</span></label>}<span className="eyebrow">{item.agency}</span><h3>{item.number}</h3><span className="captureSource">{item.source === "pncp+comprasgov" ? "PNCP + Compras.gov.br / saneado" : item.source === "comprasgov" ? "Compras.gov.br / Dados Abertos" : "PNCP"}</span>{item.pncpControlNumber && <small className="captureControlNumber">Controle PNCP: {item.pncpControlNumber}</small>}</div><div className="pncpClassificationBadges"><span className={`pncpRelevance score-${Number(item.relevanceScore || 0) >= 70 ? "high" : Number(item.relevanceScore || 0) >= 45 ? "medium" : "low"}`}>{relevanceLabel(item.relevanceScore)}</span><span className={`pncpAIClassification ai-${item.aiClassification || "pending"}`}>{aiClassificationLabel(item.aiClassification)}{item.aiClassification ? ` · ${Number(item.aiConfidence || 0)}%` : ""}</span></div></div>
       <p className="pncpObject">{item.object}</p>
       <div className="pncpInfoGrid">
         <div className="pncpInfo"><span>Modalidade</span><strong>{item.modality || "Não informada"}</strong></div>
@@ -5517,6 +5586,7 @@ function PNCPCapture({ navigate }) {
         <div className="pncpValue"><span>Valor estimado</span><strong>{item.estimatedValue !== null && item.estimatedValue !== undefined ? formatCurrencyBRFromNumber(item.estimatedValue) : "Não informado"}</strong></div>
       </div>
       <div className="pncpReasons">{(item.relevanceReasons || []).map((reason) => <span key={reason}>{reason}</span>)}</div>
+      {item.aiClassification && <div className="pncpAIResult"><div><strong>Leitura da IA</strong><span>{providerLabel(item.aiProvider)}{item.aiModel ? ` · ${item.aiModel}` : ""}</span></div><p>{item.aiJustification}</p>{Array.isArray(item.aiAreas) && item.aiAreas.length > 0 && <div>{item.aiAreas.map((area) => <span key={area}>{area}</span>)}</div>}</div>}
       <div className="pncpActions"><a className="textLink" href={item.externalUrl || "#"} target="_blank" rel="noreferrer">Ver fonte oficial</a>{item.status === "captured" && <><Button onClick={() => decide(item, "prepare")} disabled={actingId === item.id}>{actingId === item.id ? "Preparando..." : "Preparar cadastro"}</Button><Button variant="secondary" onClick={() => decide(item, "discard")} disabled={actingId === item.id}>Descartar</Button></>}{item.status !== "captured" && <span className={`statusBadge status-${item.status}`}>{statusLabel(item.status)}</span>}{item.status === "prepared" && item.publishedTenderId && <Button variant="secondary" onClick={() => navigate(`tender-new?id=${encodeURIComponent(item.publishedTenderId)}`)}>Continuar cadastro</Button>}{item.status === "approved" && item.publishedTenderId && <Button variant="secondary" onClick={() => navigate(`tender-detail?id=${encodeURIComponent(item.publishedTenderId)}`)}>Ver edital</Button>}</div>
     </Card>)}</div>}
   </Page>;
@@ -5850,7 +5920,7 @@ function TenderList({ navigate, openTenderInterestCompanies }) {
     if (sort === "opening_desc") return new Date(b.openingDate || 0).getTime() - new Date(a.openingDate || 0).getTime();
     return new Date(a.openingDate || "9999-12-31").getTime() - new Date(b.openingDate || "9999-12-31").getTime();
   });
-  return <Page label="Editais" title="Lista de editais"><Card className="compactFilters tenderListSortSticky"><FormGrid><Field label="Buscar edital"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Órgão, número, objeto ou cidade" /></Field><Field label="Status"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos</option><option value="published">Publicado</option><option value="under_review">Em análise</option><option value="suspended">Suspenso</option><option value="challenged">Impugnado</option><option value="occurred">Ocorrido</option><option value="closed">Encerrado</option><option value="cancelled">Cancelado</option></select></Field><Field label="Interesse"><select value={filters.interest} onChange={(event) => setFilters((current) => ({ ...current, interest: event.target.value }))}><option value="">Todos</option><option value="registered">Interesse registrado</option><option value="not_registered">Ainda não registrado</option></select></Field><Field label="Estado"><StateSelect value={filters.state} onChange={(event) => setFilters((current) => ({ ...current, state: event.target.value }))} /></Field><Field label="Modalidade"><select value={filters.modality} onChange={(event) => setFilters((current) => ({ ...current, modality: event.target.value }))}><option value="">Todas</option>{tenderModalityOptions.map((option) => <option value={option} key={option}>{option}</option>)}</select></Field><Field label="Ordenar por"><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="opening_asc">Abertura mais próxima</option><option value="opening_desc">Abertura mais distante</option><option value="value_desc">Maior valor estimado</option><option value="value_asc">Menor valor estimado</option><option value="agency_asc">Órgão A-Z</option></select></Field></FormGrid></Card>{loading && <Card><p>Carregando editais...</p></Card>}{error && <Card className="dangerNotice"><p>{error}</p></Card>}{!loading && !error && orderedItems.length === 0 && <Card><p>Nenhum edital encontrado com esses filtros.</p></Card>}{!loading && !error && orderedItems.length > 0 && <Table columns={["Órgão", "Número", "Objeto", "Local", "Abertura", "Valor referencial", "Critério", "Status", "Ações"]} rows={orderedItems.map((item) => [item.agency, item.number, item.object, [item.city,item.state].filter(Boolean).join(" / ") || "-", date(item.openingDate), formatCurrencyBRFromNumber(item.estimatedValue) || "-", item.judgmentCriterion || "-", item.status, <div className="rowActions compactRowActions" key={item.id}><button className="iconButton secondaryIcon" title="Ver detalhe do edital" onClick={() => navigate(`tender-detail?id=${item.id}`)}>{"\u25C9"}</button>{item.hasMyInterest ? <span className="statusPill open" title="Você já registrou interesse neste edital">Interesse registrado</span> : item.status === "published" ? <button className="iconButton successIcon" title="Registrar interesse" onClick={() => navigate(`tender-interest?id=${item.id}`)}>{"\u2713"}</button> : <span className="statusPill review" title={`Interesse indisponível: edital ${tenderStatusLabels[item.status] || item.status}`}>Indisponível</span>}<button className="iconButton partnerIcon" title="Ver empresas interessadas" onClick={() => openTenderInterestCompanies(item.id)}>{"\u2637"}</button></div>])} />}</Page>;
+  return <Page label="Editais" title="Lista de editais"><Card className="compactFilters tenderListSortSticky"><FormGrid><Field label="Buscar edital"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Órgão, número, objeto ou cidade" /></Field><Field label="Status"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos</option><option value="published">Publicado</option><option value="under_review">Em análise</option><option value="suspended">Suspenso</option><option value="challenged">Impugnado</option><option value="occurred">Ocorrido</option><option value="closed">Encerrado</option><option value="cancelled">Cancelado</option></select></Field><Field label="Interesse"><select value={filters.interest} onChange={(event) => setFilters((current) => ({ ...current, interest: event.target.value }))}><option value="">Todos</option><option value="registered">Interesse registrado</option><option value="not_registered">Ainda não registrado</option></select></Field><Field label="Estado"><StateSelect value={filters.state} onChange={(event) => setFilters((current) => ({ ...current, state: event.target.value }))} /></Field><Field label="Modalidade"><select value={filters.modality} onChange={(event) => setFilters((current) => ({ ...current, modality: event.target.value }))}><option value="">Todas</option>{tenderModalityOptions.map((option) => <option value={option} key={option}>{option}</option>)}</select></Field><Field label="Ordenar por"><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="opening_asc">Abertura mais próxima</option><option value="opening_desc">Abertura mais distante</option><option value="value_desc">Maior valor estimado</option><option value="value_asc">Menor valor estimado</option><option value="agency_asc">Órgão A-Z</option></select></Field></FormGrid></Card>{loading && <Card><p>Carregando editais...</p></Card>}{error && <Card className="dangerNotice"><p>{error}</p></Card>}{!loading && !error && orderedItems.length === 0 && <Card><p>Nenhum edital encontrado com esses filtros.</p></Card>}{!loading && !error && orderedItems.length > 0 && <Table columns={["Órgão", "Número", "Objeto", "Local", "Abertura", "Valor referencial", "Critério", "Análise", "Status", "Ações"]} rows={orderedItems.map((item) => [item.agency, item.number, compactObject(item.object), [item.city,item.state].filter(Boolean).join(" / ") || "-", date(item.openingDate), formatCurrencyBRFromNumber(item.estimatedValue) || "-", item.judgmentCriterion || "-", <span className={`statusPill ${item.hasAnalysis ? "success" : "review"}`} title={item.hasAnalysis ? "Este edital possui pré-análise HTML" : "Este edital ainda não possui pré-análise HTML"}>{item.hasAnalysis ? "Analisado" : "Pendente"}</span>, tenderStatusLabels[item.status] || item.status, <div className="rowActions compactRowActions" key={item.id}><button className="iconButton secondaryIcon" title="Ver detalhe do edital" onClick={() => navigate(`tender-detail?id=${item.id}`)}>{"\u25C9"}</button>{item.hasMyInterest ? <span className="statusPill open" title="Você já registrou interesse neste edital">Interesse registrado</span> : item.status === "published" ? <button className="iconButton successIcon" title="Registrar interesse" onClick={() => navigate(`tender-interest?id=${item.id}`)}>{"\u2713"}</button> : <span className="statusPill review" title={`Interesse indisponível: edital ${tenderStatusLabels[item.status] || item.status}`}>Indisponível</span>}<button className="iconButton partnerIcon" title="Ver empresas interessadas" onClick={() => openTenderInterestCompanies(item.id)}>{"\u2637"}</button></div>])} />}</Page>;
 }
 
 function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
@@ -6003,6 +6073,8 @@ function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
   const documents = Array.isArray(tender.documents) ? tender.documents : [];
   const aiAnalysis = tender.aiAnalysis || null;
   const aiIsWorking = aiAnalysis?.status === "queued" || aiAnalysis?.status === "processing";
+  const aiProviderLabel = aiAnalysis?.provider === "gemini" ? "Google Gemini" : aiAnalysis?.provider === "openai" ? "OpenAI" : "IA";
+  const aiProviderDetail = aiAnalysis?.model ? `${aiProviderLabel} · ${aiAnalysis.model}` : aiProviderLabel;
   const canChallengeTender = ["company_admin", "commercial", "technical"].includes(sessionUser?.roleKey) && ["published", "under_review", "challenged"].includes(tender.status);
   const formatDocumentSize = (bytes) => !bytes ? "Tamanho não informado" : bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
   const timelineLabels = { created: "Edital cadastrado", captured: "Edital captado", published: "Edital publicado", resumed: "Edital retomado", suspended: "Edital suspenso", occurred: "Sessão ocorrida", closed: "Edital encerrado", cancelled: "Edital cancelado", under_review: "Edital em análise", challenged: "Edital impugnado", status_changed: "Status atualizado", interest_registered: "Interesse registrado", match: "Match realizado", consortium: "Consórcio formado", assembly: "Montagem iniciada" };
@@ -6043,7 +6115,7 @@ function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
           {tender.analysisUrl && <a className="downloadButton" href={tender.analysisUrl} download>Baixar análise</a>}
         </div>
         {analysisMessage && <div className={`inlineFeedback ${analysisMessage.type === "success" ? "successText" : "dangerText"}`}>{analysisMessage.text}</div>}
-        {isPlatformAdmin && aiAnalysis && <div className={`aiAnalysisStatus ${aiAnalysis.status}`}><strong>{aiAnalysis.status === "queued" ? "Pré-análise aguardando início" : aiAnalysis.status === "processing" ? "Pré-análise em processamento" : aiAnalysis.status === "completed" ? "Pré-análise gerada pela IA" : "Não foi possível gerar a pré-análise"}</strong><span>{aiAnalysis.status === "failed" ? aiAnalysis.errorMessage || "Tente novamente após conferir os documentos." : aiAnalysis.status === "completed" ? "O HTML gerado está disponível abaixo e pode ser substituído manualmente." : `Analisando ${aiAnalysis.sourceFileCount || documents.length} documento(s) anexado(s).`}</span></div>}
+        {isPlatformAdmin && aiAnalysis && <div className={`aiAnalysisStatus ${aiAnalysis.status}`}><strong>{aiAnalysis.status === "queued" ? "Pré-análise aguardando início" : aiAnalysis.status === "processing" ? "Pré-análise em processamento" : aiAnalysis.status === "completed" ? `Pré-análise gerada por ${aiProviderDetail}` : "Não foi possível gerar a pré-análise"}</strong><span>{aiAnalysis.status === "failed" ? aiAnalysis.errorMessage || "Tente novamente após conferir os documentos." : aiAnalysis.status === "completed" ? "O HTML gerado está disponível abaixo e pode ser substituído manualmente." : `Analisando ${aiAnalysis.sourceFileCount || documents.length} documento(s) anexado(s) com ${aiProviderLabel}.`}</span></div>}
         {tender.analysisUrl ? (
           <iframe className="technicalSheetFrame" sandbox="allow-scripts" src={tender.analysisUrl} title={`Análise do edital ${tender.number}`}></iframe>
         ) : (
@@ -6054,8 +6126,8 @@ function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
         )}
         {isPlatformAdmin && (
           <div className="analysisAdminActions">
-            <Button onClick={generateAIAnalysis} disabled={!documents.length || generatingAIAnalysis || aiIsWorking}>{generatingAIAnalysis ? "Iniciando IA..." : aiIsWorking ? "IA analisando documentos..." : "Gerar pré-análise com IA"}</Button>
-            <small>{documents.length ? "Usa os documentos anexados ao edital e o roteiro técnico oficial da LicitaHub. Para esta etapa, cada arquivo deve ter até 22 MB." : "Anexe documentos ao edital antes de solicitar a análise."}</small>
+            <Button onClick={generateAIAnalysis} disabled={Boolean(tender.analysisUrl) || !documents.length || generatingAIAnalysis || aiIsWorking} title={tender.analysisUrl ? "Este edital já possui uma pré-análise HTML" : "Gerar pré-análise com IA"}>{tender.analysisUrl ? "Pré-análise já disponível" : generatingAIAnalysis ? "Iniciando IA..." : aiIsWorking ? "IA analisando documentos..." : "Gerar pré-análise com IA"}</Button>
+            <small>{documents.length ? "Usa os documentos anexados e o roteiro técnico oficial. A OpenAI é consultada primeiro e o Gemini assume automaticamente se ela falhar. Cada arquivo deve ter até 22 MB." : "Anexe documentos ao edital antes de solicitar a análise."}</small>
             <Field label={tender.analysisUrl ? "Substituir análise HTML manualmente" : "Anexar análise HTML manualmente"}>
               <input type="file" accept=".html,.htm,text/html" onChange={selectAnalysis} disabled={uploadingAnalysis || aiIsWorking} />
               <small>{uploadingAnalysis ? "Enviando análise..." : "A análise manual continua disponível mesmo com a IA."}</small>

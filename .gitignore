@@ -18,5 +18,7 @@ backend/private_uploads/
 .env
 .env.local
 backend/.env.openai
+backend/.env.gemini
+backend/.env.groq
 .DS_Store
 Thumbs.db

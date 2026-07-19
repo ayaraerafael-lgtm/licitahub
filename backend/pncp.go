@@ -110,8 +110,19 @@ func (a *app) listPNCPCaptures(w http.ResponseWriter, r *http.Request) {
 				pc.estimated_value AS "estimatedValue", COALESCE(pc.external_url, '') AS "externalUrl",
 				pc.relevance_score AS "relevanceScore", pc.relevance_reasons AS "relevanceReasons",
 				pc.status, pc.captured_at AS "capturedAt", pc.approved_at AS "approvedAt",
-				pc.published_tender_id::text AS "publishedTenderId"
+				pc.published_tender_id::text AS "publishedTenderId",
+				ai.classification AS "aiClassification", ai.confidence AS "aiConfidence",
+				COALESCE(ai.justification, '') AS "aiJustification", COALESCE(ai.areas, '[]'::jsonb) AS "aiAreas",
+				COALESCE(ai.provider, '') AS "aiProvider", COALESCE(ai.model, '') AS "aiModel",
+				ai.created_at AS "aiAnalyzedAt"
 			FROM pncp_captures pc
+			LEFT JOIN LATERAL (
+				SELECT classification, confidence, justification, areas, provider, model, created_at
+				FROM pncp_capture_ai_analyses
+				WHERE capture_id = pc.id
+				ORDER BY created_at DESC
+				LIMIT 1
+			) ai ON true
 			ORDER BY CASE pc.status WHEN 'captured' THEN 0 WHEN 'prepared' THEN 1 WHEN 'approved' THEN 2 ELSE 3 END,
 				pc.relevance_score DESC, pc.opening_date ASC NULLS LAST, pc.captured_at DESC
 		) item;
