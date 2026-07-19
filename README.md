@@ -203,3 +203,4 @@ O ultimo comando deve ser usado com cuidado e somente em banco apropriado. O bac
 - [Sistema e regras de negocio](docs/SISTEMA.md)
 - [Seguranca e preparacao para producao](docs/SEGURANCA.md)
 - [Roteiro completo de testes](docs/ROTEIRO-DE-TESTES.md)
+- [Mapa de apresentacao e treinamento](docs/MAPA-DE-APRESENTACAO-E-TREINAMENTO.md)

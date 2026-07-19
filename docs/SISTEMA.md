@@ -25,6 +25,7 @@ Esta versao consolida os recursos mais recentes do produto:
 - Avaliacao anonima das associadas por rodadas, com distribuicao integral de estrelas, resultado por sessao, historico proporcional e grafico de tendencia.
 - Regra de exclusividade operacional no consorcio: membro ativo nao busca nova parceria no mesmo edital, exceto a lider quando abre anuncio de consorcio para complementar a composicao.
 - Roteiro manual completo de validacao em `docs/ROTEIRO-DE-TESTES.md`.
+- Mapa comercial e operacional para demonstracao, apostila e slides em `docs/MAPA-DE-APRESENTACAO-E-TREINAMENTO.md`.
 
 Antes de uma liberacao para usuarios externos, os cenarios de ciclo de vida do edital, acessos por perfil, match, consorcio e montagem devem ser executados conforme esse roteiro.
 
@@ -218,6 +219,12 @@ Uso principal: organizar profissionais e atestados tecnicos como insumos para av
 ### Analise com IA
 
 - A lista de atestados permite selecionar ate dez registros para analise conjunta.
+- Antes do envio, a tela apresenta dois paineis retrateis de apoio interno:
+  - quadro documental com dados de cada atestado e seus quantitativos preservados por descricao, valor e unidade;
+  - cronograma mensal por profissional, com experiencia bruta, periodos sobrepostos e experiencia sem sobreposicao.
+- Quantitativos de servicos ou unidades diferentes nao sao somados automaticamente.
+- O calculo cronologico agrupa somente atestados do mesmo profissional, conta cada dia uma unica vez na experiencia liquida e sinaliza registros sem datas validas.
+- Esses paineis sao calculados localmente com os dados ja carregados e nao alteram o roteiro, o JSON, os provedores nem o fluxo atual da IA.
 - A tela de analise recebe um roteiro escrito pelo usuario e envia para a IA os dados estruturados e o texto capturado dos atestados selecionados.
 - A resposta fica gravada no historico da analise, com situacao de fila, processamento, conclusao ou falha.
 - O usuario pode escolher selecao automatica, somente OpenAI, somente Google Gemini ou somente Groq.

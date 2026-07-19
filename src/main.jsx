@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { buildTechnicalExperience, formatExperienceDays } from "./technicalExperience.js";
 import "./styles.css";
 
 const NavigationContext = React.createContext({
@@ -5335,6 +5336,69 @@ function TechnicalCertificates({ sessionUser, navigate }) {
   </Page>;
 }
 
+function formatCertificateDate(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : "Não informada";
+}
+
+function AICertificateDocuments({ certificates }) {
+  const usageLabel = (value) => value === "company" ? "Somente empresa" : value === "professional" ? "Somente profissional" : "Empresa e profissional";
+  const extractionLabel = (status) => ({ extracted: "PDF com texto", ocr_extracted: "OCR", manual: "Revisão manual", pending_ocr: "OCR pendente", failed: "Leitura falhou" }[status] || "Leitura pendente");
+  return <details className="aiEvidenceDetails" open>
+    <summary><div><span className="eyebrow">Quadro documental</span><strong>Documentos selecionados</strong><small>Dados cadastrais e quantitativos existentes no acervo</small></div><span>{certificates.length} atestado(s)</span></summary>
+    <div className="aiEvidenceBody">
+      <div className="aiEvidenceTableWrap"><table className="aiEvidenceTable"><thead><tr><th>Atestado</th><th>Profissional</th><th>Contratante / contratado</th><th>Objeto</th><th>Período</th><th>CAT / função</th><th>Uso</th><th>Leitura</th><th>Quantitativos</th></tr></thead><tbody>
+        {certificates.map((item) => {
+          const quantities = Array.isArray(item.quantities) ? item.quantities.filter((quantity) => quantity.description || quantity.value || quantity.unit) : [];
+          return <tr key={item.id}>
+            <td><strong>{item.certificateNumber || item.fileName}</strong><small>{item.completionStatus === "partial" ? "Atestado parcial" : "Atestado final"}</small></td>
+            <td>{item.catProfessional || "Não informado"}</td>
+            <td><strong>{item.issuerName || "Não informado"}</strong><small>{item.contractedName || "Contratado não informado"}</small></td>
+            <td className="aiEvidenceObject">{item.object || "Não informado"}</td>
+            <td>{formatCertificateDate(item.executionStart)}<small>até {formatCertificateDate(item.executionEnd)}</small></td>
+            <td><strong>{item.catNumber || "Não informada"}</strong><small>{item.professionalRole || "Função não informada"}</small></td>
+            <td>{usageLabel(item.usageScope)}</td>
+            <td>{extractionLabel(item.extractionStatus)}</td>
+            <td>{quantities.length ? <details className="aiQuantityDetails"><summary>{quantities.length} item(ns)</summary><div className="aiQuantityTableWrap"><table><thead><tr><th>Serviço ou quantitativo</th><th>Valor</th><th>Unidade</th><th>Observação</th></tr></thead><tbody>{quantities.map((quantity, index) => <tr key={quantity.id || index}><td>{quantity.description || "Não informado"}</td><td>{quantity.value ?? "—"}</td><td>{quantity.unit || "—"}</td><td>{quantity.note || "—"}</td></tr>)}</tbody></table></div></details> : "Nenhum"}</td>
+          </tr>;
+        })}
+      </tbody></table></div>
+      <p className="aiEvidenceNote">Os quantitativos são exibidos na unidade original do cadastro. Grandezas ou serviços diferentes não são somados automaticamente.</p>
+    </div>
+  </details>;
+}
+
+function AICertificateExperience({ certificates }) {
+  const groups = useMemo(() => buildTechnicalExperience(certificates), [certificates]);
+  const monthNames = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  return <details className="aiEvidenceDetails" open>
+    <summary><div><span className="eyebrow">Linha do tempo</span><strong>Experiência profissional consolidada</strong><small>Tempo bruto, sobreposição e experiência cronológica líquida</small></div><span>{groups.length} profissional(is)</span></summary>
+    <div className="aiEvidenceBody aiExperienceGroups">
+      {groups.map((group) => {
+        const raw = formatExperienceDays(group.rawDays);
+        const overlap = formatExperienceDays(group.overlapDays);
+        const unique = formatExperienceDays(group.uniqueDays);
+        const columns = `minmax(180px, 220px) repeat(${Math.max(1, group.months.length)}, 34px)`;
+        return <section className="aiExperienceGroup" key={group.key}>
+          <div className="aiExperienceHeading"><div><span className="eyebrow">Profissional</span><h4>{group.professionalName}</h4></div><span>{group.certificates.length} período(s) calculado(s)</span></div>
+          <div className="aiExperienceMetrics">
+            <div><span>Experiência bruta</span><strong>{raw.label}</strong><small>{raw.decimalYears.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} anos · {raw.days} dias</small></div>
+            <div><span>Períodos sobrepostos</span><strong>{overlap.label}</strong><small>{overlap.decimalYears.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} anos · {overlap.days} dias</small></div>
+            <div className="primaryMetric"><span>Experiência sem sobreposição</span><strong>{unique.label}</strong><small>{unique.decimalYears.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} anos · {unique.days} dias</small></div>
+          </div>
+          {group.certificates.length ? <div className="aiGanttScroll">
+            <div className="aiGanttHeader" style={{ gridTemplateColumns: columns }}><strong>Atestado</strong>{group.months.map((month, index) => <span key={month.key}><b>{index === 0 || month.month === 0 ? month.year : "\u00a0"}</b><small>{monthNames[month.month]}</small></span>)}</div>
+            {group.certificates.map((item) => <div className="aiGanttRow" style={{ gridTemplateColumns: columns }} key={item.id}><div className="aiGanttLabel"><strong>{item.timelineLabel}</strong><small>{formatCertificateDate(item.executionStart)} a {formatCertificateDate(item.executionEnd)}</small></div>{group.months.map((month) => <i className="aiGanttGridCell" key={month.key} />)}<span className="aiGanttBar" style={{ gridColumn: `${item.startIndex + 2} / ${item.endIndex + 3}` }} title={`${item.timelineLabel}: ${formatCertificateDate(item.executionStart)} a ${formatCertificateDate(item.executionEnd)}`} /></div>)}
+            {group.overlapDays > 0 && <div className="aiGanttOverlapRow" style={{ gridTemplateColumns: columns }}><div className="aiGanttLabel"><strong>Sobreposição</strong><small>Meses com mais de um período</small></div>{group.months.map((month, index) => <i className={group.occupancy[index] > 1 ? "isOverlap" : ""} key={month.key} title={group.occupancy[index] > 1 ? `${group.occupancy[index]} experiências no mesmo mês` : ""} />)}</div>}
+          </div> : <div className="infoNotice"><p>Nenhum atestado deste profissional possui início e fim válidos para o cálculo.</p></div>}
+          {group.invalidCertificates.length > 0 && <p className="aiExperienceWarning">{group.invalidCertificates.length} atestado(s) sem período completo não entraram no cálculo.</p>}
+        </section>;
+      })}
+      <p className="aiEvidenceNote">A experiência sem sobreposição conta cada dia uma única vez para o mesmo profissional. Este quadro é apoio cronológico interno; as regras específicas de cada edital continuam prevalecendo.</p>
+    </div>
+  </details>;
+}
+
 function TechnicalCertificateAI({ navigate }) {
   const [selectedIds] = useState(() => {
     try {
@@ -5399,7 +5463,7 @@ function TechnicalCertificateAI({ navigate }) {
   return <Page label="Capacidade técnica" title="Análise de atestados por IA" actions={<Button variant="secondary" onClick={() => navigate("technical-certificates")}>Voltar aos atestados</Button>}>
     <Card className="certificateIntro"><span className="eyebrow">Análise privada da empresa</span><h3>Capacidade técnica assistida por IA</h3><p>O sistema envia somente os dados estruturados e o texto capturado dos atestados marcados. O roteiro abaixo orienta a análise.</p></Card>
     {message && <Card className={`formFeedback ${message.type === "success" ? "success" : message.type === "info" ? "infoNotice" : "dangerNotice"}`}><p>{message.text}</p></Card>}
-    {loading ? <Card><p>Carregando os atestados selecionados...</p></Card> : certificates.length === 0 ? <Card className="dangerNotice"><p>Selecione um ou mais atestados na tela anterior antes de abrir a análise por IA.</p></Card> : <><Card className="aiCertificateSelection"><div className="sectionTitle"><div><span className="eyebrow">Seleção enviada</span><h3>{certificates.length} atestado(s)</h3></div><span className="statusPill open">Dados da sua empresa</span></div><div className="aiCertificateList">{certificates.map((item) => <div key={item.id}><strong>{item.certificateNumber || item.fileName}</strong><span>{item.object}</span><small>{item.extractionStatus === "ocr_extracted" ? "Leitura OCR" : item.extractionStatus === "extracted" ? "Texto do PDF" : "Texto pendente ou manual"}</small></div>)}</div></Card>
+    {loading ? <Card><p>Carregando os atestados selecionados...</p></Card> : certificates.length === 0 ? <Card className="dangerNotice"><p>Selecione um ou mais atestados na tela anterior antes de abrir a análise por IA.</p></Card> : <><div className="aiEvidencePanels"><AICertificateDocuments certificates={certificates} /><AICertificateExperience certificates={certificates} /></div>
       <Card className="certificateForm"><FormGrid><Field label="Provedor de IA" hint="No modo automático, o sistema tenta OpenAI, Google Gemini e Groq, nessa ordem."><select value={provider} onChange={(event) => setProvider(event.target.value)} disabled={sending || !!analysis && ["queued", "processing"].includes(analysis.status)}><option value="automatic">Automático: OpenAI, Gemini e Groq</option><option value="openai">Somente OpenAI</option><option value="gemini">Somente Google Gemini</option><option value="groq">Somente Groq</option></select></Field></FormGrid><Field label="Roteiro da análise" hint={`${prompt.length}/16000 caracteres. Explique o objetivo, os critérios e o formato de resultado desejado.`}><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength="16000" placeholder="Ex.: Analise os atestados e identifique quais comprovam supervisão ambiental em rodovias, relacionando os quantitativos, as limitações do texto e os pontos que precisam de conferência humana." /></Field><div className="formActions"><Button onClick={submit} disabled={sending || !!analysis && ["queued", "processing"].includes(analysis.status)}>{sending ? "Enviando para IA..." : analysis && ["queued", "processing"].includes(analysis.status) ? "Análise em andamento..." : "Analisar atestados"}</Button></div></Card></>}
     {analysis && <Card className="aiAnalysisResult"><div className="sectionTitle"><div><span className="eyebrow">Resultado da análise</span><h3>{statusLabel[analysis.status] || analysis.status}</h3></div><span className={`statusPill ${analysis.status === "completed" ? "success" : analysis.status === "failed" ? "review" : "open"}`}>{providerLabel[analysis.provider] || "IA"}{analysis.model ? ` · ${analysis.model}` : ""}</span></div>{["queued", "processing"].includes(analysis.status) && <p>A IA está trabalhando. Esta tela será atualizada automaticamente quando o resultado estiver pronto.</p>}{analysis.status === "failed" && <p className="dangerText">{analysis.errorMessage || "Não foi possível concluir a análise."}</p>}{analysis.status === "completed" && <><p className="aiProviderNotice">Resposta gerada por <strong>{providerLabel[analysis.provider] || "IA"}</strong>{analysis.model ? `, usando o modelo ${analysis.model}.` : "."}</p><pre className="aiAnalysisText">{analysis.resultText}</pre></>}</Card>}
   </Page>;

@@ -242,6 +242,12 @@ Preparar antes de iniciar:
 | CT-13 | Fallback | Usar modo automatico com OpenAI indisponivel e Gemini configurado | Gemini assume a solicitacao; resultado identifica o provedor real sem duplicar a analise. |
 | CT-14 | Groq | Escolher somente Groq e concluir uma analise | Resultado identifica Groq e o modelo utilizado. |
 | CT-15 | Fallback completo | Usar modo automatico com OpenAI e Gemini indisponiveis e Groq configurada | Groq assume a solicitacao e o historico identifica o provedor real. |
+| CT-16 | Quadro documental | Selecionar atestados com varios quantitativos e abrir a analise | Painel retratil apresenta todos os registros; cada quantitativo conserva descricao, valor e unidade sem soma indevida. |
+| CT-17 | Cronograma sem sobreposicao | Selecionar dois periodos consecutivos do mesmo profissional | Cronograma apresenta os dois periodos e a experiencia liquida corresponde ao total cronologico. |
+| CT-18 | Cronograma com sobreposicao | Selecionar dois periodos sobrepostos do mesmo profissional | Experiencia bruta soma os periodos, sobreposicao e destacada e experiencia liquida conta cada dia uma unica vez. |
+| CT-19 | Profissionais diferentes | Selecionar periodos simultaneos de profissionais diferentes | Cada profissional recebe calculo e cronograma proprios; os periodos nao sao descontados entre pessoas. |
+| CT-20 | Data incompleta | Selecionar atestado sem inicio ou fim | Registro aparece no quadro, fica fora do calculo cronologico e a tela informa a pendencia. |
+| CT-21 | Fluxo da IA preservado | Abrir e recolher os dois paineis e solicitar uma analise | Roteiro, provedores, JSON e processamento continuam seguindo o fluxo anterior. |
 
 ### Pre-analise de editais com IA
 
