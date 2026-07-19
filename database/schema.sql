@@ -69,6 +69,63 @@ CREATE TABLE IF NOT EXISTS users (
   ))
 );
 
+-- =========================================================
+-- Anonymous company partnership perception rounds
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS company_rating_rounds (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  title varchar(180) NOT NULL,
+  status varchar(20) NOT NULL DEFAULT 'open',
+  company_count integer NOT NULL,
+  star_budget integer NOT NULL,
+  created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  opened_at timestamptz NOT NULL DEFAULT now(),
+  closes_at timestamptz NOT NULL DEFAULT (now() + interval '7 days'),
+  closed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT company_rating_rounds_status_chk CHECK (status IN ('open', 'closed')),
+  CONSTRAINT company_rating_rounds_deadline_chk CHECK (closes_at > opened_at),
+  CONSTRAINT company_rating_rounds_budget_chk CHECK (company_count >= 2 AND star_budget >= 1)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS company_rating_one_open_round
+  ON company_rating_rounds ((status)) WHERE status = 'open';
+
+CREATE TABLE IF NOT EXISTS company_rating_round_companies (
+  round_id uuid NOT NULL REFERENCES company_rating_rounds(id) ON DELETE CASCADE,
+  company_id uuid NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  star_budget integer NOT NULL,
+  submitted_at timestamptz,
+  submitted_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  included_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (round_id, company_id),
+  CONSTRAINT company_rating_round_company_budget_chk CHECK (star_budget >= 1)
+);
+
+CREATE TABLE IF NOT EXISTS company_rating_allocations (
+  round_id uuid NOT NULL REFERENCES company_rating_rounds(id) ON DELETE CASCADE,
+  evaluator_company_id uuid NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  target_company_id uuid NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  stars smallint NOT NULL,
+  updated_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (round_id, evaluator_company_id, target_company_id),
+  CONSTRAINT company_rating_allocations_stars_chk CHECK (stars >= 1),
+  CONSTRAINT company_rating_allocations_distinct_chk CHECK (evaluator_company_id <> target_company_id),
+  FOREIGN KEY (round_id, evaluator_company_id)
+    REFERENCES company_rating_round_companies(round_id, company_id) ON DELETE CASCADE,
+  FOREIGN KEY (round_id, target_company_id)
+    REFERENCES company_rating_round_companies(round_id, company_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_company_rating_allocations_target
+  ON company_rating_allocations(round_id, target_company_id);
+
+CREATE INDEX IF NOT EXISTS idx_company_rating_round_companies_submission
+  ON company_rating_round_companies(round_id, submitted_at);
+
 CREATE TABLE IF NOT EXISTS company_invitations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id uuid REFERENCES companies(id),
@@ -107,6 +164,7 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   token_hash varchar(128) NOT NULL UNIQUE,
+  token_value text,
   expires_at timestamptz NOT NULL,
   used_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
@@ -146,6 +204,118 @@ CREATE TABLE IF NOT EXISTS media_files (
     'upload', 'google_drive', 'external_link'
   ))
 );
+
+-- =========================================================
+-- Technical certificate archive
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS technical_professionals (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  full_name varchar(255) NOT NULL,
+  formation varchar(255),
+  complementary_education text,
+  professional_registration varchar(180),
+  role_title varchar(180),
+  phone varchar(30),
+  email varchar(255),
+  state varchar(2),
+  availability_status varchar(30) NOT NULL DEFAULT 'available',
+  profile_summary text,
+  status varchar(30) NOT NULL DEFAULT 'active',
+  created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz,
+  CONSTRAINT technical_professionals_availability_chk CHECK (availability_status IN ('available', 'limited', 'unavailable')),
+  CONSTRAINT technical_professionals_status_chk CHECK (status IN ('active', 'archived'))
+);
+
+CREATE TABLE IF NOT EXISTS technical_professional_educations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  technical_professional_id uuid NOT NULL REFERENCES technical_professionals(id) ON DELETE CASCADE,
+  education_level varchar(40) NOT NULL,
+  course_name varchar(255) NOT NULL,
+  institution varchar(255),
+  display_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT technical_professional_educations_level_chk CHECK (education_level IN ('graduation', 'specialization', 'mba', 'masters', 'doctorate', 'postdoctorate', 'extension', 'certification', 'other'))
+);
+
+CREATE TABLE IF NOT EXISTS technical_certificates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  certificate_number varchar(160),
+  issuer_name varchar(255),
+  issuer_document varchar(24),
+  contracted_name varchar(255),
+  contract_number varchar(160),
+  object text NOT NULL,
+  service_description text,
+  state varchar(2),
+  city varchar(120),
+  execution_start date,
+  execution_end date,
+  contract_value numeric(16,2),
+  technical_manager varchar(255),
+  professional_registration varchar(160),
+  art_cat_reference varchar(180),
+  cat_number varchar(180),
+  technical_professional_id uuid REFERENCES technical_professionals(id) ON DELETE SET NULL,
+  cat_professional varchar(255),
+  professional_role varchar(180),
+  completion_status varchar(30) NOT NULL DEFAULT 'final',
+  usage_scope varchar(30) NOT NULL DEFAULT 'both',
+  tags text NOT NULL DEFAULT '',
+  document_url text NOT NULL,
+  file_name varchar(255) NOT NULL,
+  mime_type varchar(120),
+  file_size bigint,
+  extracted_text text NOT NULL DEFAULT '',
+  extracted_text_file_path text,
+  extraction_status varchar(30) NOT NULL DEFAULT 'pending_ocr',
+  status varchar(30) NOT NULL DEFAULT 'active',
+  uploaded_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz,
+  CONSTRAINT technical_certificates_extraction_status_chk CHECK (extraction_status IN ('extracted', 'ocr_extracted', 'manual', 'pending_ocr', 'failed')),
+  CONSTRAINT technical_certificates_status_chk CHECK (status IN ('active', 'archived')),
+  CONSTRAINT technical_certificates_completion_status_chk CHECK (completion_status IN ('final', 'partial')),
+  CONSTRAINT technical_certificates_usage_scope_chk CHECK (usage_scope IN ('company', 'professional', 'both'))
+);
+
+CREATE TABLE IF NOT EXISTS technical_certificate_quantities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  technical_certificate_id uuid NOT NULL REFERENCES technical_certificates(id) ON DELETE CASCADE,
+  description text NOT NULL,
+  quantity numeric(18,4),
+  unit varchar(80),
+  note text,
+  display_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS technical_certificate_ai_analyses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  requested_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  certificate_ids jsonb NOT NULL,
+  prompt text NOT NULL,
+  input_snapshot jsonb,
+  status varchar(30) NOT NULL DEFAULT 'queued',
+  model varchar(120) NOT NULL,
+  response_id varchar(180),
+  result_text text,
+  error_message text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  started_at timestamptz,
+  completed_at timestamptz,
+  CONSTRAINT technical_certificate_ai_analyses_status_chk CHECK (status IN ('queued', 'processing', 'completed', 'failed'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_technical_certificate_ai_analyses_company_created
+  ON technical_certificate_ai_analyses(company_id, created_at DESC);
 
 DO $$
 BEGIN
@@ -337,10 +507,99 @@ CREATE UNIQUE INDEX IF NOT EXISTS tenders_source_reference_uk
   ON tenders(source, source_reference)
   WHERE source_reference IS NOT NULL AND deleted_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS tender_timeline_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
+  event_type varchar(50) NOT NULL,
+  title varchar(180) NOT NULL,
+  description text,
+  actor_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  actor_company_id uuid REFERENCES companies(id) ON DELETE SET NULL,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tender_timeline_tender_created
+  ON tender_timeline_events(tender_id, created_at ASC);
+
+CREATE OR REPLACE FUNCTION licitahub_register_tender_timeline()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  next_type varchar(50);
+  next_title varchar(180);
+  next_description text;
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.source <> 'manual' THEN
+      next_type := 'captured';
+      next_title := 'Edital captado';
+      next_description := 'O edital foi recebido de uma fonte oficial e preparado no LicitaHub.';
+    ELSE
+      next_type := 'created';
+      next_title := 'Edital cadastrado';
+      next_description := 'O edital foi cadastrado no LicitaHub.';
+    END IF;
+    INSERT INTO tender_timeline_events (tender_id, event_type, title, description, actor_user_id)
+    VALUES (NEW.id, next_type, next_title, next_description, NEW.created_by_user_id);
+    RETURN NEW;
+  END IF;
+
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    CASE NEW.status
+      WHEN 'published' THEN
+        next_type := CASE WHEN OLD.status = 'suspended' THEN 'resumed' ELSE 'published' END;
+        next_title := CASE WHEN OLD.status = 'suspended' THEN 'Edital retomado' ELSE 'Edital publicado' END;
+        next_description := CASE WHEN OLD.status = 'suspended' THEN 'O edital voltou a estar disponível para acompanhamento.' ELSE 'O edital foi disponibilizado para as empresas.' END;
+      WHEN 'suspended' THEN next_type := 'suspended'; next_title := 'Edital suspenso'; next_description := 'O edital e suas atividades relacionadas foram suspensos.';
+      WHEN 'occurred' THEN next_type := 'occurred'; next_title := 'Sessão ocorrida'; next_description := 'A data de abertura do edital foi alcançada.';
+      WHEN 'closed' THEN next_type := 'closed'; next_title := 'Edital encerrado'; next_description := 'O edital foi encerrado.';
+      WHEN 'cancelled' THEN next_type := 'cancelled'; next_title := 'Edital cancelado'; next_description := 'O edital foi cancelado.';
+      WHEN 'under_review' THEN next_type := 'under_review'; next_title := 'Edital em análise'; next_description := 'O edital está em análise.';
+      WHEN 'challenged' THEN next_type := 'challenged'; next_title := 'Edital impugnado'; next_description := 'O edital possui uma impugnação registrada.';
+      ELSE next_type := 'status_changed'; next_title := 'Status atualizado'; next_description := 'O status do edital foi atualizado.';
+    END CASE;
+    INSERT INTO tender_timeline_events (tender_id, event_type, title, description, metadata)
+    VALUES (NEW.id, next_type, next_title, next_description, jsonb_build_object('previousStatus', OLD.status, 'status', NEW.status));
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_tenders_timeline ON tenders;
+CREATE TRIGGER trg_tenders_timeline
+AFTER INSERT OR UPDATE OF status ON tenders
+FOR EACH ROW EXECUTE FUNCTION licitahub_register_tender_timeline();
+
+INSERT INTO tender_timeline_events (tender_id, event_type, title, description, actor_user_id, created_at)
+SELECT t.id,
+  CASE WHEN t.source <> 'manual' THEN 'captured' ELSE 'created' END,
+  CASE WHEN t.source <> 'manual' THEN 'Edital captado' ELSE 'Edital cadastrado' END,
+  CASE WHEN t.source <> 'manual' THEN 'O edital foi recebido de uma fonte oficial e preparado no LicitaHub.' ELSE 'O edital foi cadastrado no LicitaHub.' END,
+  t.created_by_user_id, t.created_at
+FROM tenders t
+WHERE NOT EXISTS (SELECT 1 FROM tender_timeline_events e WHERE e.tender_id = t.id);
+
+INSERT INTO tender_timeline_events (tender_id, event_type, title, description, metadata, created_at)
+SELECT t.id, te.event_type, te.title, te.description, jsonb_build_object('status', t.status), t.updated_at
+FROM tenders t
+JOIN LATERAL (SELECT CASE t.status
+  WHEN 'published' THEN 'published' WHEN 'suspended' THEN 'suspended' WHEN 'occurred' THEN 'occurred'
+  WHEN 'closed' THEN 'closed' WHEN 'cancelled' THEN 'cancelled' WHEN 'under_review' THEN 'under_review'
+  WHEN 'challenged' THEN 'challenged' ELSE NULL END AS event_type,
+  CASE t.status
+  WHEN 'published' THEN 'Edital publicado' WHEN 'suspended' THEN 'Edital suspenso' WHEN 'occurred' THEN 'Sessão ocorrida'
+  WHEN 'closed' THEN 'Edital encerrado' WHEN 'cancelled' THEN 'Edital cancelado' WHEN 'under_review' THEN 'Edital em análise'
+  WHEN 'challenged' THEN 'Edital impugnado' ELSE NULL END AS title,
+  'Status atual do edital no momento da ativacao da linha do tempo.' AS description) te ON te.event_type IS NOT NULL
+WHERE NOT EXISTS (SELECT 1 FROM tender_timeline_events e WHERE e.tender_id = t.id AND e.metadata->>'status' = t.status);
+
 CREATE TABLE IF NOT EXISTS pncp_captures (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   source varchar(40) NOT NULL DEFAULT 'pncp',
   source_key varchar(220) NOT NULL UNIQUE,
+  pncp_control_number varchar(160),
   agency varchar(220) NOT NULL,
   number varchar(120) NOT NULL,
   object text NOT NULL,
@@ -367,6 +626,8 @@ CREATE TABLE IF NOT EXISTS pncp_captures (
 
 ALTER TABLE pncp_captures ADD COLUMN IF NOT EXISTS source varchar(40) NOT NULL DEFAULT 'pncp';
 ALTER TABLE pncp_captures ADD COLUMN IF NOT EXISTS judgment_criterion varchar(120);
+ALTER TABLE pncp_captures ADD COLUMN IF NOT EXISTS pncp_control_number varchar(160);
+CREATE INDEX IF NOT EXISTS idx_pncp_captures_control_number ON pncp_captures(pncp_control_number) WHERE pncp_control_number IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_pncp_captures_status_relevance
   ON pncp_captures(status, relevance_score DESC, opening_date ASC);
@@ -1067,6 +1328,13 @@ CREATE INDEX IF NOT EXISTS idx_company_invitations_status_created_at ON company_
 CREATE INDEX IF NOT EXISTS idx_company_profiles_public ON company_profiles(is_public, public_profile_slug);
 CREATE INDEX IF NOT EXISTS idx_media_files_company_id ON media_files(company_id);
 CREATE INDEX IF NOT EXISTS idx_media_files_uploaded_by ON media_files(uploaded_by_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_technical_certificates_company_status ON technical_certificates(company_id, status, updated_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_technical_professionals_company_status ON technical_professionals(company_id, status, full_name) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_technical_professional_educations_professional ON technical_professional_educations(technical_professional_id, display_order);
+CREATE INDEX IF NOT EXISTS idx_technical_certificate_quantities_certificate ON technical_certificate_quantities(technical_certificate_id, display_order);
+CREATE INDEX IF NOT EXISTS idx_technical_certificates_search ON technical_certificates USING GIN (
+  to_tsvector('portuguese', coalesce(object, '') || ' ' || coalesce(service_description, '') || ' ' || coalesce(tags, '') || ' ' || coalesce(extracted_text, ''))
+);
 CREATE INDEX IF NOT EXISTS idx_posts_company_id ON posts(company_id);
 CREATE INDEX IF NOT EXISTS idx_posts_published_at ON posts(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_posts_feed ON posts(status, visibility, published_at DESC, created_at DESC) WHERE deleted_at IS NULL;
@@ -1133,6 +1401,85 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DE
 -- =========================================================
 -- Seed data
 -- =========================================================
+
+-- Academia LicitaHub: cursos, aulas, progresso individual, provas e certificados.
+CREATE TABLE IF NOT EXISTS academy_courses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  title varchar(220) NOT NULL,
+  description text NOT NULL DEFAULT '',
+  category varchar(120) NOT NULL DEFAULT 'Geral',
+  cover_image_url text,
+  workload_hours integer NOT NULL DEFAULT 0,
+  status varchar(30) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
+  created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  published_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS academy_lessons (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  course_id uuid NOT NULL REFERENCES academy_courses(id) ON DELETE CASCADE,
+  title varchar(220) NOT NULL,
+  description text NOT NULL DEFAULT '',
+  video_url text NOT NULL,
+  video_source varchar(20) NOT NULL DEFAULT 'youtube' CHECK (video_source IN ('youtube', 'upload')),
+  duration_seconds integer NOT NULL DEFAULT 0,
+  display_order integer NOT NULL DEFAULT 1,
+  requires_quiz boolean NOT NULL DEFAULT false,
+  quiz_questions jsonb NOT NULL DEFAULT '[]'::jsonb,
+  passing_score integer NOT NULL DEFAULT 75 CHECK (passing_score BETWEEN 1 AND 100),
+  max_attempts integer NOT NULL DEFAULT 0 CHECK (max_attempts >= 0),
+  is_published boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS academy_enrollments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  course_id uuid NOT NULL REFERENCES academy_courses(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  started_at timestamptz NOT NULL DEFAULT now(),
+  last_accessed_at timestamptz NOT NULL DEFAULT now(),
+  completed_at timestamptz,
+  UNIQUE(course_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS academy_lesson_progress (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lesson_id uuid NOT NULL REFERENCES academy_lessons(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  last_position_seconds integer NOT NULL DEFAULT 0,
+  watched_seconds integer NOT NULL DEFAULT 0,
+  video_completed boolean NOT NULL DEFAULT false,
+  is_completed boolean NOT NULL DEFAULT false,
+  completed_at timestamptz,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(lesson_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS academy_assessment_attempts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lesson_id uuid NOT NULL REFERENCES academy_lessons(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  answers jsonb NOT NULL DEFAULT '[]'::jsonb,
+  score numeric(5,2) NOT NULL,
+  approved boolean NOT NULL DEFAULT false,
+  attempted_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS academy_certificates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  course_id uuid NOT NULL REFERENCES academy_courses(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  verification_code varchar(32) NOT NULL UNIQUE,
+  issued_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(course_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_academy_courses_status ON academy_courses(status, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_academy_lessons_course ON academy_lessons(course_id, display_order);
+CREATE INDEX IF NOT EXISTS idx_academy_progress_user ON academy_lesson_progress(user_id, updated_at DESC);
 
 INSERT INTO access_profiles (key, name, description, is_system)
 VALUES

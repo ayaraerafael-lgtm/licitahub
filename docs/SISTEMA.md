@@ -2,11 +2,13 @@
 
 O plano de preparacao para hospedagem e seguranca esta em `docs/SEGURANCA.md`.
 
+Documentacao revisada em 18/07/2026.
+
 ## Objetivo
 
 O LicitaHub e uma aplicacao web para empresas de engenharia consultiva. A plataforma combina rede social empresarial, divulgacao institucional, noticias da plataforma, editais publicos e formacao de parcerias/consorcios.
 
-## Atualizacao desta entrega
+## Estado funcional consolidado
 
 Esta versao consolida os recursos mais recentes do produto:
 
@@ -16,6 +18,12 @@ Esta versao consolida os recursos mais recentes do produto:
 - Menu lateral recolhido por modulos e sino de alertas com destaque apenas quando houver novidade.
 - Regra de lideranca para consorcios com duas ou tres empresas.
 - Aviso automatico quando um edital suspenso volta a ser publicado, destinado as empresas que ja possuem relacao com ele.
+- Comunidade reorganizada com filtros laterais fixos, pesquisa imediata por empresa e cards de publicacao com imagem proporcional.
+- Publicacoes arquivadas deixam a comunidade, mas continuam em **Minhas publicacoes** para consulta, edicao e eventual reativacao.
+- Modulo de Capacidade Tecnica para profissionais, atestados, leitura de PDF, OCR e analises assistidas por IA.
+- Academia LicitaHub com cursos, videoaulas externas, progresso individual, provas de liberacao e certificados verificaveis.
+- Avaliacao anonima das associadas por rodadas, com distribuicao integral de estrelas, resultado por sessao, historico proporcional e grafico de tendencia.
+- Regra de exclusividade operacional no consorcio: membro ativo nao busca nova parceria no mesmo edital, exceto a lider quando abre anuncio de consorcio para complementar a composicao.
 - Roteiro manual completo de validacao em `docs/ROTEIRO-DE-TESTES.md`.
 
 Antes de uma liberacao para usuarios externos, os cenarios de ciclo de vida do edital, acessos por perfil, match, consorcio e montagem devem ser executados conforme esse roteiro.
@@ -57,24 +65,15 @@ Regras principais:
 - Empresas cadastradas: o administrador da plataforma pode filtrar empresas ativas ou bloqueadas e bloquear/desbloquear uma empresa inteira.
 - Ao bloquear uma empresa, todas as sessoes dos usuarios vinculados sao encerradas e nenhum deles volta a acessar enquanto a empresa permanecer bloqueada. Usuarios e historicos nao sao apagados.
 - Cada bloqueio ou desbloqueio registra o administrador responsavel, a data, o status aplicado e o motivo opcional na auditoria interna.
+- A redefinicao de senha nao reativa automaticamente usuario inativo ou bloqueado. A tela confirma a troca da senha e informa claramente que o administrador da empresa precisa liberar o acesso.
+- O login diferencia credencial incorreta, usuario bloqueado, usuario inativo e empresa sem acesso liberado.
 
 ## Modulo Empresa
 
 Uso principal: manter a presenca institucional da empresa.
 
-### Painel da empresa
-
-Uso principal: concentrar o acompanhamento diario sem criar ou alterar registros.
-
-- Indicadores de editais acompanhados, anuncios ativos, consorcios ativos e tarefas abertas.
-- Prioridades: tarefas atrasadas, proximas do prazo, aguardando informacao, devolvidas para ajuste, editais com sessao proxima e novidades ainda nao lidas.
-- Listas clicaveis de editais com interesse, consorcios ativos, tarefas sob responsabilidade da empresa e atividade recente.
-- Filtros fixos por area do painel e periodo das novidades: 7, 30 ou 90 dias.
-- Cada item leva para sua tela de origem; o painel funciona como consulta e navegacao, sem alterar dados operacionais.
-
 Telas principais:
 
-- Dashboard da empresa: mantido como area resumida, com evolucao posterior.
 - Editar perfil da empresa.
 - Usuarios vinculados.
 - Cadastro/edicao/bloqueio/desbloqueio/remocao de usuario.
@@ -118,6 +117,7 @@ Funcionalidades:
 - Editar/excluir comentarios quando permitido.
 - Gerenciar minhas publicacoes.
 - Editar, arquivar ou excluir publicacoes da propria empresa.
+- Filtros laterais fixos por empresa, categoria e UF, com busca por nome aplicada enquanto o usuario digita.
 
 Categorias previstas:
 
@@ -132,9 +132,46 @@ Categorias previstas:
 Regras principais:
 
 - A comunidade mostra publicacoes visiveis para a rede.
-- Minhas publicacoes mostra o conteudo da empresa logada.
-- Imagens devem se ajustar ao card sem deformar a interface.
+- Publicacoes arquivadas nao aparecem na comunidade publica, mas permanecem em Minhas publicacoes para que a empresa possa reativa-las, edita-las ou exclui-las.
+- Minhas publicacoes mostra o conteudo da empresa logada, incluindo itens arquivados.
+- Imagens devem se ajustar ao card sem deformar a interface, respeitando altura maxima e preservando a proporcao original.
 - Curtidas e comentarios geram notificacoes no sino.
+
+### Avaliacao de parcerias entre associadas
+
+Uso principal: medir como o mercado associado percebe a abertura de cada empresa para realizar negocios, parcerias e composicoes empresariais.
+
+Fluxo:
+
+1. O administrador da plataforma abre uma rodada e define obrigatoriamente seu prazo de encerramento.
+2. O sistema registra uma fotografia das empresas ativas que participarao daquela sessao e envia um alerta no sino a todos os usuarios dessas empresas, informando o prazo.
+3. Cada empresa recebe um saldo equivalente a 30% da quantidade de participantes, arredondado para cima.
+4. O administrador da empresa distribui livremente o saldo entre outras associadas. Uma unica empresa pode receber qualquer quantidade, limitada apenas pelo saldo ainda disponivel.
+5. A distribuicao somente pode ser enviada quando todo o saldo tiver sido utilizado. O comando fixo de conclusao mostra as estrelas restantes e permanece inativo ate o saldo chegar a zero.
+6. Antes do envio, o sistema apresenta uma revisao com cada empresa escolhida e sua quantidade de estrelas. O envio confirmado e unico, definitivo e anonimo.
+7. A rodada e encerrada quando todas as empresas participantes concluirem ou automaticamente quando o prazo terminar. Empresas pendentes perdem o direito de distribuir estrelas naquela sessao.
+8. Depois do envio, a empresa consulta seu resultado parcial da sessao. Rodadas encerradas passam a compor o historico.
+
+Regras:
+
+- Uma empresa nao pode avaliar a si mesma.
+- A ordem das logos e sorteada novamente sempre que a tela e aberta.
+- O painel usa uma grade compacta e responsiva para comportar um numero elevado de associadas sem aumentar desnecessariamente os cartoes.
+- Nao existe limite de tres estrelas por empresa avaliada. Todo o saldo disponivel pode ser concentrado em uma unica associada, se essa for a decisao da avaliadora.
+- A confirmacao na tela de revisao conclui e grava a distribuicao; nao existe uma segunda confirmacao posterior.
+- O envio e idempotente: repetir tecnicamente a mesma confirmacao nao duplica estrelas nem cria uma segunda participacao.
+- Somente o administrador da empresa envia a distribuicao. Os demais usuarios consultam resultados.
+- Empresas aprovadas depois da abertura nao entram na rodada em andamento e passam a participar somente da proxima fotografia de associadas.
+- O administrador da plataforma acompanha empresas concluidas e pendentes, mas nao ve o ranking da rodada aberta.
+- O painel administrativo permite filtrar rodadas por nome, situacao e ano. Rodadas encerradas ficam organizadas em uma secao retratil; o ranking da sessao e a media geral tambem possuem secoes retrateis independentes.
+- O administrador da plataforma pode excluir definitivamente uma rodada encerrada. A exclusao remove as distribuicoes e os resultados daquela sessao, elimina seus alertas vinculados e recalcula automaticamente a media historica. Rodadas abertas nao podem ser excluidas.
+- O alerta de nova rodada leva diretamente para a tela Avaliacao de parcerias. Todos os usuarios da empresa recebem o aviso, mas somente o administrador da empresa envia a distribuicao.
+- Nao existe encerramento administrativo manual. O backend verifica os prazos periodicamente e tambem a cada acesso ao modulo.
+- O backend registra a empresa avaliadora apenas para impedir duplicidade e aplicar as regras. Essa identidade nao e devolvida pelas APIs de resultado.
+- O resultado da sessao usa indice relativo: 100 representa a media de estrelas disponiveis naquela rodada.
+- O resultado geral e a media aritmetica dos indices obtidos nas rodadas encerradas. Cada rodada possui o mesmo peso, mesmo quando a quantidade de associadas muda.
+- O grafico apresenta indice real, linha de media do mercado e tendencia linear a partir de tres rodadas encerradas.
+- A consulta historica pode ser filtrada por sessao, ano, ultimas cinco, ultimas dez ou todas as rodadas.
 
 ## Perfil publico da empresa
 
@@ -151,6 +188,72 @@ Conteudos:
 - Atuacao nacional.
 - Publicacoes da empresa.
 - Profissionais cadastrados em area retratil.
+
+## Modulo Capacidade Tecnica
+
+Uso principal: organizar profissionais e atestados tecnicos como insumos para avaliar a capacidade da empresa em futuras licitacoes.
+
+### Profissionais tecnicos
+
+- Cadastro de profissionais com foto, contatos, formacao e dados profissionais relevantes.
+- Um profissional pode ter mais de uma formacao e mais de uma formacao complementar, como especializacao, mestrado ou doutorado.
+- Os profissionais cadastrados ficam disponiveis para vinculacao aos atestados tecnicos e para analises futuras de equipe.
+
+### Atestados tecnicos
+
+- Cadastro de contratante, contratado, objeto, UF, inicio e fim da execucao, valor do contrato, numero da CAT, profissional, cargo e funcao.
+- Registro da situacao do atestado: utilizavel pela empresa, pelo profissional ou por ambos.
+- Um atestado pode ser vinculado a profissional de outra empresa, pois a CAT pode acompanhar a disponibilidade futura desse profissional.
+- Cada atestado aceita varios quantitativos livres, com descricao, unidade e valor conforme a natureza do documento.
+- O registro guarda o texto completo capturado do documento, permitindo consulta posterior e revisao manual.
+- A data de inicio deve ser anterior a data final da execucao.
+
+### Leitura de documentos e OCR
+
+- PDFs com texto nativo passam por extracao direta.
+- PDFs escaneados ou compostos por imagem podem ser lidos por OCR em portugues, com apoio do Tesseract instalado no computador do servidor.
+- O sistema informa o tipo e a situacao da leitura: texto extraido, OCR extraido, pendente, manual ou falhou.
+- O usuario pode abrir, corrigir o texto capturado e solicitar nova leitura do documento.
+
+### Analise com IA
+
+- A lista de atestados permite selecionar ate dez registros para analise conjunta.
+- A tela de analise recebe um roteiro escrito pelo usuario e envia para a IA os dados estruturados e o texto capturado dos atestados selecionados.
+- A resposta fica gravada no historico da analise, com situacao de fila, processamento, conclusao ou falha.
+- Essa funcao depende de chave da API da OpenAI configurada somente no backend e de creditos ativos na conta da API. Os documentos originais nao sao enviados nessa etapa; segue apenas o texto ja extraido e os dados cadastrais selecionados.
+
+## Modulo Academia LicitaHub
+
+Uso principal: oferecer formacao propria para os usuarios da rede, sem depender de uma plataforma externa de cursos.
+
+Funcionalidades:
+
+- O catalogo mostra somente cursos publicados que o usuario ainda nao iniciou.
+- A tela **Gerenciar cursos** lista e filtra os cursos; cada curso abre uma tela administrativa exclusiva.
+- Na gestao do curso, o administrador define categoria, descricao, carga horaria, imagem de capa e situacao de publicacao.
+- A mesma tela permite incluir e editar quantas aulas forem necessarias, escolhendo exclusivamente entre link do YouTube ou arquivo MP4/WebM enviado ao LicitaHub.
+- Videos enviados ao LicitaHub aceitam ate 500 MB e ficam armazenados na area de uploads da Academia.
+- O questionario de cada aula e configurado em uma area retratil, com questoes, alternativas, resposta correta e limite de tentativas.
+- A gestao administrativa permite arquivar, reativar e excluir cursos sem matriculas; cursos com historico de alunos devem ser arquivados.
+- O catalogo apresenta um resumo antes da matricula; depois de iniciado, o curso permanece disponivel em **Meus cursos**.
+- Cada usuario retoma a videoaula do ponto salvo.
+- A conclusao de todas as aulas emite um certificado individual em PDF, proprio para download e impressao, com aluno, empresa, curso, categoria, carga horaria, data e codigo unico.
+- A primeira pagina usa a imagem de capa escolhida pelo administrador em uma area fixa; as paginas seguintes detalham cada aula, sua duracao e descricao, sem cortar cursos com muitos conteudos.
+- O certificado informa o endereco publico de validacao; o conferente consulta o codigo sem precisar entrar no LicitaHub.
+- A area **Meus cursos** concentra os cursos iniciados, permite pesquisar por titulo ou categoria, filtrar por andamento, retomar aulas e baixar certificados emitidos.
+
+Regras principais:
+
+- Apenas o administrador da plataforma cria cursos e aulas.
+- Usuarios visualizam somente cursos publicados.
+- O questionario permanece bloqueado ate que pelo menos 98% do tempo do video tenha sido efetivamente assistido.
+- A proxima aula permanece bloqueada ate a conclusao da anterior.
+- Aula sem questionario e concluida pelo video; aula com questionario exige pelo menos 75% de acerto.
+- As respostas corretas ficam exclusivamente no backend e nao sao enviadas ao navegador do aluno.
+- Depois da aprovacao, o questionario e recolhido e nao pode ser reaberto pelo aluno; a videoaula continua disponivel para revisao.
+- O backend recusa o download de certificado quando o usuario ainda nao concluiu integralmente o curso.
+- Em producao, `PUBLIC_BASE_URL` deve conter o endereco HTTPS oficial do LicitaHub para que a validacao impressa no PDF aponte ao ambiente correto.
+- A origem do video fica registrada em cada aula. Cursos antigos permanecem como YouTube e os novos podem combinar aulas do YouTube e aulas com video proprio, mantendo as mesmas regras de progresso, prova e certificado.
 
 ## Modulo Radar LicitaHub
 
@@ -258,6 +361,8 @@ Regras principais:
 - Deve mostrar apenas empresas interessadas naquele edital.
 - O proprio anuncio da empresa logada aparece marcado como "Meu anuncio".
 - A empresa pode revisar seu proprio anuncio, mas nao pode avaliar/gerar consorcio consigo mesma.
+- Empresa que ja integra consorcio ativo no edital nao visualiza anuncios de terceiros nem recebe comandos para avaliar, conversar ou abrir nova busca de parceiros nesse mesmo edital.
+- A excecao e a empresa lider, depois de abrir em **Meus consorcios** um anuncio complementar para buscar nova consorciada. Nesse caso, ela visualiza e avalia somente as candidaturas dessa busca.
 
 ## Vitrine de parceiros
 
@@ -289,6 +394,7 @@ Regras principais:
 - O botao de avaliacao nao aparece no proprio anuncio.
 - Para avaliar outra empresa no mesmo edital, a empresa precisa ter manifestacao/anuncio ativo para aquela licitacao.
 - Depois de registrar uma avaliacao positiva, a acao passa a aparecer como avaliacao registrada, evitando repeticao de likes.
+- Empresa ja integrante de consorcio ativo fica fora da vitrine daquele edital, salvo a lider quando existir anuncio complementar publicado pelo proprio consorcio.
 
 ## Detalhe do anuncio
 
@@ -309,6 +415,7 @@ Regra principal:
 
 - Quando o anuncio pertence a empresa logada, o detalhe nao mostra acao para avaliar candidata.
 - Quando o anuncio pertence a outra empresa, o nome da anunciante ou da lider do consorcio exibe um icone de chat para abrir a conversa geral ja existente entre as empresas.
+- A protecao de consorcio e aplicada tambem no backend: nao basta esconder botoes. Membro ativo nao pode abrir por URL direta detalhe, chat ou avaliacao de anuncio externo no mesmo edital, exceto a lider em busca complementar.
 
 ## Pausa por status do edital
 
@@ -342,6 +449,7 @@ Regras principais:
 - Administrador ou comercial de qualquer empresa consorciada ativa pode definir a lideranca. A criacao de anuncio complementar e o aceite de candidatura permanecem centralizados na empresa lider; a desistencia do consorcio e exclusiva do administrador da empresa.
 - Ao desistir, a empresa fica marcada como retirada, com data e usuario responsavel. Ela deixa de ver o consorcio ativo.
 - Se a lider desistir e permanecerem pelo menos duas empresas, outra lider deve ser definida antes da saida. Se restar menos de duas empresas, o consorcio e encerrado.
+- Empresa participante de consorcio ativo ve, no detalhe do edital, o atalho para **Meus consorcios** em vez dos comandos de registrar interesse, editar estrategia ou desistir isoladamente.
 
 ## Chat de parceria
 
@@ -401,20 +509,37 @@ Principais grupos:
 - IA de editais: historico de pre-analises, documentos de origem, modelo utilizado, resposta e falhas de processamento.
 - Match/consorcio: anuncios, avaliacoes, matches, contatos, intencoes, membros, candidaturas e chat.
 - Central de Montagem: modelos, fases fixas, tarefas, responsaveis, comentarios, evidencias, prazos e historico operacional.
+- Capacidade tecnica: profissionais tecnicos, formacoes, formacoes complementares, atestados, quantitativos, documentos, texto extraido, resultados de OCR e historico de analises por IA.
+- Academia: cursos, aulas, fontes de video, questoes, alternativas, tentativas, progresso, matriculas e certificados verificaveis.
+- Avaliacao de parcerias: rodadas, fotografia de participantes, distribuicoes anonimas, conclusoes por empresa e resultados historicos.
 - Notificacoes: alertas por usuario/empresa.
-- Auditoria: estrutura existe, mas uso completo fica para fase posterior.
+- Recuperacao de senha: o administrador da plataforma consulta pedidos, filtra por usuario, empresa e situacao e copia links ainda validos enquanto o envio por e-mail nao estiver configurado. O link mostra se esta disponivel, usado ou expirado.
+- Auditoria: estrutura registra acoes sensiveis e eventos de acesso; a cobertura completa de todos os fluxos fica para uma etapa posterior.
 
 ## Itens deixados para fase posterior
 
 - Dashboards analiticos completos.
-- Auditorias completas de acoes sensiveis.
+- Ampliacao da cobertura da auditoria para todos os fluxos administrativos.
 - Backend de producao com autenticacao mais robusta.
 - Hash de senha adequado para producao.
-- Logs estruturados.
+- Rotacao, centralizacao e retencao dos logs em ambiente de producao.
 - Configuracao por ambiente.
 - Deploy externo.
 - Evolucao para aplicativo mobile.
 - Integracao futura com outras IAs e automacoes avancadas.
+
+## Arquitetura e operacao local
+
+- Frontend: React compilado pelo Vite e servido a partir de `dist/`.
+- Backend: API HTTP em Go, que tambem entrega o frontend compilado.
+- Banco: PostgreSQL, com estrutura versionada em `database/schema.sql`.
+- Arquivos: armazenados localmente em `uploads/` no ambiente de desenvolvimento.
+- OCR: Tesseract instalado na maquina do backend, usado quando o PDF nao possui texto pesquisavel.
+- IA: integracao opcional pelo backend, habilitada apenas quando a chave e o modelo estiverem configurados em variaveis de ambiente.
+- Inicializacao local: `backend/run-dev.cmd`, mantendo a janela aberta durante o uso.
+- Endereco padrao: `http://127.0.0.1:8080`.
+
+O ambiente atual e adequado para desenvolvimento e validacao local. Antes de uso publico, devem ser concluidos os itens de producao descritos em `docs/SEGURANCA.md`, especialmente senha com hash forte, HTTPS, cookies seguros, consultas parametrizadas, armazenamento persistente de arquivos, backup e monitoramento.
 
 ## Pre-analise de Editais com IA
 
@@ -520,11 +645,9 @@ O teste manual deve passar por:
 25. Protocolo com menos de tres dias uteis antes da sessao, confirmando o alerta de intempestividade e o registro do pedido.
 26. Consulta, download de anexos e atualizacao de andamento na Central de Impugnacoes pelo administrador da plataforma.
 
-## Situacao dos testes manuais
+## Situacao dos testes
 
-Rodada de testes manuais encerrada em 11/07/2026.
-
-Fluxos principais validados em ambiente local:
+Uma rodada manual dos fluxos centrais foi encerrada em 11/07/2026. Ela validou:
 
 - Login e perfis.
 - Convite, aceite e aprovacao de empresa.
@@ -538,7 +661,7 @@ Fluxos principais validados em ambiente local:
 - Detalhe de anuncio.
 - Avaliacao, match e meus consorcios.
 
-Novas funcionalidades e ajustes finos serao tratados em rodadas posteriores.
+Desde essa rodada foram incluidos ou ampliados Academia, Capacidade Tecnica, captacao oficial, avaliacoes de parcerias, seguranca, notificacoes e outros ajustes. Esses recursos possuem cenarios no roteiro atualizado, mas a documentacao nao presume que uma nova rodada integral ja tenha sido executada. Antes de qualquer piloto externo, todo o arquivo `docs/ROTEIRO-DE-TESTES.md` deve ser refeito e as evidencias devem ser registradas.
 
 ## Atualizacao: captacao por fontes oficiais
 
@@ -546,10 +669,24 @@ Em `Editais > Captacao de editais`, o administrador pode consultar duas fontes: 
 
 Na fila, e possivel filtrar por texto, situacao, aderencia e valor estimado minimo ou maximo. Cada registro pode exibir fonte, orgao, numero, objeto, modalidade, criterio de julgamento, local, sessao e valor estimado, conforme os dados retornados pela fonte.
 
-O administrador pode abrir a fonte oficial, preparar o cadastro ou descartar a oportunidade. A captura permanece no banco com seu status e sua origem; descartar retira o registro da fila pendente, mas preserva o historico. Ao preparar, a origem e o criterio de julgamento sao levados para o rascunho do edital.
+O administrador pode abrir a fonte oficial, preparar o cadastro ou descartar a oportunidade. Descartar remove a captura pendente da fila e do banco, reduzindo o contador e evitando acumulo de registros sem utilidade. Ao preparar, a origem e o criterio de julgamento sao levados para o rascunho do edital.
 
 A API publica do Compras.gov.br fornece dados estruturados disponibilizados, mas esta integracao nao le nem envia mensagens privadas, diligencias ou chat da sala de disputa em tempo real. Para essas operacoes, o usuario deve acessar o processo oficial.
 
 ## Atualizacao: WhatsApp planejado
 
 A integracao oficial de alertas por WhatsApp ainda nao esta ativa. O desenho previsto usa a WhatsApp Business Platform/Cloud API como canal opcional, mediante telefone confirmado e consentimento do usuario. Tokens e credenciais deverao ficar somente em variaveis protegidas do backend, nunca no frontend ou no GitHub.
+
+## Atualizacao: linha do tempo do edital
+
+O detalhe do edital apresenta uma linha do tempo real com cadastro ou captacao, publicacao, retomada, suspensao, sessao ocorrida, encerramento, cancelamento, analise e impugnacao. Os eventos sao armazenados em `tender_timeline_events`, e as alteracoes de status sao registradas automaticamente pelo banco. Editais antigos recebem um evento inicial e o status atual na primeira ativacao da funcionalidade.
+
+Movimentacoes de interesse, match, consorcio e montagem sao filtradas pela empresa logada. A linha do tempo fica recolhida por padrao para preservar espaco na tela.
+
+## Atualizacao: saneamento entre PNCP e Compras.gov.br
+
+As captacoes do PNCP e do Compras.gov.br sao unificadas na fila pelo numero de controle PNCP (`numeroControlePNCP`). Esse e o identificador principal e evita que a mesma contratacao apareca duas vezes.
+
+Quando o numero de controle nao estiver disponivel, a unificacao somente pode ocorrer com a combinacao exata de orgao, numero do edital e valor estimado. O objeto nao e usado em comparacao aproximada, pois editais de trechos diferentes podem ter textos semelhantes.
+
+No saneamento, os dados do PNCP sao a referencia principal. O Compras.gov.br complementa apenas campos ausentes, como modalidade, criterio de julgamento, valor, sessao, local ou outros dados estruturados. O item passa a indicar `PNCP + Compras.gov.br / saneado`, e o payload bruto das duas fontes permanece armazenado para rastreabilidade.

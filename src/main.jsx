@@ -7,6 +7,40 @@ const NavigationContext = React.createContext({
   goBack: () => {}
 });
 
+class ScreenErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error("Falha ao abrir tela", this.props.screen, error, info);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <section className="page">
+        <div className="pageHeader">
+          <div>
+            <span className="eyebrow">Navegação</span>
+            <h2>Não foi possível abrir esta tela</h2>
+            <p className="pageHelp">O restante do sistema continua disponível. Volte ao Radar e tente novamente.</p>
+          </div>
+        </div>
+        <div className="card dangerNotice">
+          <p>Ocorreu uma falha ao carregar esta funcionalidade.</p>
+          <button type="button" className="btn primary" onClick={() => { window.location.hash = "radar-home"; }}>Voltar ao Radar</button>
+        </div>
+      </section>
+    );
+  }
+}
+
 const API_BASE_URL = window.location.protocol === "file:" ? "http://127.0.0.1:8080" : window.location.origin;
 
 const newsCategoryOptions = [
@@ -127,7 +161,9 @@ const modules = [
       { id: "my-profile", label: "Meu perfil", hidden: true },
       { id: "invite-new", label: "Novo convite" },
       { id: "invite-list", label: "Lista de convites" },
-	  { id: "company-manage", label: "Empresas cadastradas" },
+      { id: "company-manage", label: "Empresas cadastradas" },
+	  { id: "password-reset-management", label: "Recuperação de senha" },
+      { id: "company-rating-admin", label: "Avaliação das associadas" },
       { id: "invite-accept", label: "Aceite do convite", hidden: true },
       { id: "company-review", label: "Análise de empresas", hidden: true }
     ]
@@ -137,8 +173,6 @@ const modules = [
     label: "Empresa",
     roles: ["companyAdmin", "commercial", "technical", "reader"],
     items: [
-      { id: "company-dashboard", label: "Dashboard" },
-      { id: "my-assembly-tasks", label: "Minhas tarefas" },
       { id: "notification-history", label: "Histórico de alertas", hidden: true },
       { id: "my-profile", label: "Meu perfil", hidden: true },
       { id: "company-profile-edit", label: "Editar perfil", roles: ["companyAdmin"] },
@@ -150,11 +184,22 @@ const modules = [
     ]
   },
   {
+    id: "technical-capability",
+    label: "Capacidade técnica",
+    roles: ["companyAdmin", "commercial", "technical", "reader"],
+    items: [
+      { id: "technical-professionals", label: "Profissionais técnicos" },
+      { id: "technical-certificates", label: "Atestados técnicos" },
+      { id: "technical-certificate-ai", label: "Análise de atestados por IA", hidden: true }
+    ]
+  },
+  {
     id: "community",
     label: "Comunidade",
     roles: ["companyAdmin", "commercial", "technical", "reader"],
     items: [
       { id: "community-home", label: "Comunidade" },
+      { id: "company-rating", label: "Avaliação de parcerias" },
       { id: "company-public-profile", label: "Perfil público" },
       { id: "publication-new", label: "Criar publicação", roles: ["companyAdmin", "commercial"] },
       { id: "publication-list", label: "Minhas publicações", roles: ["companyAdmin", "commercial"] }
@@ -170,15 +215,23 @@ const modules = [
       { id: "tender-new", label: "Cadastro de edital", roles: ["platformAdmin"] },
       { id: "tender-challenge-board", label: "Impugnações", roles: ["platformAdmin"] },
       { id: "tender-list", label: "Lista de editais", roles: ["companyAdmin", "commercial", "technical", "reader"] },
-      { id: "assembly-center", label: "Central de montagens", roles: ["companyAdmin", "commercial", "technical", "reader"] },
-	  { id: "tender-calendar", label: "Calendário", roles: ["companyAdmin", "commercial", "technical", "reader"] },
       { id: "match-partners", label: "Vitrine de parceiros", roles: ["companyAdmin", "commercial"] },
       { id: "match-list", label: "Meus consórcios", roles: ["companyAdmin", "commercial", "technical", "reader"] },
-      { id: "assembly-board", label: "Central de Montagem", roles: ["companyAdmin", "commercial", "technical", "reader"], hidden: true },
       { id: "tender-detail", label: "Detalhe do edital", roles: ["platformAdmin", "companyAdmin", "commercial", "technical", "reader"], hidden: true },
       { id: "tender-challenge", label: "Pedido de impugnação", roles: ["companyAdmin", "commercial", "technical"], hidden: true },
       { id: "tender-interest", label: "Interesse no edital", roles: ["companyAdmin", "commercial"], hidden: true },
       { id: "tender-interest-list", label: "Empresas interessadas", roles: ["companyAdmin", "commercial"], hidden: true }
+    ]
+  },
+  {
+    id: "workspace",
+    label: "Área de trabalho",
+    roles: ["companyAdmin", "commercial", "technical", "reader"],
+    items: [
+      { id: "assembly-center", label: "Central de montagens" },
+      { id: "my-assembly-tasks", label: "Minhas tarefas" },
+      { id: "tender-calendar", label: "Calendário" },
+      { id: "assembly-board", label: "Central de Montagem", hidden: true }
     ]
   },
   {
@@ -190,6 +243,18 @@ const modules = [
       { id: "radar-detail", label: "Detalhe da notícia", hidden: true },
       { id: "radar-new", label: "Cadastrar notícia", roles: ["platformAdmin"] },
       { id: "radar-manage", label: "Gerenciar notícias", roles: ["platformAdmin"] }
+    ]
+  },
+  {
+    id: "academy",
+    label: "Academia LicitaHub",
+    roles: ["platformAdmin", "companyAdmin", "commercial", "technical", "reader"],
+    items: [
+      { id: "academy-home", label: "Catálogo de cursos", roles: ["companyAdmin", "commercial", "technical", "reader"] },
+      { id: "academy-my-learning", label: "Meus cursos", roles: ["companyAdmin", "commercial", "technical", "reader"] },
+      { id: "academy-admin", label: "Gerenciar cursos", roles: ["platformAdmin"] },
+      { id: "academy-course-admin", label: "Gestão do curso", roles: ["platformAdmin"], hidden: true },
+      { id: "academy-course", label: "Curso", roles: ["companyAdmin", "commercial", "technical", "reader"], hidden: true }
     ]
   },
   {
@@ -208,9 +273,12 @@ function ModuleIcon({ moduleId }) {
   const props = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };
   if (moduleId === "access") return <svg {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-4" /></svg>;
   if (moduleId === "company") return <svg {...props}><path d="M3 21h18" /><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" /><path d="M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1" /></svg>;
+  if (moduleId === "technical-capability") return <svg {...props}><path d="M2 18a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1v-1a7 7 0 0 0-14 0v1" /><path d="M10 15v-3.5a1.5 1.5 0 0 1 3 0V15" /><path d="M12 4v3" /></svg>;
   if (moduleId === "community") return <svg {...props}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
   if (moduleId === "tenders") return <svg {...props}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6M8 13h8M8 17h6" /></svg>;
+  if (moduleId === "workspace") return <svg {...props}><circle cx="6.5" cy="5.5" r="2" /><path d="M3 20v-2a3.5 3.5 0 0 1 7 0v2" /><rect x="12" y="8" width="9" height="7" rx="1" /><path d="M16.5 15v3M13.5 20h6" /></svg>;
   if (moduleId === "radar") return <svg {...props}><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9" /><path d="M7.8 16.2a6 6 0 0 1 0-8.4" /><circle cx="12" cy="12" r="2" /><path d="M16.2 7.8a6 6 0 0 1 0 8.4M19.1 4.9c3.9 3.9 3.9 10.3 0 14.2" /></svg>;
+  if (moduleId === "academy") return <svg {...props}><path d="m3 10 9-5 9 5-9 5-9-5Z" /><path d="M7 12.2v4.2c2.8 2.1 7.2 2.1 10 0v-4.2" /><path d="M21 10v6" /></svg>;
   return <svg {...props}><path d="m7 7 5-5 5 5" /><path d="M12 2v15" /><path d="m17 17-5 5-5-5" /><path d="M2 12h20" /></svg>;
 }
 
@@ -284,9 +352,12 @@ function canAccessScreen(screenId, role) {
 }
 
 function firstScreenFor(role) {
+  const radar = modules.find((group) => group.id === "radar");
+  const news = radar?.items.find((entry) => entry.id === "radar-home" && canSee(entry, role));
+  if (radar?.roles.includes(role) && news) return news.id;
   const module = modules.find((group) => group.roles.includes(role));
   const item = module?.items.find((entry) => canSee(entry, role) && !entry.hidden);
-  return item?.id || "company-dashboard";
+  return item?.id || "radar-home";
 }
 
 function normalizeScreenFromHash(hash, role) {
@@ -337,7 +408,7 @@ function App() {
   const [sessionUser, setSessionUser] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const [menuCollapsed, setMenuCollapsed] = useState(false);
-  const [openModuleId, setOpenModuleId] = useState("company");
+  const [openModuleId, setOpenModuleId] = useState("radar");
   const sidebarRef = React.useRef(null);
   const [userStatuses, setUserStatuses] = useState({ marina: "Ativo", renato: "Ativo", paula: "Convite pendente" });
   const [selectedUserAction, setSelectedUserAction] = useState(null);
@@ -350,9 +421,10 @@ function App() {
   const [chatSeedTask, setChatSeedTask] = useState(null);
   const [chatSeedUser, setChatSeedUser] = useState(null);
   const screen = useHashScreen(role);
-  const visibleModules = useMemo(() => modules.filter((group) =>
-    group.roles.includes(role) && group.items.some((item) => canSee(item, role) && !item.hidden)
-  ), [role]);
+  const visibleModules = useMemo(() => {
+    const menuOrder = { radar: 10, community: 20, company: 30, tenders: 40, workspace: 50, "technical-capability": 60, academy: 65, access: 70, match: 80 };
+    return modules.filter((group) => group.roles.includes(role) && group.items.some((item) => canSee(item, role) && !item.hidden)).sort((left, right) => (menuOrder[left.id] || 99) - (menuOrder[right.id] || 99));
+  }, [role]);
   const isPublicInvitation = screen === "invite-accept";
   const isPasswordReset = screen === "reset-password";
 
@@ -496,7 +568,9 @@ function App() {
       <main className="main">
         <NavigationContext.Provider value={{ canGoBack: navigationStack.length > 0, goBack }}>
           <Topbar navigate={navigateTo} openPublicationManager={openPublicationManager} openTenderInterestCompanies={openTenderInterestCompanies} sessionUser={sessionUser} onLogout={handleLogout} />
-          <Screen screen={screen} navigate={navigateTo} userStatuses={userStatuses} openUserAction={openUserAction} selectedUserAction={selectedUserAction} updateUserStatus={updateUserStatus} selectedUserProfile={selectedUserProfile} openUserProfile={openUserProfile} selectedPublicationId={selectedPublicationId} openPublicationManager={openPublicationManager} selectedTenderId={selectedTenderId} openTenderInterestCompanies={openTenderInterestCompanies} selectedNews={selectedNews} openNewsDetail={openNewsDetail} refreshSession={refreshSession} sessionUser={sessionUser} openChatForAd={openChatForAd} openChatForTask={openChatForTask} openChatForUser={openChatForUser} />
+          <ScreenErrorBoundary key={screen} screen={screen}>
+            <Screen screen={screen} navigate={navigateTo} userStatuses={userStatuses} openUserAction={openUserAction} selectedUserAction={selectedUserAction} updateUserStatus={updateUserStatus} selectedUserProfile={selectedUserProfile} openUserProfile={openUserProfile} selectedPublicationId={selectedPublicationId} openPublicationManager={openPublicationManager} selectedTenderId={selectedTenderId} openTenderInterestCompanies={openTenderInterestCompanies} selectedNews={selectedNews} openNewsDetail={openNewsDetail} refreshSession={refreshSession} sessionUser={sessionUser} openChatForAd={openChatForAd} openChatForTask={openChatForTask} openChatForUser={openChatForUser} />
+          </ScreenErrorBoundary>
           <FloatingChat sessionUser={sessionUser} seedAd={chatSeedAd} seedTask={chatSeedTask} seedUser={chatSeedUser} onSeedConsumed={() => { setChatSeedAd(null); setChatSeedTask(null); setChatSeedUser(null); }} navigate={navigateTo} />
           <ScrollControls />
         </NavigationContext.Provider>
@@ -512,7 +586,6 @@ function LoginScreen({ onLogin }) {
   const [message, setMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [forgotMode, setForgotMode] = useState(false);
-  const [resetUrl, setResetUrl] = useState("");
 
   useEffect(() => {
     const notice = window.sessionStorage.getItem("licitahubLoginNotice") || "";
@@ -548,7 +621,6 @@ function LoginScreen({ onLogin }) {
     event.preventDefault();
     setSaving(true);
     setMessage("");
-    setResetUrl("");
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
         method: "POST",
@@ -558,7 +630,6 @@ function LoginScreen({ onLogin }) {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível gerar o link.");
       setMessage(data.message);
-      setResetUrl(data.resetUrl || "");
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -578,8 +649,7 @@ function LoginScreen({ onLogin }) {
           {!forgotMode && <Field label="Senha"><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></Field>}
           <Button type="submit" disabled={saving}>{saving ? "Aguarde..." : forgotMode ? "Gerar link de recuperação" : "Entrar"}</Button>
         </form>
-        {resetUrl && <div className="resetLinkBox"><input value={resetUrl} readOnly /><div className="actions"><Button onClick={() => navigator.clipboard.writeText(resetUrl)}>Copiar link</Button><a className="btn secondary" href={resetUrl}>Abrir link</a></div></div>}
-        <button type="button" className="loginTextButton" onClick={() => { setForgotMode((current) => !current); setMessage(""); setResetUrl(""); }}>{forgotMode ? "Voltar para o login" : "Esqueci minha senha"}</button>
+        <button type="button" className="loginTextButton" onClick={() => { setForgotMode((current) => !current); setMessage(""); }}>{forgotMode ? "Voltar para o login" : "Esqueci minha senha"}</button>
       </section>
       <section className="loginContext"><span>Engenharia consultiva</span><h2>Empresas, oportunidades e parcerias em um só ambiente.</h2><p>Acesso exclusivo para empresas convidadas e aprovadas pela LicitaHub.</p></section>
     </main>
@@ -612,7 +682,13 @@ function ResetPasswordScreen() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível redefinir a senha.");
-      setMessage({ type: "success", text: "Senha alterada. Você já pode voltar ao login." });
+      if (data.accountActive) {
+        setMessage({ type: "success", text: "Senha alterada. Você já pode voltar ao login." });
+      } else if (data.accountStatus === "blocked") {
+        setMessage({ type: "error", text: "A senha foi alterada, mas este usuário está bloqueado. O administrador da empresa precisa desbloquear o acesso." });
+      } else {
+        setMessage({ type: "error", text: "A senha foi alterada, mas este usuário está inativo. O administrador da empresa precisa reativar o acesso." });
+      }
     } catch (error) {
       setMessage({ type: "error", text: error.message });
     } finally {
@@ -644,7 +720,9 @@ function Topbar({ navigate, openPublicationManager, openTenderInterestCompanies,
       navigate(`match-profile?id=${relatedId}`);
     } else if (destination === "match-success" && relatedId) {
       navigate(`match-success?id=${relatedId}`);
-    } else if (destination === "match-list" || destination === "company-review" || destination === "company-dashboard" || destination === "tender-list" || destination === "radar-home") {
+    } else if (destination === "company-dashboard") {
+      navigate("radar-home");
+    } else if (destination === "match-list" || destination === "company-review" || destination === "tender-list" || destination === "radar-home") {
       navigate(destination);
     } else {
       navigate(destination || "community-home");
@@ -758,7 +836,7 @@ function NotificationHistory({ navigate, openPublicationManager, openTenderInter
   const [data, setData] = useState({ items: [], total: 0, page: 1, pageSize: 20 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const typeLabels = { post_like: "Curtida", post_comment: "Comentário", match: "Match e consórcio", company_interested: "Interesse em edital", news: "Notícia", system: "Sistema" };
+  const typeLabels = { post_like: "Curtida", post_comment: "Comentário", company_post: "Publicação da empresa", match: "Match e consórcio", company_interested: "Interesse em edital", news: "Notícia", system: "Sistema" };
 
   useEffect(() => {
     setLoading(true);
@@ -790,7 +868,7 @@ function NotificationHistory({ navigate, openPublicationManager, openTenderInter
     else if (destination === "tender-detail" && relatedId) navigate(`tender-detail?id=${encodeURIComponent(relatedId)}`);
     else if (destination === "match-profile" && relatedId) navigate(`match-profile?id=${encodeURIComponent(relatedId)}`);
     else if (destination === "match-success" && relatedId) navigate(`match-success?id=${encodeURIComponent(relatedId)}`);
-    else navigate(destination || "company-dashboard");
+    else navigate(destination === "company-dashboard" ? "radar-home" : destination || "radar-home");
   };
   const totalPages = Math.max(1, Math.ceil(data.total / data.pageSize));
 
@@ -1058,9 +1136,23 @@ function FloatingChat({ sessionUser, seedAd, seedTask, seedUser, onSeedConsumed,
 
   useEffect(() => {
     if (!canUseChat) return undefined;
-    const interval = window.setInterval(() => { loadThreads().catch(() => {}); if (activeThreadRef.current) loadMessages(activeThreadRef.current).catch(() => {}); }, 5000);
-    return () => window.clearInterval(interval);
-  }, [canUseChat]);
+    const refreshFallback = () => {
+      if (document.visibilityState !== "visible") return;
+      loadThreads().catch(() => {});
+      if (open && !minimized && activeThreadRef.current) {
+        loadMessages(activeThreadRef.current).catch(() => {});
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshFallback();
+    };
+    const interval = window.setInterval(refreshFallback, 45000);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [canUseChat, open, minimized]);
 
   useEffect(() => {
     if (!canUseChat) return undefined;
@@ -1180,7 +1272,7 @@ function FloatingChat({ sessionUser, seedAd, seedTask, seedUser, onSeedConsumed,
             {filteredMessages.map((message) => (
               <div className={`chatBubble ${message.mine ? "mine" : ""}`} key={message.id}>
                 <div className="chatSender">
-                  {!message.mine && <LogoSlot initials={message.senderName?.split(" ").map((word) => word[0]).join("").slice(0, 2) || "US"} src={message.senderPhotoUrl} size="xs" label={`Foto de ${message.senderName}`} />}
+                  {!message.mine && <LogoSlot initials={message.senderName?.split(" ").map((word) => word[0]).join("").slice(0, 2) || "US"} src={message.senderPhotoUrl} size="xs" fit="cover" label={`Foto de ${message.senderName}`} />}
                   <small>{message.mine ? "Você" : `${message.senderName}${message.senderJobTitle ? ` | ${message.senderJobTitle}` : ""}`}</small>
                 </div>
                 <p>{message.content}</p>
@@ -1198,6 +1290,859 @@ function FloatingChat({ sessionUser, seedAd, seedTask, seedUser, onSeedConsumed,
   );
 }
 
+function academyRequest(path, options = {}) {
+  return fetch(`${API_BASE_URL}${path}`, { credentials: "include", ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } })
+    .then(async (response) => {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível concluir esta ação.");
+      return data;
+    });
+}
+
+function academyCertificateUrl(courseId) {
+  return `${API_BASE_URL}/api/academy/courses/${encodeURIComponent(courseId)}/certificate`;
+}
+
+function academyCertificateVerificationUrl(code) {
+  return `${API_BASE_URL}/certificates/verify?code=${encodeURIComponent(code)}`;
+}
+
+function AcademyHome({ navigate }) {
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const load = () => academyRequest("/api/academy/courses").then((data) => setCourses(Array.isArray(data) ? data : [])).catch((err) => setError(err.message)).finally(() => setLoading(false));
+  useEffect(() => { load(); }, []);
+  const availableCourses = courses.filter((course) => !course.enrolled);
+  return <Page label="Academia LicitaHub" title="Academia LicitaHub" actions={<Button variant="secondary" onClick={() => navigate("academy-my-learning")}>Meus cursos</Button>}>
+    <Card className="academyIntro"><div><span className="eyebrow">Desenvolvimento da equipe</span><h3>Aprendizado organizado para a prática da engenharia consultiva</h3><p>Assista às aulas, retome de onde parou, avance pelas avaliações e emita seu certificado ao finalizar.</p></div></Card>
+    {loading && <Card><p>Carregando cursos disponíveis...</p></Card>}
+    {error && <Card className="dangerNotice"><p>{error}</p></Card>}
+    {!loading && !error && availableCourses.length === 0 && <Card><h3>Nenhum novo curso disponível</h3><p>{courses.length ? "Todos os cursos disponíveis já foram iniciados e podem ser encontrados em Meus cursos." : "Ainda não há cursos publicados na Academia LicitaHub."}</p>{courses.length > 0 && <Button onClick={() => navigate("academy-my-learning")}>Abrir meus cursos</Button>}</Card>}
+    <div className="academyCourseGrid">{availableCourses.map((course) => <article className="academyCourseCard" key={course.id}>
+      <div className="academyCourseCover">{course.coverImageUrl ? <img src={course.coverImageUrl} alt="" /> : <strong>{course.title}</strong>}</div>
+      <div className="academyCourseBody"><span className="academyTag">{course.category}</span><h3>{course.title}</h3><p>{course.description || "Curso da Academia LicitaHub."}</p><div className="academyMeta"><span>{course.lessonCount} aula(s)</span><span>{course.workloadHours || 0}h de carga</span></div>{course.enrolled && <div className="academyProgress"><span style={{ width: `${course.progressPercent}%` }} /></div>}<Button onClick={() => navigate(`academy-course?id=${course.id}`)}>{course.enrolled ? "Continuar curso" : "Ver curso"}</Button></div>
+    </article>)}</div>
+  </Page>;
+}
+
+function AcademyMyLearning({ navigate }) {
+  const [items, setItems] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState("");
+  const [filters, setFilters] = useState({ search: "", status: "all" });
+  useEffect(() => { academyRequest("/api/academy/my-learning").then((data) => setItems(Array.isArray(data) ? data : [])).catch((err) => setError(err.message)).finally(() => setLoading(false)); }, []);
+  const filteredItems = items.filter((item) => {
+    const term = filters.search.trim().toLowerCase();
+    const matchesText = !term || [item.title, item.category].some((value) => String(value || "").toLowerCase().includes(term));
+    const matchesStatus = filters.status === "all" || (filters.status === "completed" ? item.progressPercent === 100 : item.progressPercent < 100);
+    return matchesText && matchesStatus;
+  });
+  return <Page label="Academia LicitaHub" title="Meus cursos" actions={<Button variant="secondary" onClick={() => navigate("academy-home")}>Ver catálogo</Button>}>
+    {loading && <Card><p>Carregando seus cursos...</p></Card>}{error && <Card className="dangerNotice"><p>{error}</p></Card>}
+    {!loading && !error && !items.length && <Card><h3>Nenhum curso iniciado</h3><p>Escolha um curso no catálogo para começar sua jornada de aprendizagem.</p><Button onClick={() => navigate("academy-home")}>Abrir catálogo</Button></Card>}
+    {!loading && items.length > 0 && <Card className="compactFilters academyLearningFilters"><FormGrid><Field label="Localizar curso"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Título ou categoria" /></Field><Field label="Andamento"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="all">Todos</option><option value="inProgress">Em andamento</option><option value="completed">Concluídos</option></select></Field></FormGrid></Card>}
+    {!loading && items.length > 0 && filteredItems.length === 0 && <Card><p>Nenhum curso corresponde aos filtros selecionados.</p></Card>}
+    <div className="academyLearningList">{filteredItems.map((item) => <Card key={item.id} className="academyLearningRow"><div className="academySmallCover">{item.coverImageUrl ? <img src={item.coverImageUrl} alt="" /> : <span>LH</span>}</div><div className="academyLearningInfo"><span className="academyTag">{item.category}</span><h3>{item.title}</h3><div className="academyProgress"><span style={{ width: `${item.progressPercent}%` }} /></div><small>{item.progressPercent}% concluído</small></div><div className="academyLearningActions"><Button onClick={() => navigate(`academy-course?id=${item.id}`)}>{item.progressPercent === 100 ? "Revisar curso" : "Continuar"}</Button>{item.certificateCode && <a className="linkButton" href={academyCertificateUrl(item.id)}>Baixar certificado em PDF</a>}</div></Card>)}</div>
+  </Page>;
+}
+
+function AcademyAdminLegacy({ navigate }) {
+  const emptyCourse = { title: "", description: "", category: "Engenharia consultiva", coverImageUrl: "", workloadHours: 1, status: "draft" };
+  const emptyLesson = { title: "", description: "", videoUrl: "", durationSeconds: 0, requiresQuiz: false, passingScore: 70, maxAttempts: 0, questions: [{ question: "", options: ["", ""], correct: 0 }] };
+  const [courses, setCourses] = useState([]); const [course, setCourse] = useState(emptyCourse); const [lesson, setLesson] = useState(emptyLesson); const [selectedCourse, setSelectedCourse] = useState(""); const [editingCourse, setEditingCourse] = useState(null); const [courseFilter, setCourseFilter] = useState("all"); const [message, setMessage] = useState(null); const [saving, setSaving] = useState(false);
+  const load = () => academyRequest("/api/academy/courses").then((data) => { setCourses(Array.isArray(data) ? data : []); if (!selectedCourse && data?.[0]?.id) setSelectedCourse(data[0].id); }).catch((err) => setMessage({ type: "error", text: err.message }));
+  useEffect(() => { load(); }, []);
+  const saveCourse = async (event) => { event.preventDefault(); setSaving(true); setMessage(null); try { const created = await academyRequest("/api/academy/courses", { method: "POST", body: JSON.stringify({ ...course, workloadHours: Number(course.workloadHours) || 0 }) }); setCourse(emptyCourse); setSelectedCourse(created.id); setMessage({ type: "success", text: "Curso criado. Agora você pode incluir as aulas." }); load(); } catch (err) { setMessage({ type: "error", text: err.message }); } finally { setSaving(false); } };
+  const saveLesson = async (event) => { event.preventDefault(); if (!selectedCourse) return; setSaving(true); setMessage(null); try { const questions = lesson.requiresQuiz ? lesson.questions.filter((q) => q.question.trim() && q.options.filter((option) => option.trim()).length >= 2).map((q) => ({ ...q, options: q.options.filter((option) => option.trim()) })) : []; await academyRequest(`/api/academy/courses/${selectedCourse}/lessons`, { method: "POST", body: JSON.stringify({ ...lesson, durationSeconds: Number(lesson.durationSeconds) || 0, passingScore: Number(lesson.passingScore) || 70, maxAttempts: Number(lesson.maxAttempts) || 0, questions }) }); setLesson(emptyLesson); setMessage({ type: "success", text: "Aula incluída no curso." }); } catch (err) { setMessage({ type: "error", text: err.message }); } finally { setSaving(false); } };
+  const beginCourseEdit = (item) => { setEditingCourse({ ...item, workloadHours: Number(item.workloadHours) || 0 }); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const saveCourseEdit = async (event) => { event.preventDefault(); if (!editingCourse) return; setSaving(true); setMessage(null); try { await academyRequest(`/api/academy/courses/${editingCourse.id}`, { method: "PUT", body: JSON.stringify(editingCourse) }); setEditingCourse(null); setMessage({ type: "success", text: "Curso atualizado com sucesso." }); await load(); } catch (err) { setMessage({ type: "error", text: err.message }); } finally { setSaving(false); } };
+  const changeCourseStatus = async (item, status) => { const action = status === "archived" ? "arquivar" : "reativar"; if (!window.confirm(`Deseja ${action} o curso ${item.title}?`)) return; setMessage(null); try { await academyRequest(`/api/academy/courses/${item.id}`, { method: "PUT", body: JSON.stringify({ ...item, status }) }); setMessage({ type: "success", text: status === "archived" ? "Curso arquivado." : "Curso reativado como rascunho." }); await load(); } catch (err) { setMessage({ type: "error", text: err.message }); } };
+  const deleteCourse = async (item) => { if (!window.confirm(`Excluir definitivamente o curso ${item.title}? Esta ação não pode ser desfeita.`)) return; setMessage(null); try { await academyRequest(`/api/academy/courses/${item.id}`, { method: "DELETE" }); if (selectedCourse === item.id) setSelectedCourse(""); if (editingCourse?.id === item.id) setEditingCourse(null); setMessage({ type: "success", text: "Curso excluído definitivamente." }); await load(); } catch (err) { setMessage({ type: "error", text: err.message }); } };
+  const filteredCourses = courses.filter((item) => courseFilter === "all" || item.status === courseFilter);
+  const changeQuestion = (index, field, value) => setLesson((current) => ({ ...current, questions: current.questions.map((question, questionIndex) => questionIndex === index ? { ...question, [field]: value } : question) }));
+  const changeOption = (questionIndex, optionIndex, value) => setLesson((current) => ({ ...current, questions: current.questions.map((question, index) => index === questionIndex ? { ...question, options: question.options.map((option, i) => i === optionIndex ? value : option) } : question) }));
+  return <Page label="Academia LicitaHub" title="Gerenciar cursos" actions={<Button variant="secondary" onClick={() => navigate("academy-home")}>Ver catálogo</Button>}>
+    {message && <Card className={message.type === "error" ? "dangerNotice" : "successNotice"}><p>{message.text}</p></Card>}
+    <div className="academyAdminGrid"><Card><h3>Novo curso</h3><form onSubmit={saveCourse}><FormGrid><Field label="Título do curso"><input value={course.title} onChange={(e) => setCourse({ ...course, title: e.target.value })} maxLength="220" required /></Field><Field label="Categoria"><input value={course.category} onChange={(e) => setCourse({ ...course, category: e.target.value })} /></Field><Field label="Carga horária estimada"><input type="number" min="0" value={course.workloadHours} onChange={(e) => setCourse({ ...course, workloadHours: e.target.value })} /></Field><Field label="Situação"><select value={course.status} onChange={(e) => setCourse({ ...course, status: e.target.value })}><option value="draft">Rascunho</option><option value="published">Publicado</option></select></Field><Field label="Imagem de capa (link)"><input type="url" value={course.coverImageUrl} onChange={(e) => setCourse({ ...course, coverImageUrl: e.target.value })} placeholder="https://..." /></Field><Field label="Descrição"><textarea value={course.description} onChange={(e) => setCourse({ ...course, description: e.target.value })} rows="4" /></Field></FormGrid><Button type="submit" disabled={saving}>{saving ? "Salvando..." : "Criar curso"}</Button></form></Card>
+      <Card><h3>Incluir aula</h3><form onSubmit={saveLesson}><FormGrid><Field label="Curso"><select value={selectedCourse} onChange={(e) => setSelectedCourse(e.target.value)} required><option value="">Selecione</option>{courses.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></Field><Field label="Título da aula"><input value={lesson.title} onChange={(e) => setLesson({ ...lesson, title: e.target.value })} required /></Field><Field label="Link do vídeo"><input type="url" value={lesson.videoUrl} onChange={(e) => setLesson({ ...lesson, videoUrl: e.target.value })} placeholder="YouTube ou outro vídeo incorporável" required /></Field><Field label="Duração em segundos"><input type="number" min="0" value={lesson.durationSeconds} onChange={(e) => setLesson({ ...lesson, durationSeconds: e.target.value })} /></Field><Field label="Descrição"><textarea value={lesson.description} onChange={(e) => setLesson({ ...lesson, description: e.target.value })} rows="3" /></Field></FormGrid><label className="checkOption"><input type="checkbox" checked={lesson.requiresQuiz} onChange={(e) => setLesson({ ...lesson, requiresQuiz: e.target.checked })} /> Esta aula exige prova para liberar a próxima.</label>{lesson.requiresQuiz && <div className="academyQuizBuilder"><FormGrid><Field label="Aproveitamento mínimo (%)"><input type="number" min="1" max="100" value={lesson.passingScore} onChange={(e) => setLesson({ ...lesson, passingScore: e.target.value })} /></Field><Field label="Tentativas (0 = sem limite)"><input type="number" min="0" value={lesson.maxAttempts} onChange={(e) => setLesson({ ...lesson, maxAttempts: e.target.value })} /></Field></FormGrid>{lesson.questions.map((question, questionIndex) => <div className="academyQuestionEditor" key={questionIndex}><strong>Questão {questionIndex + 1}</strong><input value={question.question} onChange={(e) => changeQuestion(questionIndex, "question", e.target.value)} placeholder="Enunciado" />{question.options.map((option, optionIndex) => <label className="academyOptionEditor" key={optionIndex}><input type="radio" name={`correct-${questionIndex}`} checked={question.correct === optionIndex} onChange={() => changeQuestion(questionIndex, "correct", optionIndex)} /><input value={option} onChange={(e) => changeOption(questionIndex, optionIndex, e.target.value)} placeholder={`Alternativa ${optionIndex + 1}`} /></label>)}<button type="button" className="linkButton" onClick={() => setLesson((current) => ({ ...current, questions: current.questions.map((q, i) => i === questionIndex ? { ...q, options: [...q.options, ""] } : q) }))}>Adicionar alternativa</button></div>)}<button type="button" className="linkButton" onClick={() => setLesson((current) => ({ ...current, questions: [...current.questions, { question: "", options: ["", ""], correct: 0 }] }))}>Adicionar questão</button></div>}<Button type="submit" disabled={saving || !selectedCourse}>{saving ? "Salvando..." : "Adicionar aula"}</Button></form></Card></div>
+    {editingCourse && <Card className="academyCourseEditor"><div className="sectionTitle"><div><span className="eyebrow">Edição do curso</span><h3>{editingCourse.title}</h3></div><Button variant="secondary" onClick={() => setEditingCourse(null)}>Fechar</Button></div><form onSubmit={saveCourseEdit}><FormGrid><Field label="Título do curso"><input value={editingCourse.title} onChange={(e) => setEditingCourse({ ...editingCourse, title: e.target.value })} maxLength="220" required /></Field><Field label="Categoria"><input value={editingCourse.category} onChange={(e) => setEditingCourse({ ...editingCourse, category: e.target.value })} /></Field><Field label="Carga horária estimada"><input type="number" min="0" value={editingCourse.workloadHours} onChange={(e) => setEditingCourse({ ...editingCourse, workloadHours: e.target.value })} /></Field><Field label="Situação"><select value={editingCourse.status} onChange={(e) => setEditingCourse({ ...editingCourse, status: e.target.value })}><option value="draft">Rascunho</option><option value="published">Publicado</option><option value="archived">Arquivado</option></select></Field><Field label="Imagem de capa (link)"><input type="url" value={editingCourse.coverImageUrl || ""} onChange={(e) => setEditingCourse({ ...editingCourse, coverImageUrl: e.target.value })} placeholder="https://..." /></Field><Field label="Descrição"><textarea value={editingCourse.description || ""} onChange={(e) => setEditingCourse({ ...editingCourse, description: e.target.value })} rows="4" /></Field></FormGrid><div className="formActions"><Button type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar alterações"}</Button><Button variant="secondary" onClick={() => setEditingCourse(null)}>Cancelar</Button></div></form></Card>}
+    <Card className="academyCourseManagement"><div className="sectionTitle"><div><span className="eyebrow">Administração</span><h3>Cursos cadastrados</h3><p>Edite os dados, altere a situação ou exclua cursos que ainda não possuem alunos.</p></div><Field label="Filtrar por situação"><select value={courseFilter} onChange={(e) => setCourseFilter(e.target.value)}><option value="all">Todos</option><option value="published">Publicados</option><option value="draft">Rascunhos</option><option value="archived">Arquivados</option></select></Field></div>{filteredCourses.length === 0 ? <p>Nenhum curso encontrado neste filtro.</p> : <div className="academyAdminCourseList">{filteredCourses.map((item) => <article className="academyAdminCourseRow" key={item.id}><div className="academyAdminCourseCover">{item.coverImageUrl ? <img src={item.coverImageUrl} alt="" /> : <span>LH</span>}</div><div className="academyAdminCourseInfo"><div><span className={`statusPill ${item.status === "published" ? "open" : item.status === "archived" ? "review" : ""}`}>{item.status === "published" ? "Publicado" : item.status === "archived" ? "Arquivado" : "Rascunho"}</span><span>{item.category}</span></div><h4>{item.title}</h4><small>{item.lessonCount || 0} aula(s) · {item.enrollmentCount || 0} aluno(s) · {item.workloadHours || 0}h</small></div><div className="academyAdminCourseActions"><button className="iconButton secondaryIcon" title="Editar curso" aria-label="Editar curso" onClick={() => beginCourseEdit(item)}>✎</button><button className="iconButton partnerIcon" title="Abrir curso" aria-label="Abrir curso" onClick={() => navigate(`academy-course?id=${item.id}`)}>◉</button>{item.status === "archived" ? <button className="iconButton successIcon" title="Reativar como rascunho" aria-label="Reativar como rascunho" onClick={() => changeCourseStatus(item, "draft")}>↻</button> : <button className="iconButton secondaryIcon" title="Arquivar curso" aria-label="Arquivar curso" onClick={() => changeCourseStatus(item, "archived")}>▣</button>}<button className="iconButton dangerIcon" title={item.enrollmentCount ? "Curso com alunos: use arquivar" : "Excluir curso"} aria-label="Excluir curso" disabled={Boolean(item.enrollmentCount)} onClick={() => deleteCourse(item)}>×</button></div></article>)}</div>}</Card>
+  </Page>;
+}
+
+function academyStatusLabel(status) {
+  return { published: "Publicado", draft: "Rascunho", archived: "Arquivado" }[status] || status;
+}
+
+function AcademyAdmin({ navigate }) {
+  const [courses, setCourses] = useState([]);
+  const [filters, setFilters] = useState({ search: "", status: "all" });
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState(null);
+  const [courseEditor, setCourseEditor] = useState(null);
+  const load = () => { setLoading(true); return academyRequest("/api/academy/courses").then((data) => setCourses(Array.isArray(data) ? data : [])).catch((error) => setMessage({ type: "error", text: error.message })).finally(() => setLoading(false)); };
+  useEffect(() => { load(); }, []);
+  const changeStatus = async (item, status) => { const verb = status === "archived" ? "arquivar" : "reativar"; if (!window.confirm(`Deseja ${verb} o curso ${item.title}?`)) return; try { await academyRequest(`/api/academy/courses/${item.id}`, { method: "PUT", body: JSON.stringify({ ...item, status }) }); setMessage({ type: "success", text: status === "archived" ? "Curso arquivado." : "Curso reativado como rascunho." }); load(); } catch (error) { setMessage({ type: "error", text: error.message }); } };
+  const remove = async (item) => { if (!window.confirm(`Excluir definitivamente o curso ${item.title}?`)) return; try { await academyRequest(`/api/academy/courses/${item.id}`, { method: "DELETE" }); setMessage({ type: "success", text: "Curso excluído." }); load(); } catch (error) { setMessage({ type: "error", text: error.message }); } };
+  const filtered = courses.filter((item) => {
+    const term = filters.search.trim().toLowerCase();
+    return (filters.status === "all" || item.status === filters.status) && (!term || [item.title, item.category, item.description].some((value) => String(value || "").toLowerCase().includes(term)));
+  });
+  const openCourseEditor = (courseId = "") => {
+    setCourseEditor({ courseId });
+    window.scrollTo({ top: 0, behavior: "auto" });
+  };
+  if (courseEditor) {
+    return <AcademyCourseAdmin
+      navigate={navigate}
+      initialCourseId={courseEditor.courseId}
+      onBack={() => {
+        setCourseEditor(null);
+        load();
+      }}
+    />;
+  }
+  return <Page label="Academia LicitaHub" title="Gerenciar cursos" actions={<Button onClick={() => openCourseEditor()}>Novo curso</Button>}>
+    {message && <Card className={message.type === "error" ? "dangerNotice" : "successNotice"}><p>{message.text}</p></Card>}
+    <Card className="compactFilters academyAdminFilters"><FormGrid><Field label="Buscar curso"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Título, categoria ou descrição" /></Field><Field label="Situação"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="all">Todos</option><option value="published">Publicados</option><option value="draft">Rascunhos</option><option value="archived">Arquivados</option></select></Field></FormGrid></Card>
+    {loading ? <Card><p>Carregando cursos...</p></Card> : filtered.length === 0 ? <Card><p>Nenhum curso encontrado.</p></Card> : <section className="academyAdminCourseListPanel" aria-label="Cursos cadastrados"><div className="academyAdminCourseListHeader"><span>Capa</span><span>Curso e situação</span><span>Ações</span></div><div className="academyAdminCourseList">{filtered.map((item) => <article className="academyAdminCourseRow" key={item.id}><div className="academyAdminCourseCover">{item.coverImageUrl ? <img src={item.coverImageUrl} alt="" /> : <span>LH</span>}</div><div className="academyAdminCourseInfo"><div><span className={`statusPill ${item.status === "published" ? "open" : item.status === "archived" ? "review" : ""}`}>{academyStatusLabel(item.status)}</span><span>{item.category}</span></div><h4>{item.title}</h4><small>{item.lessonCount || 0} aula(s) · {item.enrollmentCount || 0} aluno(s) · {item.workloadHours || 0}h</small></div><div className="academyAdminCourseActions"><button className="iconButton secondaryIcon" title="Gerenciar curso" aria-label={`Gerenciar ${item.title}`} onClick={() => openCourseEditor(item.id)}>✎</button>{item.status === "archived" ? <button className="iconButton successIcon" title="Reativar como rascunho" aria-label={`Reativar ${item.title}`} onClick={() => changeStatus(item, "draft")}>↻</button> : <button className="iconButton secondaryIcon" title="Arquivar curso" aria-label={`Arquivar ${item.title}`} onClick={() => changeStatus(item, "archived")}>▣</button>}<button className="iconButton dangerIcon" title={item.enrollmentCount ? "Curso com alunos não pode ser excluído" : "Excluir curso"} aria-label={`Excluir ${item.title}`} disabled={Boolean(item.enrollmentCount)} onClick={() => remove(item)}>×</button></div></article>)}</div></section>}
+  </Page>;
+}
+
+function academyBlankLesson() {
+  return { title: "", description: "", videoUrl: "", videoSource: "youtube", videoFileName: "", durationMinutes: "", requiresQuiz: false, maxAttempts: 0, isPublished: true, questions: [{ question: "", options: ["", ""], correct: 0 }] };
+}
+
+function youtubeThumbnail(videoUrl) {
+  const match = String(videoUrl || "").match(/(?:youtu\.be\/|v=|embed\/)([^?&/]+)/i);
+  return match ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg` : "";
+}
+
+function AcademyLessonVideoFields({ lesson, setLesson, changeVideoSource, uploadLessonVideo, uploadingVideo }) {
+  return (
+    <div className="academyVideoSourceEditor">
+      <div className="academyVideoSourceChoice" role="radiogroup" aria-label="Origem do vídeo">
+        <label className={lesson.videoSource === "youtube" ? "active" : ""}>
+          <input type="radio" name="academy-video-source" checked={lesson.videoSource === "youtube"} onChange={() => changeVideoSource("youtube")} />
+          <span>Link do YouTube</span>
+        </label>
+        <label className={lesson.videoSource === "upload" ? "active" : ""}>
+          <input type="radio" name="academy-video-source" checked={lesson.videoSource === "upload"} onChange={() => changeVideoSource("upload")} />
+          <span>Vídeo no LicitaHub</span>
+        </label>
+      </div>
+      {lesson.videoSource === "youtube" ? (
+        <Field label="Link do vídeo no YouTube">
+          <input type="url" value={lesson.videoUrl} onChange={(event) => setLesson({ ...lesson, videoUrl: event.target.value })} placeholder="https://www.youtube.com/watch?v=..." required />
+        </Field>
+      ) : (
+        <Field label="Arquivo do vídeo">
+          <input type="file" accept="video/mp4,video/webm" onChange={uploadLessonVideo} disabled={uploadingVideo} />
+          <small>{uploadingVideo ? "Enviando vídeo..." : lesson.videoFileName || "Formatos aceitos: MP4 ou WebM, até 500 MB."}</small>
+        </Field>
+      )}
+      <div className="academyLessonPreview">
+        {lesson.videoSource === "youtube" && youtubeThumbnail(lesson.videoUrl) ? (
+          <img src={youtubeThumbnail(lesson.videoUrl)} alt="Miniatura obtida do YouTube" />
+        ) : lesson.videoSource === "upload" && lesson.videoUrl ? (
+          <video src={lesson.videoUrl} controls preload="metadata" />
+        ) : (
+          <span>{lesson.videoSource === "youtube" ? "A miniatura do YouTube aparecerá aqui" : "A prévia do vídeo enviado aparecerá aqui"}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AcademyCourseAdmin({ navigate, initialCourseId = "", onBack = null }) {
+  const initialId = initialCourseId || currentHashParams().get("id") || "";
+  const [courseId, setCourseId] = useState(initialId);
+  const [course, setCourse] = useState({ title: "", description: "", category: "Engenharia consultiva", coverImageUrl: "", workloadHours: 1, status: "draft" });
+  const [lessons, setLessons] = useState([]);
+  const [lesson, setLesson] = useState(academyBlankLesson());
+  const [lessonEditorOpen, setLessonEditorOpen] = useState(false);
+  const [editingLessonId, setEditingLessonId] = useState("");
+  const [quizOpen, setQuizOpen] = useState(false);
+  const [loading, setLoading] = useState(Boolean(initialId));
+  const [saving, setSaving] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [message, setMessage] = useState(null);
+  const loadCourse = () => { if (!courseId) return Promise.resolve(); setLoading(true); return academyRequest(`/api/academy/courses/${courseId}`).then((data) => { setCourse({ title: data.title || "", description: data.description || "", category: data.category || "Geral", coverImageUrl: data.coverImageUrl || "", workloadHours: Number(data.workloadHours) || 0, status: data.status || "draft" }); setLessons(Array.isArray(data.lessons) ? data.lessons : []); }).catch((error) => setMessage({ type: "error", text: error.message })).finally(() => setLoading(false)); };
+  useEffect(() => { loadCourse(); }, [courseId]);
+  const selectCover = (event) => { const file = event.target.files?.[0]; if (!file) return; if (!file.type.startsWith("image/")) { setMessage({ type: "error", text: "Selecione um arquivo de imagem." }); return; } if (file.size > 3 * 1024 * 1024) { setMessage({ type: "error", text: "A imagem deve ter no máximo 3 MB." }); return; } const reader = new FileReader(); reader.onload = () => setCourse((current) => ({ ...current, coverImageUrl: String(reader.result || "") })); reader.readAsDataURL(file); };
+  const saveCourse = async (event) => { event.preventDefault(); if (course.status === "published" && lessons.length === 0) { setMessage({ type: "error", text: "Inclua ao menos uma aula antes de publicar o curso." }); return; } setSaving(true); setMessage(null); try { if (courseId) { await academyRequest(`/api/academy/courses/${courseId}`, { method: "PUT", body: JSON.stringify({ ...course, workloadHours: Number(course.workloadHours) || 0 }) }); setMessage({ type: "success", text: "Informações do curso atualizadas." }); await loadCourse(); } else { const created = await academyRequest("/api/academy/courses", { method: "POST", body: JSON.stringify({ ...course, status: "draft", workloadHours: Number(course.workloadHours) || 0 }) }); setCourseId(created.id); if (!onBack) navigate(`academy-course-admin?id=${created.id}`); setMessage({ type: "success", text: "Curso criado como rascunho. Agora inclua as aulas e publique quando estiver pronto." }); } } catch (error) { setMessage({ type: "error", text: error.message }); } finally { setSaving(false); } };
+  const openNewLesson = () => { setEditingLessonId(""); setLesson(academyBlankLesson()); setQuizOpen(false); setLessonEditorOpen(true); };
+  const openLessonEdit = (item) => { setEditingLessonId(item.id); setLesson({ title: item.title || "", description: item.description || "", videoUrl: item.videoUrl || "", videoSource: item.videoSource || "youtube", videoFileName: item.videoSource === "upload" ? "Vídeo já enviado" : "", durationMinutes: item.durationSeconds ? String(Math.ceil(item.durationSeconds / 60)) : "", requiresQuiz: Boolean(item.requiresQuiz), maxAttempts: Number(item.maxAttempts) || 0, isPublished: item.isPublished !== false, questions: Array.isArray(item.quizQuestions) && item.quizQuestions.length ? item.quizQuestions.map((question) => ({ question: question.question || "", options: Array.isArray(question.options) ? question.options : ["", ""], correct: Number(question.correct) || 0 })) : [{ question: "", options: ["", ""], correct: 0 }] }); setQuizOpen(Boolean(item.requiresQuiz)); setLessonEditorOpen(true); };
+  const closeLessonEditor = () => { setLessonEditorOpen(false); setEditingLessonId(""); setLesson(academyBlankLesson()); setQuizOpen(false); };
+  const updateQuestion = (index, field, value) => setLesson((current) => ({ ...current, questions: current.questions.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item) }));
+  const updateOption = (questionIndex, optionIndex, value) => setLesson((current) => ({ ...current, questions: current.questions.map((item, itemIndex) => itemIndex === questionIndex ? { ...item, options: item.options.map((option, index) => index === optionIndex ? value : option) } : item) }));
+  const changeVideoSource = (videoSource) => setLesson((current) => ({ ...current, videoSource, videoUrl: "", videoFileName: "" }));
+  const uploadLessonVideo = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!["video/mp4", "video/webm"].includes(file.type)) {
+      setMessage({ type: "error", text: "Selecione um vídeo MP4 ou WebM." });
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 500 * 1024 * 1024) {
+      setMessage({ type: "error", text: "O vídeo deve ter no máximo 500 MB." });
+      event.target.value = "";
+      return;
+    }
+    setUploadingVideo(true);
+    setMessage({ type: "success", text: "Enviando o vídeo. Aguarde a conclusão antes de salvar a aula." });
+    try {
+      const body = new FormData();
+      body.append("video", file);
+      const response = await fetch(`${API_BASE_URL}/api/academy/videos`, { method: "POST", credentials: "include", body });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível enviar o vídeo.");
+      setLesson((current) => ({ ...current, videoSource: "upload", videoUrl: data.url, videoFileName: data.fileName || file.name }));
+      setMessage({ type: "success", text: "Vídeo enviado. Agora você pode salvar a aula." });
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+      event.target.value = "";
+    } finally {
+      setUploadingVideo(false);
+    }
+  };
+  const saveLesson = async (event) => {
+    event.preventDefault();
+    if (!courseId || uploadingVideo) return;
+    if (!lesson.videoUrl) {
+      setMessage({ type: "error", text: lesson.videoSource === "upload" ? "Envie o arquivo do vídeo antes de salvar." : "Informe o link do vídeo no YouTube." });
+      return;
+    }
+    const questions = lesson.requiresQuiz ? lesson.questions.map((item) => ({ question: item.question.trim(), options: item.options.map((option) => option.trim()).filter(Boolean), correct: item.correct })) : [];
+    if (lesson.requiresQuiz && questions.some((item) => !item.question || item.options.length < 2 || item.correct >= item.options.length)) {
+      setMessage({ type: "error", text: "Revise as perguntas, alternativas e respostas corretas." });
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    try {
+      const payload = { ...lesson, durationSeconds: Math.max(0, Number(lesson.durationMinutes) || 0) * 60, passingScore: 75, maxAttempts: Number(lesson.maxAttempts) || 0, questions };
+      if (editingLessonId) await academyRequest(`/api/academy/lessons/${editingLessonId}`, { method: "PUT", body: JSON.stringify(payload) });
+      else await academyRequest(`/api/academy/courses/${courseId}/lessons`, { method: "POST", body: JSON.stringify(payload) });
+      setMessage({ type: "success", text: editingLessonId ? "Aula atualizada." : "Aula incluída no curso." });
+      closeLessonEditor();
+      await loadCourse();
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+  const removeLesson = async (item) => { if (!window.confirm(`Remover a aula ${item.title}?`)) return; try { const result = await academyRequest(`/api/academy/lessons/${item.id}`, { method: "DELETE" }); setMessage({ type: "success", text: result.action === "archived" ? "A aula possui histórico e foi arquivada." : "Aula excluída." }); loadCourse(); } catch (error) { setMessage({ type: "error", text: error.message }); } };
+  if (loading) return <Page label="Academia LicitaHub" title="Gestão do curso"><Card><p>Carregando curso...</p></Card></Page>;
+  return <Page label="Academia LicitaHub" title={courseId ? "Gestão do curso" : "Novo curso"} actions={<Button variant="secondary" onClick={() => onBack ? onBack() : navigate("academy-admin")}>Voltar aos cursos</Button>}>
+    {message && <Card className={message.type === "error" ? "dangerNotice" : "successNotice"}><p>{message.text}</p></Card>}
+    <Card className="academyCourseIdentity"><div className="academyCourseIdentityCover">{course.coverImageUrl ? <img src={course.coverImageUrl} alt="Prévia da capa do curso" /> : <span>Imagem do curso</span>}</div><form onSubmit={saveCourse}><div className="sectionTitle"><div><span className="eyebrow">Informações do curso</span><h3>{courseId ? course.title || "Curso sem título" : "Cadastre a identidade do curso"}</h3></div></div><FormGrid><Field label="Título"><input value={course.title} onChange={(event) => setCourse({ ...course, title: event.target.value })} maxLength="220" required /></Field><Field label="Categoria"><input value={course.category} onChange={(event) => setCourse({ ...course, category: event.target.value })} maxLength="120" /></Field><Field label="Carga horária"><input type="number" min="0" value={course.workloadHours} onChange={(event) => setCourse({ ...course, workloadHours: event.target.value })} /></Field><Field label="Situação"><select value={course.status} onChange={(event) => setCourse({ ...course, status: event.target.value })}><option value="draft">Rascunho</option><option value="published" disabled={!lessons.length}>Publicado</option><option value="archived">Arquivado</option></select></Field><Field label="Imagem de capa"><input type="file" accept="image/*" onChange={selectCover} /></Field><Field label="Descrição breve"><textarea rows="4" value={course.description} onChange={(event) => setCourse({ ...course, description: event.target.value })} maxLength="1500" /></Field></FormGrid><div className="formActions"><Button type="submit" disabled={saving}>{saving ? "Salvando..." : courseId ? "Salvar informações" : "Criar curso"}</Button>{course.coverImageUrl && <Button variant="secondary" onClick={() => setCourse({ ...course, coverImageUrl: "" })}>Remover imagem</Button>}</div></form></Card>
+    {courseId && <Card className="academyLessonManagement"><div className="sectionTitle"><div><span className="eyebrow">Conteúdo do curso</span><h3>Aulas cadastradas</h3><p>Inclua quantas aulas forem necessárias. A ordem abaixo será a ordem de avanço do aluno.</p></div><Button onClick={openNewLesson}>Adicionar aula</Button></div>{lessons.length === 0 ? <div className="emptyState"><p>Nenhuma aula cadastrada. Inclua a primeira aula para poder publicar o curso.</p></div> : <div className="academyAdminLessonList">{lessons.map((item, index) => <article className={`academyAdminLesson ${item.isPublished === false ? "isArchived" : ""}`} key={item.id}><div className="academyAdminLessonThumb">{youtubeThumbnail(item.videoUrl) ? <img src={youtubeThumbnail(item.videoUrl)} alt="" /> : <span>{index + 1}</span>}</div><div><span className="eyebrow">Aula {index + 1}</span><h4>{item.title}</h4><p>{item.description || "Sem descrição."}</p><small>{item.requiresQuiz ? "Questionário obrigatório · aprovação mínima de 75%" : "Sem questionário"}{item.isPublished === false ? " · Arquivada" : ""}</small></div><div className="academyAdminLessonActions"><button className="iconButton secondaryIcon" title="Editar aula" onClick={() => openLessonEdit(item)}>✎</button><button className="iconButton dangerIcon" title="Remover aula" onClick={() => removeLesson(item)}>×</button></div></article>)}</div>}</Card>}
+    {courseId && lessonEditorOpen && (
+      <Card className="academyLessonEditor">
+        <div className="sectionTitle">
+          <div><span className="eyebrow">{editingLessonId ? "Edição" : "Nova aula"}</span><h3>{editingLessonId ? "Editar aula" : "Incluir aula"}</h3></div>
+          <Button variant="secondary" onClick={closeLessonEditor}>Fechar</Button>
+        </div>
+        <form onSubmit={saveLesson}>
+          <AcademyLessonVideoFields lesson={lesson} setLesson={setLesson} changeVideoSource={changeVideoSource} uploadLessonVideo={uploadLessonVideo} uploadingVideo={uploadingVideo} />
+          <FormGrid>
+            <Field label="Título da aula"><input value={lesson.title} onChange={(event) => setLesson({ ...lesson, title: event.target.value })} required maxLength="220" /></Field>
+            <Field label="Duração aproximada em minutos"><input type="number" min="0" value={lesson.durationMinutes} onChange={(event) => setLesson({ ...lesson, durationMinutes: event.target.value })} /></Field>
+            <Field label="Descrição da aula"><textarea rows="3" value={lesson.description} onChange={(event) => setLesson({ ...lesson, description: event.target.value })} maxLength="2000" /></Field>
+          </FormGrid>
+          <div className="academyQuizToggle">
+            <div><strong>Questionário validante</strong><p>Quando ativo, o aluno precisa assistir ao vídeo e acertar pelo menos 75% para liberar a próxima aula.</p></div>
+            <Button type="button" variant={quizOpen ? "secondary" : "primary"} onClick={() => { const next = !quizOpen; setQuizOpen(next); setLesson((current) => ({ ...current, requiresQuiz: next })); }}>{quizOpen ? "Retirar questionário" : "Adicionar questionário"}</Button>
+          </div>
+          {quizOpen && (
+            <div className="academyQuizBuilder">
+              <Field label="Limite de tentativas"><input type="number" min="0" value={lesson.maxAttempts} onChange={(event) => setLesson({ ...lesson, maxAttempts: event.target.value })} /><small>Use zero para tentativas ilimitadas.</small></Field>
+              {lesson.questions.map((question, questionIndex) => (
+                <section className="academyQuestionEditor" key={questionIndex}>
+                  <div className="sectionTitle"><strong>Questão {questionIndex + 1}</strong>{lesson.questions.length > 1 && <button type="button" className="iconButton dangerIcon" title="Remover questão" onClick={() => setLesson((current) => ({ ...current, questions: current.questions.filter((_, index) => index !== questionIndex) }))}>×</button>}</div>
+                  <input value={question.question} onChange={(event) => updateQuestion(questionIndex, "question", event.target.value)} placeholder="Escreva a pergunta" />
+                  {question.options.map((option, optionIndex) => (
+                    <label className="academyOptionEditor" key={optionIndex}>
+                      <input type="radio" name={`correct-answer-${questionIndex}`} checked={question.correct === optionIndex} onChange={() => updateQuestion(questionIndex, "correct", optionIndex)} title="Marcar como resposta correta" />
+                      <input value={option} onChange={(event) => updateOption(questionIndex, optionIndex, event.target.value)} placeholder={`Alternativa ${optionIndex + 1}`} />
+                      {question.options.length > 2 && <button type="button" className="iconButton dangerIcon" title="Remover alternativa" onClick={() => setLesson((current) => ({ ...current, questions: current.questions.map((item, index) => index === questionIndex ? { ...item, options: item.options.filter((_, itemIndex) => itemIndex !== optionIndex), correct: item.correct === optionIndex ? 0 : item.correct > optionIndex ? item.correct - 1 : item.correct } : item) }))}>×</button>}
+                    </label>
+                  ))}
+                  <button type="button" className="linkButton" onClick={() => setLesson((current) => ({ ...current, questions: current.questions.map((item, index) => index === questionIndex ? { ...item, options: [...item.options, ""] } : item) }))}>Adicionar alternativa</button>
+                </section>
+              ))}
+              <Button type="button" variant="secondary" onClick={() => setLesson((current) => ({ ...current, questions: [...current.questions, { question: "", options: ["", ""], correct: 0 }] }))}>Adicionar questão</Button>
+            </div>
+          )}
+          <div className="formActions">
+            <Button type="submit" disabled={saving || uploadingVideo}>{uploadingVideo ? "Enviando vídeo..." : saving ? "Salvando..." : editingLessonId ? "Salvar aula" : "Incluir aula"}</Button>
+            <Button variant="secondary" onClick={closeLessonEditor}>Cancelar</Button>
+          </div>
+        </form>
+      </Card>
+    )}
+  </Page>;
+}
+
+function youtubeEmbed(videoUrl, start) {
+  const match = String(videoUrl || "").match(/(?:youtu\.be\/|v=|embed\/)([^?&/]+)/i);
+  if (!match) return videoUrl;
+  const origin = encodeURIComponent(window.location.origin);
+  return `https://www.youtube.com/embed/${match[1]}?enablejsapi=1&rel=0&playsinline=1&origin=${origin}&start=${Math.max(0, Number(start) || 0)}`;
+}
+
+function AcademyCourseLegacy({ navigate }) {
+  const courseId = currentHashParams().get("id"); const [course, setCourse] = useState(null); const [selectedId, setSelectedId] = useState(""); const [answers, setAnswers] = useState({}); const [message, setMessage] = useState(null); const [loading, setLoading] = useState(true); const iframeRef = React.useRef(null); const lastPosition = React.useRef(0);
+  const load = () => { if (!courseId) { setLoading(false); return; } setLoading(true); academyRequest(`/api/academy/courses/${courseId}`).then((data) => { setCourse(data); setSelectedId((current) => current || data.lessons?.find((lesson) => lesson.unlocked)?.id || data.lessons?.[0]?.id || ""); }).catch((err) => setMessage({ type: "error", text: err.message })).finally(() => setLoading(false)); };
+  useEffect(() => { load(); }, [courseId]);
+  const selected = course?.lessons?.find((lesson) => lesson.id === selectedId);
+  useEffect(() => { if (!selected) return undefined; lastPosition.current = selected.lastPositionSeconds || 0; const timer = setInterval(() => iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "getCurrentTime", args: [] }), "*"), 15000); const onMessage = (event) => { try { const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data; if (typeof data?.info?.currentTime === "number") lastPosition.current = Math.floor(data.info.currentTime); } catch (_) {} }; window.addEventListener("message", onMessage); return () => { clearInterval(timer); window.removeEventListener("message", onMessage); }; }, [selected?.id]);
+  const enroll = async () => { try { await academyRequest(`/api/academy/courses/${courseId}/enroll`, { method: "POST" }); setMessage({ type: "success", text: "Curso iniciado. Seu progresso será salvo." }); load(); } catch (err) { setMessage({ type: "error", text: err.message }); } };
+  const saveProgress = async () => { if (!selected) return; try { await academyRequest(`/api/academy/lessons/${selected.id}/progress`, { method: "PUT", body: JSON.stringify({ positionSeconds: lastPosition.current }) }); setMessage({ type: "success", text: "Ponto do vídeo salvo." }); load(); } catch (err) { setMessage({ type: "error", text: err.message }); } };
+  const submitQuiz = async () => { try { const selectedAnswers = selected.quizQuestions.map((_, index) => Number(answers[index])); const result = await academyRequest(`/api/academy/lessons/${selected.id}/assessment`, { method: "POST", body: JSON.stringify({ answers: selectedAnswers }) }); setMessage({ type: result.approved ? "success" : "error", text: result.approved ? "Prova aprovada. A próxima aula foi liberada." : `Aproveitamento de ${Math.round(result.score || 0)}%. Revise a aula e tente novamente.` }); setAnswers({}); load(); } catch (err) { setMessage({ type: "error", text: err.message }); } };
+  if (loading) return <Page label="Academia LicitaHub" title="Curso"><Card><p>Carregando curso...</p></Card></Page>;
+  if (!course) return <Page label="Academia LicitaHub" title="Curso"><Card className="dangerNotice"><p>{message?.text || "Curso não encontrado."}</p></Card></Page>;
+  return <Page label="Academia LicitaHub" title="Curso" actions={<Button variant="secondary" onClick={() => navigate("academy-my-learning")}>Meus cursos</Button>}>
+    {message && <Card className={message.type === "error" ? "dangerNotice" : "successNotice"}><p>{message.text}</p></Card>}
+    <Card className="academyCourseHeader"><div><span className="academyTag">{course.category}</span><h3>{course.title}</h3><p>{course.description}</p></div>{!course.enrolled && <Button onClick={enroll}>Iniciar curso</Button>}{course.certificateCode && <button className="certificateButton" onClick={() => window.print()}>Certificado emitido: {course.certificateCode}</button>}</Card>
+    {!course.enrolled ? <Card><p>Ao iniciar o curso, o progresso das aulas será registrado no seu perfil.</p></Card> : <div className="academyPlayerLayout"><Card className="academyLessonRail"><h3>Conteúdo</h3>{course.lessons.map((lesson, index) => <button className={`academyLessonItem ${selectedId === lesson.id ? "active" : ""}`} key={lesson.id} disabled={!lesson.unlocked} onClick={() => setSelectedId(lesson.id)}><span>{lesson.completed ? "✓" : String(index + 1).padStart(2, "0")}</span><div><strong>{lesson.title}</strong><small>{lesson.unlocked ? (lesson.completed ? "Concluída" : "Disponível") : "Bloqueada até concluir a anterior"}</small></div></button>)}</Card><div className="academyLessonContent">{selected && <><Card><h3>{selected.title}</h3>{selected.description && <p>{selected.description}</p>}<div className="academyVideo"><iframe ref={iframeRef} title={selected.title} src={youtubeEmbed(selected.videoUrl, selected.lastPositionSeconds)} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen /></div><div className="academyVideoActions"><small>O ponto do vídeo é salvo periodicamente. Você também pode salvar manualmente.</small><Button variant="secondary" onClick={saveProgress}>Salvar ponto</Button></div></Card>{selected.requiresQuiz && <Card className="academyQuiz"><h3>Prova da aula</h3>{selected.quizQuestions.map((question, questionIndex) => <fieldset key={questionIndex}><legend>{questionIndex + 1}. {question.question}</legend>{question.options.map((option, optionIndex) => <label className="checkOption" key={optionIndex}><input type="radio" name={`answer-${selected.id}-${questionIndex}`} checked={Number(answers[questionIndex]) === optionIndex} onChange={() => setAnswers({ ...answers, [questionIndex]: optionIndex })} /> {option}</label>)}</fieldset>)}<Button onClick={submitQuiz}>Enviar prova</Button></Card>}</>}</div></div>}
+    {course.certificateCode && <section className="academyCertificate"><span>Academia LicitaHub certifica a conclusão de</span><h2>{course.title}</h2><p>Certificado verificável: <strong>{course.certificateCode}</strong></p></section>}
+  </Page>;
+}
+
+function formatAcademyTime(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function AcademyAdaptivePlayer({ lesson, playerRef, initializePlayer }) {
+  if (lesson.videoSource === "upload") {
+    return (
+      <video
+        key={lesson.id}
+        ref={playerRef}
+        title={lesson.title}
+        src={lesson.videoUrl}
+        controls
+        preload="metadata"
+        onLoadedMetadata={(event) => {
+          const savedPosition = Math.max(0, Number(lesson.lastPositionSeconds) || 0);
+          if (savedPosition > 0 && savedPosition < event.currentTarget.duration) event.currentTarget.currentTime = savedPosition;
+        }}
+      />
+    );
+  }
+  return <iframe key={lesson.id} ref={playerRef} onLoad={initializePlayer} title={lesson.title} src={youtubeEmbed(lesson.videoUrl, lesson.lastPositionSeconds)} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />;
+}
+
+function AcademyQuizPanel({ lesson, answers, wrongQuestionIndexes, setAnswers, setWrongQuestionIndexes, submitQuiz }) {
+  if (lesson.completed) {
+    return <Card className="academyQuiz academyQuizCompleted"><span className="statusPill open">Questionário aprovado</span><h3>Avaliação concluída</h3><p>As respostas não ficam disponíveis para nova consulta. O vídeo desta aula continua liberado para revisão.</p></Card>;
+  }
+  return <Card className="academyQuiz"><div className="sectionTitle"><div><span className="eyebrow">Etapa validante</span><h3>Questionário da aula</h3><p>É necessário acertar pelo menos 75% para avançar.</p></div></div>{lesson.quizQuestions.map((question, questionIndex) => <fieldset className={wrongQuestionIndexes.includes(questionIndex) ? "academyQuestionWrong" : ""} key={questionIndex}><legend>{questionIndex + 1}. {question.question}</legend>{question.options.map((option, optionIndex) => <label className="checkOption" key={optionIndex}><input type="radio" name={`academy-answer-${lesson.id}-${questionIndex}`} checked={answers[questionIndex] === optionIndex} onChange={() => { setAnswers((current) => ({ ...current, [questionIndex]: optionIndex })); setWrongQuestionIndexes((current) => current.filter((index) => index !== questionIndex)); }} /> {option}</label>)}{wrongQuestionIndexes.includes(questionIndex) && <small className="academyWrongAnswerNotice">Esta questão foi respondida incorretamente. Revise sua resposta.</small>}</fieldset>)}<Button onClick={submitQuiz} disabled={lesson.quizQuestions.some((_, index) => answers[index] === undefined)}>Enviar respostas</Button></Card>;
+}
+
+function AcademyCourse({ navigate }) {
+  const courseId = currentHashParams().get("id") || "";
+  const [course, setCourse] = useState(null);
+  const [selectedId, setSelectedId] = useState("");
+  const [answers, setAnswers] = useState({});
+  const [wrongQuestionIndexes, setWrongQuestionIndexes] = useState([]);
+  const [message, setMessage] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [videoState, setVideoState] = useState({ position: 0, duration: 0, playing: false });
+  const iframeRef = React.useRef(null);
+  const playbackRef = React.useRef({ position: 0, duration: 0, playing: false, playbackRate: 1, watchedDelta: 0, samplePosition: 0 });
+  const load = () => { if (!courseId) { setLoading(false); return Promise.resolve(); } setLoading(true); return academyRequest(`/api/academy/courses/${courseId}`).then((data) => { setCourse(data); setSelectedId((current) => { const currentLesson = data.lessons?.find((item) => item.id === current); if (currentLesson?.unlocked) return current; return data.lessons?.find((item) => item.unlocked && !item.completed)?.id || data.lessons?.find((item) => item.unlocked)?.id || ""; }); }).catch((error) => setMessage({ type: "error", text: error.message })).finally(() => setLoading(false)); };
+  useEffect(() => { load(); }, [courseId]);
+  const lessons = course?.lessons || [];
+  const selectedIndex = lessons.findIndex((item) => item.id === selectedId);
+  const selected = selectedIndex >= 0 ? lessons[selectedIndex] : null;
+  const nextLesson = selectedIndex >= 0 ? lessons[selectedIndex + 1] : null;
+  useEffect(() => {
+    if (!selected || !course?.enrolled) return undefined;
+    playbackRef.current = { position: Number(selected.lastPositionSeconds) || 0, duration: Number(selected.durationSeconds) || 0, playing: false, playbackRate: 1, watchedDelta: 0, samplePosition: Number(selected.lastPositionSeconds) || 0 };
+    setVideoState({ position: playbackRef.current.position, duration: playbackRef.current.duration, playing: false });
+    const postCommand = (func) => iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args: [] }), "*");
+    const persistProgress = async (ended = false) => {
+      const snapshot = { ...playbackRef.current };
+      if (!ended && snapshot.watchedDelta <= 0) return;
+      if (ended && snapshot.duration > 0) snapshot.position = snapshot.duration;
+      playbackRef.current.watchedDelta = 0;
+      try {
+        const result = await academyRequest(`/api/academy/lessons/${selected.id}/progress`, {
+          method: "PUT",
+          body: JSON.stringify({
+            positionSeconds: Math.floor(snapshot.position),
+            durationSeconds: Math.floor(snapshot.duration),
+            watchedSecondsDelta: Math.floor(Math.min(30, snapshot.watchedDelta)),
+            ended
+          })
+        });
+        setCourse((current) => current ? { ...current, lessons: current.lessons.map((item) => item.id === selected.id ? { ...item, videoCompleted: result.videoCompleted, completed: result.completed } : item) } : current);
+        if (result.videoCompleted && !selected.videoCompleted) setMessage({ type: "success", text: selected.requiresQuiz ? "Vídeo concluído. O questionário foi liberado." : "Aula concluída. A próxima aula foi liberada." });
+        if (result.completed) await load();
+      } catch (_) {
+        playbackRef.current.watchedDelta += snapshot.watchedDelta;
+      }
+    };
+    let nativeEndedSent = false;
+    const sampleNativeVideo = () => {
+      if (selected.videoSource !== "upload") return;
+      const player = iframeRef.current;
+      if (!player || typeof player.currentTime !== "number") return;
+      const currentTime = Math.max(0, player.currentTime || 0);
+      const duration = Math.max(0, player.duration || playbackRef.current.duration || 0);
+      const elapsed = currentTime - playbackRef.current.samplePosition;
+      const playing = !player.paused && !player.ended;
+      if (playing && elapsed > 0 && elapsed <= 4) playbackRef.current.watchedDelta += elapsed;
+      playbackRef.current.position = Math.floor(currentTime);
+      playbackRef.current.samplePosition = currentTime;
+      playbackRef.current.duration = Math.floor(duration);
+      playbackRef.current.playing = playing;
+      setVideoState({ position: playbackRef.current.position, duration: playbackRef.current.duration, playing });
+      if (player.ended && !nativeEndedSent && duration > 0) {
+        nativeEndedSent = true;
+        playbackRef.current.position = Math.floor(duration);
+        persistProgress(true);
+      }
+    };
+    const onMessage = (event) => {
+      if (event.source !== iframeRef.current?.contentWindow || !String(event.origin || "").includes("youtube.com")) return;
+      let data = event.data;
+      try { if (typeof data === "string") data = JSON.parse(data); } catch (_) { return; }
+      const info = data?.info;
+      if (info && typeof info === "object") {
+        if (typeof info.currentTime === "number") {
+          const currentTime = Math.max(0, info.currentTime);
+          const elapsed = currentTime - playbackRef.current.samplePosition;
+          const maximumExpected = Math.max(4, (playbackRef.current.playbackRate || 1) * 4);
+          if (playbackRef.current.playing && elapsed > 0 && elapsed <= maximumExpected) playbackRef.current.watchedDelta += elapsed;
+          playbackRef.current.samplePosition = currentTime;
+          playbackRef.current.position = Math.floor(currentTime);
+        }
+        if (typeof info.duration === "number" && info.duration > 0) playbackRef.current.duration = Math.floor(info.duration);
+        if (typeof info.playerState === "number") playbackRef.current.playing = info.playerState === 1;
+        if (typeof info.playbackRate === "number" && info.playbackRate > 0) playbackRef.current.playbackRate = info.playbackRate;
+        setVideoState({ position: playbackRef.current.position, duration: playbackRef.current.duration, playing: playbackRef.current.playing });
+      }
+      if (data?.event === "onStateChange" && typeof info === "number") {
+        playbackRef.current.playing = info === 1;
+        if (info === 0 && playbackRef.current.duration > 0) {
+          playbackRef.current.position = playbackRef.current.duration;
+          playbackRef.current.samplePosition = playbackRef.current.duration;
+          persistProgress(true);
+        }
+        setVideoState({ position: playbackRef.current.position, duration: playbackRef.current.duration, playing: playbackRef.current.playing });
+      }
+    };
+    const tick = window.setInterval(() => {
+      if (selected.videoSource === "upload") sampleNativeVideo();
+      else {
+        postCommand("getCurrentTime");
+        postCommand("getDuration");
+        postCommand("getPlayerState");
+        postCommand("getPlaybackRate");
+      }
+    }, 1000);
+    const save = window.setInterval(() => { persistProgress(false); }, 10000);
+    window.addEventListener("message", onMessage);
+    return () => { window.clearInterval(tick); window.clearInterval(save); window.removeEventListener("message", onMessage); const snapshot = { ...playbackRef.current }; if (snapshot.watchedDelta > 0) fetch(`${API_BASE_URL}/api/academy/lessons/${selected.id}/progress`, { method: "PUT", credentials: "include", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ positionSeconds: snapshot.position, durationSeconds: snapshot.duration, watchedSecondsDelta: Math.floor(Math.min(30, snapshot.watchedDelta)) }) }).catch(() => {}); };
+  }, [selected?.id, course?.enrolled]);
+  const initializePlayer = () => {
+    const connect = () => {
+      const frame = iframeRef.current?.contentWindow;
+      if (!frame || !selected) return;
+      frame.postMessage(JSON.stringify({ event: "listening", id: selected.id }), "*");
+      frame.postMessage(JSON.stringify({ event: "command", func: "addEventListener", args: ["onStateChange"] }), "*");
+      frame.postMessage(JSON.stringify({ event: "command", func: "getDuration", args: [] }), "*");
+    };
+    connect();
+    window.setTimeout(connect, 500);
+    window.setTimeout(connect, 1500);
+  };
+  const enroll = async () => { try { await academyRequest(`/api/academy/courses/${courseId}/enroll`, { method: "POST" }); setMessage({ type: "success", text: "Curso iniciado. Você poderá continuar de onde parar." }); await load(); } catch (error) { setMessage({ type: "error", text: error.message }); } };
+  const submitQuiz = async () => { if (!selected) return; if (selected.quizQuestions.some((_, index) => answers[index] === undefined)) { setMessage({ type: "error", text: "Responda todas as questões antes de enviar." }); return; } try { const result = await academyRequest(`/api/academy/lessons/${selected.id}/assessment`, { method: "POST", body: JSON.stringify({ answers: selected.quizQuestions.map((_, index) => Number(answers[index])) }) }); if (result.approved) { setAnswers({}); setWrongQuestionIndexes([]); setMessage({ type: "success", text: "Aprovado com pelo menos 75%. A próxima aula foi liberada." }); await load(); } else { setWrongQuestionIndexes(Array.isArray(result.wrongQuestionIndexes) ? result.wrongQuestionIndexes : []); setMessage({ type: "error", text: `Você obteve ${Math.round(result.score || 0)}%. As questões destacadas foram respondidas incorretamente. Revise-as e tente novamente.` }); } } catch (error) { setMessage({ type: "error", text: error.message }); } };
+  const goNext = () => { if (!nextLesson) return; setAnswers({}); setWrongQuestionIndexes([]); setMessage(null); setSelectedId(nextLesson.id); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  if (loading) return <Page label="Academia LicitaHub" title="Curso"><Card><p>Carregando curso...</p></Card></Page>;
+  if (!course) return <Page label="Academia LicitaHub" title="Curso"><Card className="dangerNotice"><p>{message?.text || "Curso não encontrado."}</p></Card></Page>;
+  if (!course.enrolled) return <Page label="Academia LicitaHub" title={course.title} actions={<Button variant="secondary" onClick={() => navigate("academy-home")}>Voltar ao catálogo</Button>}>
+    {message && <Card className={message.type === "error" ? "dangerNotice" : "successNotice"}><p>{message.text}</p></Card>}
+    <section className="academyCourseSummary"><div className="academyCourseSummaryCover">{course.coverImageUrl ? <img src={course.coverImageUrl} alt={`Capa de ${course.title}`} /> : <strong>{course.title}</strong>}</div><div className="academyCourseSummaryInfo"><span className="academyTag">{course.category}</span><h2>{course.title}</h2><p>{course.description || "Curso da Academia LicitaHub."}</p><div className="academyCourseFacts"><span>{lessons.length} aula(s)</span><span>{course.workloadHours || 0}h de carga horária</span><span>Certificado ao concluir</span></div><Button onClick={enroll}>Iniciar curso</Button></div></section>
+    <Card><h3>Conteúdo do curso</h3><div className="academyCourseOutline">{lessons.map((item, index) => <div key={item.id}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{item.title}</strong><small>{item.requiresQuiz ? "Vídeo e questionário validante" : "Videoaula"}</small></div></div>)}</div></Card>
+  </Page>;
+  const percent = videoState.duration > 0 ? Math.min(100, Math.round(videoState.position * 100 / videoState.duration)) : 0;
+  return <Page label="Academia LicitaHub" title={course.title} actions={<Button variant="secondary" onClick={() => navigate("academy-my-learning")}>Meus cursos</Button>}>
+    {message && <Card className={message.type === "error" ? "dangerNotice" : "successNotice"}><p>{message.text}</p></Card>}
+    <div className="academyClassroom"><aside className="academyClassroomRail"><div className="academyClassroomCourse"><span className="academyTag">{course.category}</span><strong>{course.title}</strong></div>{lessons.map((item, index) => <button key={item.id} className={`academyClassroomLesson ${selectedId === item.id ? "active" : ""} ${item.completed ? "completed" : ""}`} disabled={!item.unlocked} onClick={() => { setAnswers({}); setWrongQuestionIndexes([]); setMessage(null); setSelectedId(item.id); }}><div className="academyClassroomThumb">{youtubeThumbnail(item.videoUrl) ? <img src={youtubeThumbnail(item.videoUrl)} alt="" /> : <span>{index + 1}</span>}</div><div><strong>Aula {index + 1}: {item.title}</strong><small>{item.completed ? "Concluída" : item.videoCompleted && item.requiresQuiz ? "Questionário liberado" : item.unlocked ? "Disponível" : "Bloqueada"}</small></div></button>)}</aside><main className="academyClassroomMain">{selected ? <><Card className="academyPlayerCard"><div className="academyPlayerHeading"><div><span className="eyebrow">Aula {selectedIndex + 1} de {lessons.length}</span><h3>{selected.title}</h3><p>{selected.description}</p></div>{selected.completed && <span className="statusPill open">Concluída</span>}</div><div className="academyVideo"><AcademyAdaptivePlayer lesson={selected} playerRef={iframeRef} initializePlayer={initializePlayer} /></div><div className="academyWatchingProgress"><div><span style={{ width: `${selected.videoCompleted ? 100 : percent}%` }} /></div><small>{selected.videoCompleted ? "Vídeo concluído" : `${formatAcademyTime(videoState.position)} de ${formatAcademyTime(videoState.duration)} · assista até o final`}</small></div></Card>{selected.requiresQuiz ? selected.videoCompleted ? <AcademyQuizPanel lesson={selected} answers={answers} wrongQuestionIndexes={wrongQuestionIndexes} setAnswers={setAnswers} setWrongQuestionIndexes={setWrongQuestionIndexes} submitQuiz={submitQuiz} /> : <Card className="academyLockedQuiz"><strong>Questionário bloqueado</strong><p>Assista à aula até o final para liberar as questões.</p></Card> : null}{selected.completed && nextLesson && <div className="academyNextLesson"><div><span className="eyebrow">Próxima etapa</span><strong>{nextLesson.title}</strong></div><Button onClick={goNext}>Próxima aula</Button></div>}{selected.completed && !nextLesson && <Card className="academyCourseCompleted"><h3>Curso concluído</h3><p>Parabéns. Todas as aulas e avaliações foram concluídas. O certificado oficial está disponível abaixo.</p></Card>}</> : <Card><p>Nenhuma aula disponível.</p></Card>}</main></div>
+    {course.certificateCode && <section className="academyCertificate"><span>Certificado oficial liberado</span><h2>{course.title}</h2><p>Código verificável: <strong>{course.certificateCode}</strong></p><div className="formActions"><a className="certificateButton" href={academyCertificateUrl(course.id)}>Baixar PDF</a><a className="linkButton" href={academyCertificateVerificationUrl(course.certificateCode)} target="_blank" rel="noreferrer">Validar autenticidade</a></div></section>}
+  </Page>;
+}
+
+function shuffleCompanyRatings(items) {
+  const next = [...items];
+  for (let index = next.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(Math.random() * (index + 1));
+    [next[index], next[target]] = [next[target], next[index]];
+  }
+  return next;
+}
+
+function companyRatingRequest(path, options = {}) {
+  return fetch(`${API_BASE_URL}${path}`, {
+    credentials: "include",
+    ...options,
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) }
+  }).then(async (response) => {
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Não foi possível concluir esta ação.");
+    return data;
+  });
+}
+
+function formatRatingDeadline(value) {
+  if (!value) return "Prazo não informado";
+  return new Date(value).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function minimumRatingDeadline() {
+  const date = new Date(Date.now() + 5 * 60000);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function CompanyRatingModal({ company, maxStars, onClose, onSave }) {
+  const [stars, setStars] = useState(company?.allocatedStars || 0);
+  if (!company) return null;
+  const maximum = Math.max(0, Number(maxStars || 0));
+  const changeStars = (next) => setStars(Math.min(maximum, Math.max(0, Number(next) || 0)));
+  return <div className="ratingModalBackdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="ratingModal" role="dialog" aria-modal="true" aria-labelledby="rating-company-title">
+      <button type="button" className="ratingModalClose" title="Fechar" aria-label="Fechar" onClick={onClose}>×</button>
+      <LogoSlot src={company.logoUrl} initials={company.name?.slice(0, 2).toUpperCase()} size="xl" label={`Logo de ${company.name}`} />
+      <span className="eyebrow">Percepção de parceria</span>
+      <h3 id="rating-company-title">{company.name}</h3>
+      <p>Avalie a abertura desta empresa para realizar negócios, parcerias e composições empresariais.</p>
+      <div className="ratingAmount">
+        <span>Quantidade de estrelas</span>
+        <div>
+          <button type="button" onClick={() => changeStars(stars - 1)} disabled={stars <= 0} title="Retirar uma estrela" aria-label="Retirar uma estrela">−</button>
+          <input type="number" min="0" max={maximum} value={stars} onChange={(event) => changeStars(event.target.value)} aria-label="Quantidade de estrelas para esta empresa" />
+          <button type="button" onClick={() => changeStars(stars + 1)} disabled={stars >= maximum} title="Adicionar uma estrela" aria-label="Adicionar uma estrela">+</button>
+        </div>
+        <small>Você pode destinar até {maximum} estrela(s) para esta empresa neste momento.</small>
+      </div>
+      <div className="formActions">
+        {company.allocatedStars > 0 && <Button variant="secondary" onClick={() => onSave(0)}>Retirar estrelas</Button>}
+        <Button onClick={() => onSave(stars)} disabled={!stars}>Confirmar avaliação</Button>
+      </div>
+      <small className="ratingPrivacy">Sua identidade não será exibida à empresa avaliada nem nos resultados.</small>
+    </section>
+  </div>;
+}
+
+function CompanyRatingConfirmation({ allocations, total, onClose, onConfirm, submitting }) {
+  return <div className="ratingModalBackdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !submitting) onClose(); }}>
+    <section className="ratingConfirmModal" role="dialog" aria-modal="true" aria-labelledby="rating-confirm-title">
+      <button type="button" className="ratingModalClose" title="Fechar" aria-label="Fechar" onClick={onClose} disabled={submitting}>×</button>
+      <span className="eyebrow">Revisão final</span>
+      <h3 id="rating-confirm-title">Confirme sua distribuição</h3>
+      <p>Confira as empresas e as quantidades antes do envio. Depois de confirmar, a avaliação não poderá ser alterada.</p>
+      <div className="ratingConfirmationList">{allocations.map((company) => <div key={company.id}>
+        <LogoSlot src={company.logoUrl} initials={company.name?.slice(0, 2).toUpperCase()} size="sm" label={`Logo de ${company.name}`} />
+        <strong>{company.name}</strong>
+        <span>★ {company.allocatedStars}</span>
+      </div>)}</div>
+      <div className="ratingConfirmationTotal"><span>Total distribuído</span><strong>★ {total}</strong></div>
+      <div className="formActions"><Button variant="secondary" onClick={onClose} disabled={submitting}>Voltar e ajustar</Button><Button onClick={onConfirm} disabled={submitting}>{submitting ? "Enviando..." : "Confirmar envio"}</Button></div>
+    </section>
+  </div>;
+}
+
+function ratingTrend(points) {
+  if (points.length < 3) return [];
+  const values = points.map((point) => Number(point.relativeIndex || 0));
+  const xMean = (values.length - 1) / 2;
+  const yMean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const numerator = values.reduce((sum, value, index) => sum + (index - xMean) * (value - yMean), 0);
+  const denominator = values.reduce((sum, _, index) => sum + (index - xMean) ** 2, 0);
+  const slope = denominator ? numerator / denominator : 0;
+  return values.map((_, index) => yMean + slope * (index - xMean));
+}
+
+function RatingEvolutionChart({ series }) {
+  const closed = series.filter((item) => item.status === "closed");
+  if (!closed.length) return <div className="ratingChartEmpty"><strong>A evolução começará após o fechamento da primeira rodada.</strong><p>A rodada atual não entra na tendência enquanto ainda recebe avaliações.</p></div>;
+  const width = 900; const height = 320; const left = 56; const right = 24; const top = 24; const bottom = 58;
+  const trend = ratingTrend(closed);
+  const maxValue = Math.max(120, ...closed.map((item) => Number(item.relativeIndex || 0)), ...trend);
+  const roundedMax = Math.ceil(maxValue / 20) * 20;
+  const x = (index) => closed.length === 1 ? width / 2 : left + index * (width - left - right) / (closed.length - 1);
+  const y = (value) => top + (roundedMax - value) * (height - top - bottom) / roundedMax;
+  const points = closed.map((item, index) => `${x(index)},${y(Number(item.relativeIndex || 0))}`).join(" ");
+  const trendPoints = trend.map((value, index) => `${x(index)},${y(value)}`).join(" ");
+  const guides = [0, 50, 100, roundedMax].filter((value, index, values) => values.indexOf(value) === index && value <= roundedMax);
+  return <div className="ratingChartWrap">
+    <svg className="ratingChart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Evolução da percepção de parceria">
+      {guides.map((value) => <g key={value}><line x1={left} y1={y(value)} x2={width - right} y2={y(value)} className={value === 100 ? "marketGuide" : "chartGuide"} /><text x={left - 10} y={y(value) + 4} textAnchor="end">{value}</text></g>)}
+      {closed.length > 1 && <polyline points={points} className="ratingActualLine" />}
+      {trend.length > 0 && <polyline points={trendPoints} className="ratingTrendLine" />}
+      {closed.map((item, index) => <g key={item.id}>
+        <circle cx={x(index)} cy={y(Number(item.relativeIndex || 0))} r="6" className="ratingPoint"><title>{`${item.title}: ${Number(item.relativeIndex || 0).toLocaleString("pt-BR")} pontos`}</title></circle>
+        <text x={x(index)} y={height - 24} textAnchor="middle">{item.title.length > 16 ? `${item.title.slice(0, 14)}…` : item.title}</text>
+      </g>)}
+    </svg>
+    <div className="ratingChartLegend"><span className="actual">Sua empresa</span><span className="market">Média do mercado (100)</span>{trend.length > 0 && <span className="trend">Tendência</span>}</div>
+  </div>;
+}
+
+function CompanyRatingResults({ results }) {
+  const [scope, setScope] = useState("all");
+  const [year, setYear] = useState("all");
+  const [sessionId, setSessionId] = useState("all");
+  const allSeries = Array.isArray(results?.series) ? results.series : [];
+  const years = [...new Set(allSeries.map((item) => new Date(item.openedAt).getFullYear()).filter(Boolean))].sort((a, b) => b - a);
+  let filtered = allSeries.filter((item) => (year === "all" || String(new Date(item.openedAt).getFullYear()) === year) && (sessionId === "all" || item.id === sessionId));
+  if (scope === "last5") filtered = filtered.slice(-5);
+  if (scope === "last10") filtered = filtered.slice(-10);
+  const latest = results?.latest;
+  const history = results?.history || {};
+  const relativeText = (value) => Number(value || 0) >= 100 ? "acima ou na média do mercado" : "abaixo da média do mercado";
+  return <div className="ratingResults">
+    <section className="ratingResultBand">
+      <div><span className="eyebrow">{latest?.status === "open" ? "Resultado parcial da rodada" : "Última rodada concluída"}</span><h3>{latest?.title || "Ainda não há resultado"}</h3><strong>{latest ? `${latest.receivedStars} estrela(s)` : "Aguardando avaliações"}</strong><p>{latest ? `Posição ${latest.position} · média atual ${Number(latest.marketAverage || 0).toLocaleString("pt-BR")} · índice ${Number(latest.relativeIndex || 0).toLocaleString("pt-BR")} · ${relativeText(latest.relativeIndex)}` : "Os resultados aparecerão depois do primeiro envio da empresa."}</p></div>
+      <div><span className="eyebrow">Média geral das rodadas</span><h3>Desempenho médio histórico</h3><strong>Índice {Number(history.relativeIndex || 0).toLocaleString("pt-BR")}</strong><p>Média dos índices de {history.sessionCount || 0} rodada(s) encerrada(s). Em cada uma, 100 representa a média do mercado.</p></div>
+    </section>
+    <Card className="ratingHistoryCard">
+      <div className="ratingHistoryHeading"><div><span className="eyebrow">Evolução e tendência</span><h3>Percepção da sua empresa ao longo do tempo</h3></div><div className="ratingResultFilters">
+        <select value={scope} onChange={(event) => setScope(event.target.value)} aria-label="Período"><option value="all">Todas as rodadas</option><option value="last5">Últimas 5</option><option value="last10">Últimas 10</option></select>
+        <select value={year} onChange={(event) => setYear(event.target.value)} aria-label="Ano"><option value="all">Todos os anos</option>{years.map((item) => <option key={item} value={String(item)}>{item}</option>)}</select>
+        <select value={sessionId} onChange={(event) => setSessionId(event.target.value)} aria-label="Rodada"><option value="all">Todas as sessões</option>{allSeries.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select>
+      </div></div>
+      <RatingEvolutionChart series={filtered} />
+    </Card>
+  </div>;
+}
+
+function CompanyRating() {
+  const [state, setState] = useState(null);
+  const [results, setResults] = useState(null);
+  const [companies, setCompanies] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [nextState, nextResults] = await Promise.all([
+        companyRatingRequest("/api/company-ratings"),
+        companyRatingRequest("/api/company-rating-results")
+      ]);
+      setState(nextState);
+      setResults(nextResults);
+      setCompanies((current) => {
+        const incoming = Array.isArray(nextState.companies) ? nextState.companies : [];
+        if (!current.length || current.map((item) => item.id).sort().join(",") !== incoming.map((item) => item.id).sort().join(",")) return shuffleCompanyRatings(incoming);
+        return current.map((item) => ({ ...item, allocatedStars: incoming.find((entry) => entry.id === item.id)?.allocatedStars || 0 }));
+      });
+      return nextState;
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(); }, []);
+  const budget = Number(state?.round?.starBudget || 0);
+  const used = Number(state?.usedStars || 0);
+  const remaining = Math.max(0, budget - used);
+  const allocations = companies.filter((company) => !company.isOwn && Number(company.allocatedStars || 0) > 0).sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
+  const saveAllocation = async (stars) => {
+    if (!selected) return;
+    try {
+      await companyRatingRequest(`/api/company-ratings/allocations/${selected.id}`, { method: "PUT", body: JSON.stringify({ stars }) });
+      setSelected(null);
+      setMessage({ type: "success", text: stars ? "Avaliação reservada. Continue até distribuir todas as estrelas." : "Estrelas retiradas desta empresa." });
+      await load();
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+    }
+  };
+  const submit = async () => {
+    if (remaining) return;
+    setConfirming(true);
+  };
+  const confirmSubmission = async () => {
+    setSubmitting(true);
+    try {
+      await companyRatingRequest("/api/company-ratings/submit", { method: "POST", body: "{}" });
+      setConfirming(false);
+      setMessage({ type: "success", text: "Avaliação enviada. Sua distribuição ficou anônima e não poderá ser alterada." });
+      await load();
+    } catch (error) {
+      const refreshedState = await load();
+      if (refreshedState?.submitted) {
+        setConfirming(false);
+        setMessage({ type: "success", text: "Avaliação enviada. Sua distribuição ficou anônima e não poderá ser alterada." });
+      } else {
+        setMessage({ type: "error", text: error.message });
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  if (loading && !state) return <Page label="Comunidade" title="Avaliação de parcerias"><Card><p>Preparando a rodada...</p></Card></Page>;
+  const hasOpenVote = state?.round && state.included && !state.submitted;
+  return <Page label="Comunidade" title="Avaliação de parcerias">
+    {message && <Card className={message.type === "error" ? "dangerNotice" : "successNotice"}><p>{message.text}</p></Card>}
+    <section className="ratingPurpose"><span className="eyebrow">Critério desta avaliação</span><h3>Abertura para negócios e parcerias</h3><p>A percepção sobre a abertura da empresa avaliada para realizar negócios, parcerias e composições empresariais.</p><small>As avaliações são anônimas. Nenhuma empresa verá quem lhe atribuiu estrelas.</small></section>
+    {!state?.round && <><Card><h3>Nenhuma rodada aberta</h3><p>Aguarde a próxima liberação do administrador da LicitaHub. Seus resultados históricos continuam disponíveis abaixo.</p></Card><CompanyRatingResults results={results} /></>}
+    {state?.round && !state.included && <Card><h3>Empresa fora desta rodada</h3><p>Esta sessão considera o conjunto de associadas ativo no momento em que foi aberta.</p></Card>}
+    {hasOpenVote && !state.canManage && <><Card><h3>Aguardando o administrador da sua empresa</h3><p>A rodada <strong>{state.round.title}</strong> está aberta. A distribuição é única por empresa e deve ser concluída pelo administrador da empresa.</p></Card>{results?.latest && <CompanyRatingResults results={results} />}</>}
+    {hasOpenVote && state.canManage && <section className="companyRatingStage">
+      <header className="ratingRoundStrip"><div><span>Rodada atual</span><strong>{state.round.title}</strong></div><small>{state.round.companyCount} empresas · prazo {formatRatingDeadline(state.round.closesAt)}</small></header>
+      <div className="companyLogoBackdrop">{companies.map((company) => <button type="button" key={company.id} className={`companyRatingTile ${company.isOwn ? "isOwn" : ""} ${company.allocatedStars ? "hasRating" : ""}`} disabled={company.isOwn} onClick={() => setSelected(company)}>
+        <LogoSlot src={company.logoUrl} initials={company.name?.slice(0, 2).toUpperCase()} size="md" label={`Logo de ${company.name}`} />
+        <strong>{company.name}</strong>
+        {company.isOwn ? <small>Sua empresa</small> : company.allocatedStars > 0 ? <span className="ratingAllocatedBadge">★ {company.allocatedStars}</span> : <small>Avaliar</small>}
+      </button>)}</div>
+      <footer className="ratingStageFooter"><strong>Distribua as {budget} estrelas integralmente.</strong><span>Você decide livremente quantas estrelas cada empresa receberá.</span></footer>
+      <aside className={`ratingSubmissionDock ${remaining === 0 ? "ready" : ""}`}>
+        <button type="button" onClick={submit} disabled={remaining !== 0}>{remaining > 0 ? `${remaining} estrela${remaining === 1 ? "" : "s"} restante${remaining === 1 ? "" : "s"}` : "Concluir distribuição"}</button>
+        <div aria-label={`${used} de ${budget} estrelas distribuídas`}><span style={{ width: `${budget ? used * 100 / budget : 0}%` }} /></div>
+        <small>{used} de {budget} distribuídas</small>
+      </aside>
+    </section>}
+    {state?.submitted && <><Card className="successNotice"><h3>Avaliação concluída pela sua empresa</h3><p>O painel de distribuição foi fechado e o resultado parcial já está disponível. A rodada encerra automaticamente quando todas as empresas participantes enviarem suas avaliações.</p></Card><CompanyRatingResults results={results} /></>}
+    <CompanyRatingModal company={selected} maxStars={remaining + Number(selected?.allocatedStars || 0)} onClose={() => setSelected(null)} onSave={saveAllocation} />
+    {confirming && <CompanyRatingConfirmation allocations={allocations} total={used} onClose={() => setConfirming(false)} onConfirm={confirmSubmission} submitting={submitting} />}
+  </Page>;
+}
+
+function RatingRankingTable({ items, emptyText, average = false }) {
+  if (!items?.length) return <p>{emptyText}</p>;
+  return <div className="ratingRanking">{items.map((item, index) => <div key={item.id}><span className="ratingRank">{index + 1}</span><strong>{item.name}</strong><span>{average ? `${Number(item.stars || 0).toLocaleString("pt-BR")} média de estrelas` : `${item.stars} estrela(s)`}</span><b>Índice {Number(item.relativeIndex || 0).toLocaleString("pt-BR")}</b></div>)}</div>;
+}
+
+function CompanyRatingAdmin() {
+  const [rounds, setRounds] = useState([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [details, setDetails] = useState(null);
+  const [title, setTitle] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [message, setMessage] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState("");
+  const [filters, setFilters] = useState({ search: "", status: "all", year: "all" });
+  const [closedExpanded, setClosedExpanded] = useState(false);
+  const load = async (preferredId = "", useCurrentSelection = true) => {
+    setLoading(true);
+    try {
+      const list = await companyRatingRequest("/api/admin/company-rating-rounds");
+      const items = Array.isArray(list) ? list : [];
+      setRounds(items);
+      const nextId = preferredId || (useCurrentSelection ? selectedId : "") || items[0]?.id || "";
+      setSelectedId(nextId);
+      setClosedExpanded(items.find((item) => item.id === nextId)?.status === "closed");
+      const result = await companyRatingRequest(`/api/admin/company-rating-results${nextId ? `?roundId=${encodeURIComponent(nextId)}` : ""}`);
+      setDetails(result);
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(); }, []);
+  const selectRound = async (id) => { setSelectedId(id); setClosedExpanded(rounds.find((item) => item.id === id)?.status === "closed"); setLoading(true); try { setDetails(await companyRatingRequest(`/api/admin/company-rating-results?roundId=${encodeURIComponent(id)}`)); } catch (error) { setMessage({ type: "error", text: error.message }); } finally { setLoading(false); } };
+  const openRound = async (event) => {
+    event.preventDefault();
+    if (!deadline) {
+      setMessage({ type: "error", text: "Informe o prazo de encerramento da rodada." });
+      return;
+    }
+    try {
+      const created = await companyRatingRequest("/api/admin/company-rating-rounds", { method: "POST", body: JSON.stringify({ title, closesAt: new Date(deadline).toISOString() }) });
+      setTitle("");
+      setDeadline("");
+      setMessage({ type: "success", text: `Rodada aberta para ${created.companyCount} empresas, com ${created.starBudget} estrelas por empresa e encerramento em ${formatRatingDeadline(created.closesAt)}.` });
+      await load(created.id);
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+    }
+  };
+  const deleteRound = async () => {
+    if (!current || current.status !== "closed") return;
+    const confirmed = window.confirm(`Excluir definitivamente a rodada "${current.title}"?\n\nTodas as avaliações e resultados desta rodada serão removidos, e a média histórica será recalculada. Esta ação não pode ser desfeita.`);
+    if (!confirmed) return;
+    setDeletingId(current.id);
+    try {
+      await companyRatingRequest(`/api/admin/company-rating-rounds?roundId=${encodeURIComponent(current.id)}`, { method: "DELETE" });
+      setMessage({ type: "success", text: `A rodada "${current.title}" foi excluída e o histórico foi recalculado.` });
+      setSelectedId("");
+      setDetails(null);
+      await load("", false);
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+    } finally {
+      setDeletingId("");
+    }
+  };
+  const openRoundItem = rounds.find((item) => item.status === "open");
+  const availableYears = [...new Set(rounds.map((item) => new Date(item.openedAt).getFullYear()).filter(Boolean))].sort((left, right) => right - left);
+  const filteredRounds = rounds.filter((item) => {
+    const term = filters.search.trim().toLowerCase();
+    const matchesSearch = !term || String(item.title || "").toLowerCase().includes(term);
+    const matchesStatus = filters.status === "all" || item.status === filters.status;
+    const matchesYear = filters.year === "all" || String(new Date(item.openedAt).getFullYear()) === filters.year;
+    return matchesSearch && matchesStatus && matchesYear;
+  });
+  const openRounds = filteredRounds.filter((item) => item.status === "open");
+  const closedRounds = filteredRounds.filter((item) => item.status === "closed");
+  const current = details?.round;
+  const submitted = current ? details.participation?.filter((item) => item.submitted).length || 0 : 0;
+  const progress = current?.companyCount ? submitted * 100 / current.companyCount : 0;
+  return <Page label="Acesso e administração" title="Avaliação das associadas">
+    {message && <Card className={message.type === "error" ? "dangerNotice" : "successNotice"}><p>{message.text}</p></Card>}
+    <section className="ratingAdminIntro"><div><span className="eyebrow">Rodadas anônimas</span><h3>Percepção de abertura para negócios e parcerias</h3><p>Abra uma sessão para todas as associadas ativas. Ela encerra quando todas concluírem ou automaticamente no prazo definido, mesmo que existam empresas pendentes.</p></div>{!openRoundItem && <form onSubmit={openRound}><Field label="Nome da nova rodada"><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={180} placeholder="Ex.: Percepção de parcerias · Julho 2026" required /></Field><Field label="Prazo de encerramento"><input type="datetime-local" value={deadline} min={minimumRatingDeadline()} onChange={(event) => setDeadline(event.target.value)} required /></Field><Button type="submit">Abrir rodada</Button></form>}</section>
+    <Card className="compactFilters ratingAdminFilters"><FormGrid>
+      <Field label="Buscar rodada"><input value={filters.search} onChange={(event) => setFilters((currentFilters) => ({ ...currentFilters, search: event.target.value }))} placeholder="Digite o nome da rodada" /></Field>
+      <Field label="Situação"><select value={filters.status} onChange={(event) => { const status = event.target.value; setFilters((currentFilters) => ({ ...currentFilters, status })); if (status === "closed") setClosedExpanded(true); }}><option value="all">Todas</option><option value="open">Abertas</option><option value="closed">Encerradas</option></select></Field>
+      <Field label="Ano"><select value={filters.year} onChange={(event) => setFilters((currentFilters) => ({ ...currentFilters, year: event.target.value }))}><option value="all">Todos os anos</option>{availableYears.map((year) => <option key={year} value={String(year)}>{year}</option>)}</select></Field>
+    </FormGrid></Card>
+    <div className="ratingAdminLayout">
+      <aside className="ratingRoundList">
+        <span className="eyebrow">Sessões</span>
+        {filters.status !== "closed" && openRounds.length > 0 && <div className="ratingOpenRounds"><small>Em andamento</small>{openRounds.map((item) => <button type="button" key={item.id} className={selectedId === item.id ? "active" : ""} onClick={() => selectRound(item.id)}><strong>{item.title}</strong><small>{item.submittedCount}/{item.companyCount} concluíram · até {formatRatingDeadline(item.closesAt)}</small></button>)}</div>}
+        {filters.status !== "open" && <details className="ratingClosedRounds" open={closedExpanded} onToggle={(event) => setClosedExpanded(event.currentTarget.open)}>
+          <summary><span>Rodadas encerradas</span><strong>{closedRounds.length}</strong></summary>
+          <div>{closedRounds.map((item) => <button type="button" key={item.id} className={selectedId === item.id ? "active" : ""} onClick={() => selectRound(item.id)}><strong>{item.title}</strong><small>{new Date(item.openedAt).toLocaleDateString("pt-BR")} · {item.companyCount} empresas</small></button>)}</div>
+          {closedRounds.length === 0 && <p>Nenhuma rodada encerrada corresponde aos filtros.</p>}
+        </details>}
+        {filteredRounds.length === 0 && <p>Nenhuma rodada encontrada.</p>}
+      </aside>
+      <main className="ratingAdminMain">
+        {loading && <Card><p>Carregando acompanhamento...</p></Card>}
+        {!loading && current && <><Card className="ratingAdminStatus"><div><span className={`statusPill ${current.status === "open" ? "open" : ""}`}>{current.status === "open" ? "Rodada aberta" : "Rodada encerrada"}</span><h3>{current.title}</h3><p>{current.companyCount} empresas · {current.starBudget} estrelas por distribuição · prazo {formatRatingDeadline(current.closesAt)}</p></div><div className="ratingAdminStatusActions"><div className="ratingAdminProgress"><strong>{submitted}/{current.companyCount}</strong><span>empresas concluíram</span><div><span style={{ width: `${progress}%` }} /></div></div>{current.status === "closed" && <Button variant="danger" onClick={deleteRound} disabled={deletingId === current.id}>{deletingId === current.id ? "Excluindo..." : "Excluir rodada"}</Button>}</div></Card>
+        {current.status === "open" ? <Card><div className="ratingParticipationHeading"><div><h3>Acompanhamento da participação</h3><p>O ranking fica oculto até o fechamento automático da rodada.</p></div><strong>{Math.round(progress)}%</strong></div><div className="ratingParticipationList">{details.participation?.map((item) => <div key={item.id}><span className={`ratingParticipationDot ${item.submitted ? "done" : ""}`} /><strong>{item.name}</strong><small>{item.submitted ? "Distribuição concluída" : "Pendente"}</small></div>)}</div></Card> : <div className="ratingRankingSections">
+          <details className="ratingRankingDetails">
+            <summary><div><span className="eyebrow">Resultado da sessão</span><strong>Ranking desta rodada</strong></div><span>{details.sessionRanking?.length || 0} empresas</span></summary>
+            <div className="ratingRankingDetailsBody"><p>Classificação calculada apenas com as distribuições confirmadas até o encerramento.</p><RatingRankingTable items={details.sessionRanking} emptyText="Sem resultados nesta sessão." /></div>
+          </details>
+          <details className="ratingRankingDetails">
+            <summary><div><span className="eyebrow">Histórico</span><strong>Média geral das rodadas</strong></div><span>{details.historicalRanking?.length || 0} empresas</span></summary>
+            <div className="ratingRankingDetailsBody"><p>Média dos índices obtidos por cada empresa nas rodadas encerradas. Cada rodada possui o mesmo peso.</p><RatingRankingTable items={details.historicalRanking} average emptyText="O histórico ainda não possui resultados." /></div>
+          </details>
+        </div>}</>}
+      </main>
+    </div>
+  </Page>;
+}
+
 function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAction, updateUserStatus, selectedUserProfile, openUserProfile, selectedPublicationId, openPublicationManager, selectedTenderId, openTenderInterestCompanies, selectedNews, openNewsDetail, refreshSession, sessionUser, openChatForAd, openChatForTask, openChatForUser }) {
   const currentRole = frontendRole(sessionUser?.roleKey);
   if (!canAccessScreen(screen, currentRole)) {
@@ -1208,20 +2153,25 @@ function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAc
     "admin-dashboard": <AdminDashboard navigate={navigate} />,
     "invite-new": <InviteNew />,
     "invite-list": <InviteList navigate={navigate} />,
-	"company-manage": <CompanyManage />,
+    "company-manage": <CompanyManage />,
+	"password-reset-management": <PasswordResetManagement />,
+    "company-rating-admin": <CompanyRatingAdmin />,
     "invite-accept": <InviteAccept navigate={navigate} />,
     "company-review": <CompanyReview />,
     "my-profile": <MyProfile refreshSession={refreshSession} sessionUser={sessionUser} />,
-    "company-dashboard": <CompanyDashboard navigate={navigate} sessionUser={sessionUser} />,
     "my-assembly-tasks": <MyAssemblyTasks navigate={navigate} openChatForTask={openChatForTask} />,
     "notification-history": <NotificationHistory navigate={navigate} openPublicationManager={openPublicationManager} openTenderInterestCompanies={openTenderInterestCompanies} />,
     "company-profile-edit": <CompanyProfileEdit refreshSession={refreshSession} />,
     "company-users": <CompanyUsers navigate={navigate} openUserAction={openUserAction} openUserProfile={openUserProfile} sessionUser={sessionUser} />,
+	"technical-professionals": <TechnicalProfessionals sessionUser={sessionUser} />,
+	"technical-certificates": <TechnicalCertificates sessionUser={sessionUser} navigate={navigate} />,
+	"technical-certificate-ai": <TechnicalCertificateAI navigate={navigate} />,
     "company-user-profile": <CompanyUserProfile selectedUserProfile={selectedUserProfile} navigate={navigate} />,
     "company-user-block": <CompanyUserAccessConfirm navigate={navigate} selectedUserAction={selectedUserAction} updateUserStatus={updateUserStatus} mode="block" />,
     "company-user-unblock": <CompanyUserAccessConfirm navigate={navigate} selectedUserAction={selectedUserAction} updateUserStatus={updateUserStatus} mode="unblock" />,
     "company-user-delete": <CompanyUserDelete navigate={navigate} selectedUserAction={selectedUserAction} />,
     "community-home": <CommunityHome sessionUser={sessionUser} navigate={navigate} />,
+    "company-rating": <CompanyRating />,
     "company-public-profile": <CompanyPublicProfile navigate={navigate} openPublicationManager={openPublicationManager} sessionUser={sessionUser} openChatForUser={openChatForUser} />,
     "publication-new": <PublicationNew openPublicationManager={openPublicationManager} navigate={navigate} />,
     "publication-list": <PublicationList selectedPublicationId={selectedPublicationId} />,
@@ -1229,6 +2179,11 @@ function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAc
     "radar-detail": <RadarDetailConnected selectedNews={selectedNews} navigate={navigate} />,
     "radar-new": <RadarNewConnected navigate={navigate} />,
     "radar-manage": <RadarManage />,
+    "academy-home": <AcademyHome navigate={navigate} />,
+    "academy-my-learning": <AcademyMyLearning navigate={navigate} />,
+    "academy-admin": <AcademyAdmin navigate={navigate} />,
+    "academy-course-admin": <AcademyCourseAdmin navigate={navigate} />,
+    "academy-course": <AcademyCourse navigate={navigate} />,
     "tender-admin": <TenderAdmin navigate={navigate} />,
     "pncp-capture": <PNCPCapture navigate={navigate} />,
     "tender-new": <TenderNew navigate={navigate} />,
@@ -1248,7 +2203,7 @@ function Screen({ screen, navigate, userStatuses, openUserAction, selectedUserAc
     "assembly-board": <AssemblyBoard sessionUser={sessionUser} navigate={navigate} openChatForTask={openChatForTask} />
   };
 
-  return screens[screen] || <CompanyDashboard />;
+  return screens[screen] || <AccessDenied navigate={navigate} role={currentRole} />;
 }
 
 function AccessDenied({ navigate, role }) {
@@ -1288,8 +2243,8 @@ function getPageHelp(title) {
     "Central de montagens": "Acesse e acompanhe todas as montagens individuais e consorciais da sua empresa em um só lugar.",
     "Histórico de alertas": "Consulte acontecimentos anteriores e retorne diretamente ao conteúdo relacionado.",
     "Análise e aprovação da empresa": "Revise os dados enviados pela empresa e decida se ela entra, ajusta informações ou será recusada.",
-    "Dashboard da empresa": "Resumo operacional da empresa: oportunidades, matches, comunidade e próximos passos em um só lugar.",
     "Editar perfil da empresa": "Mantenha a vitrine institucional atualizada. Essas informações aparecem na comunidade e no match.",
+	"Acervo técnico": "Organize atestados técnicos da empresa e encontre experiências por conteúdo, serviços, dados contratuais e palavras-chave.",
     "Usuários vinculados": "Gerencie quem opera pela empresa. O perfil de acesso define as permissões de cada pessoa.",
     "Cadastro do usuário vinculado": "Inclua ou edite uma pessoa da empresa, escolhendo o perfil adequado para sua função.",
     "Cadastrar usuário vinculado": "Inclua uma nova pessoa da empresa e envie o convite de acesso.",
@@ -1313,7 +2268,12 @@ function getPageHelp(title) {
     "Vitrine de parceiros": "Veja anúncios de empresas interessadas em diferentes licitações e filtre oportunidades de consórcio.",
     "Avaliar candidata da licitação": "Avalie uma empresa por vez: veja o que ela oferece, o que falta e decida recusar ou dar match.",
     "Detalhe do anúncio": "Visão detalhada da empresa dentro da licitação, com oferta, necessidades e aderência.",
-    "Match realizado": "Confirmação de interesse recíproco entre empresas na mesma licitação, com contato direto pelo WhatsApp."
+    "Match realizado": "Confirmação de interesse recíproco entre empresas na mesma licitação, com contato direto pelo WhatsApp.",
+    "Academia LicitaHub": "Encontre cursos publicados para desenvolver a equipe e fortalecer a atuação em engenharia consultiva.",
+    "Meus cursos": "Retome cursos iniciados, acompanhe o progresso das aulas e acesse certificados concluídos.",
+    "Gerenciar cursos": "Consulte os cursos cadastrados e abra a gestão exclusiva de cada conteúdo.",
+    "Gestão do curso": "Edite a apresentação do curso e organize todas as aulas, vídeos e questionários.",
+    "Novo curso": "Cadastre a apresentação e a imagem do novo curso antes de organizar as aulas."
   };
   return help[title] || "Tela da LicitaHub para apoiar decisões empresariais com clareza e contexto.";
 }
@@ -1332,9 +2292,9 @@ function Field({ label, children, hint }) {
   );
 }
 
-function LogoSlot({ initials = "EC", size = "md", label = "Logo da empresa", src = "" }) {
+function LogoSlot({ initials = "EC", size = "md", label = "Logo da empresa", src = "", fit = "contain" }) {
   return (
-    <span className={`logoSlot logoSlot-${size}`} title={label} aria-label={label}>
+    <span className={`logoSlot logoSlot-${size} logoSlot-${fit}`} title={label} aria-label={label}>
       {src ? <img src={src} alt={label} /> : <span>{initials}</span>}
     </span>
   );
@@ -1372,6 +2332,58 @@ function ImageUploadField({ label, hint, accept = "image/*", initials = "IMG", v
 
 function Card({ children, className = "", onClick, id }) {
   return <div className={`card ${className}`} onClick={onClick} id={id}>{children}</div>;
+}
+
+function PasswordResetManagement() {
+  const [filters, setFilters] = useState({ user: "", company: "", status: "" });
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [copiedId, setCopiedId] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const params = new URLSearchParams();
+      if (filters.user.trim()) params.set("user", filters.user.trim());
+      if (filters.company.trim()) params.set("company", filters.company.trim());
+      if (filters.status) params.set("status", filters.status);
+      const response = await fetch(`${API_BASE_URL}/api/admin/password-reset-requests?${params.toString()}`, { credentials: "include" });
+      const data = await response.json().catch(() => []);
+      if (!response.ok) throw new Error(data.error || "Não foi possível carregar os pedidos.");
+      setItems(Array.isArray(data) ? data : []);
+    } catch (loadError) {
+      setError(loadError.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [filters.user, filters.company, filters.status]);
+
+  const copyLink = async (item) => {
+    if (!item.resetUrl) return;
+    await navigator.clipboard.writeText(item.resetUrl);
+    setCopiedId(item.id);
+    window.setTimeout(() => setCopiedId(""), 1800);
+  };
+
+  const statusLabels = { available: "Disponível", used: "Usado", expired: "Expirado" };
+  return <Page label="Acesso e administração" title="Recuperações de senha" actions={<Button variant="secondary" onClick={load}>Atualizar</Button>}>
+    <section className="infoBanner"><strong>Controle temporário de links</strong><span>Como o e-mail ainda não está conectado, os links ficam disponíveis aqui para atendimento autorizado. Confirme a identidade do usuário antes de compartilhar.</span></section>
+    <Card className="compactFilters resetRequestsFilters"><FormGrid>
+      <Field label="Usuário"><input value={filters.user} onChange={(event) => setFilters((current) => ({ ...current, user: event.target.value }))} placeholder="Nome ou e-mail" /></Field>
+      <Field label="Empresa"><input value={filters.company} onChange={(event) => setFilters((current) => ({ ...current, company: event.target.value }))} placeholder="Nome da empresa" /></Field>
+      <Field label="Situação"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todas</option><option value="available">Disponível</option><option value="used">Usado</option><option value="expired">Expirado</option></select></Field>
+    </FormGrid></Card>
+    {error && <Card className="dangerNotice"><p>{error}</p></Card>}
+    {loading ? <Card><p>Carregando pedidos de recuperação...</p></Card> : items.length === 0 ? <Card className="emptyState"><p>Nenhum pedido encontrado.</p></Card> : <section className="resetRequestList">{items.map((item) => <Card className={`resetRequestCard status-${item.status}`} key={item.id}>
+      <div className="resetRequestHeader"><div><span className="eyebrow">{item.companyName}</span><h3>{item.fullName}</h3><p>{item.email}</p></div><span className={`statusPill ${item.status === "available" ? "open" : item.status === "used" ? "success" : "review"}`}>{statusLabels[item.status] || item.status}</span></div>
+      <div className="resetRequestMeta"><span>Solicitado em <strong>{item.createdAt ? new Date(item.createdAt).toLocaleString("pt-BR") : "-"}</strong></span><span>Expira em <strong>{item.expiresAt ? new Date(item.expiresAt).toLocaleString("pt-BR") : "-"}</strong></span>{item.usedAt && <span>Usado em <strong>{new Date(item.usedAt).toLocaleString("pt-BR")}</strong></span>}</div>
+      {item.resetUrl && <div className="resetRequestLink"><input value={item.resetUrl} readOnly /><Button onClick={() => copyLink(item)}>{copiedId === item.id ? "Copiado" : "Copiar link"}</Button></div>}
+    </Card>)}</section>}
+  </Page>;
 }
 
 function AdminDashboard({ navigate }) {
@@ -1569,7 +2581,7 @@ function InviteNew() {
       const data = parseAPIResponseText(text);
 
       if (!response.ok || data?.error) {
-        throw new Error(data?.error || "Nao foi possivel enviar o convite.");
+        throw new Error(data?.error || "Não foi possível enviar o convite.");
       }
 
       setCreatedInvitation(data);
@@ -1584,7 +2596,7 @@ function InviteNew() {
         internalNote: ""
       });
     } catch (error) {
-      setMessage({ type: "error", text: error.message || "Nao foi possivel gravar o convite. Confirme se o backend esta ligado." });
+      setMessage({ type: "error", text: error.message || "Não foi possível gravar o convite. Confirme se o backend está ligado." });
     } finally {
       setSaving(false);
     }
@@ -1605,14 +2617,14 @@ function InviteNew() {
       )}
       <form onSubmit={submitInvitation}>
         <FormGrid>
-          <Field label="Nome fantasia" hint="Obrigatorio. Unico."><input value={form.tradeName} onChange={(event) => updateField("tradeName", event.target.value)} placeholder="Engenvale Consultoria" required /></Field>
-          <Field label="CNPJ" hint="Obrigatorio. Unico."><input value={form.cnpj} onChange={(event) => updateField("cnpj", formatCNPJ(event.target.value))} placeholder="00.000.000/0000-00" maxLength="18" required /></Field>
-          <Field label="Contato principal" hint="Obrigatorio. Pode repetir."><input value={form.contactName} onChange={(event) => updateField("contactName", event.target.value)} placeholder="Nome completo" required /></Field>
-          <Field label="E-mail" hint="Obrigatorio. Pode repetir."><input type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} placeholder="contato@empresa.com.br" required /></Field>
-          <Field label="Telefone" hint="Obrigatorio. Pode repetir."><input value={form.phone} onChange={(event) => updateField("phone", formatPhoneBR(event.target.value))} placeholder="(00) 00000-0000" maxLength="15" required /></Field>
+          <Field label="Nome fantasia" hint="Obrigatório. Único."><input value={form.tradeName} onChange={(event) => updateField("tradeName", event.target.value)} placeholder="Engenvale Consultoria" required /></Field>
+          <Field label="CNPJ" hint="Obrigatório. Único."><input value={form.cnpj} onChange={(event) => updateField("cnpj", formatCNPJ(event.target.value))} placeholder="00.000.000/0000-00" maxLength="18" required /></Field>
+          <Field label="Contato principal" hint="Obrigatório. Pode repetir."><input value={form.contactName} onChange={(event) => updateField("contactName", event.target.value)} placeholder="Nome completo" required /></Field>
+          <Field label="E-mail" hint="Obrigatório. Pode repetir."><input type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} placeholder="contato@empresa.com.br" required /></Field>
+          <Field label="Telefone" hint="Obrigatório. Pode repetir."><input value={form.phone} onChange={(event) => updateField("phone", formatPhoneBR(event.target.value))} placeholder="(00) 00000-0000" maxLength="15" required /></Field>
           <Field label="Estado"><StateSelect value={form.state} onChange={(event) => updateField("state", event.target.value)} /></Field>
         </FormGrid>
-        <Field label="Observacao interna"><textarea value={form.internalNote} onChange={(event) => updateField("internalNote", event.target.value)} placeholder="Visivel apenas para administradores" /></Field>
+        <Field label="Observação interna"><textarea value={form.internalNote} onChange={(event) => updateField("internalNote", event.target.value)} placeholder="Visível apenas para administradores" /></Field>
         <div className="formActionBar">
           <Button type="submit" disabled={saving}>{saving ? "Enviando..." : "Enviar convite"}</Button>
         </div>
@@ -1631,14 +2643,14 @@ function InviteList({ navigate }) {
     setLoading(true);
     fetch(`${API_BASE_URL}/api/company-invitations`)
       .then((response) => {
-        if (!response.ok) throw new Error("Nao foi possivel carregar os convites.");
+        if (!response.ok) throw new Error("Não foi possível carregar os convites.");
         return response.json();
       })
       .then((data) => {
         setInvitations(Array.isArray(data) ? data : []);
         setMessage(null);
       })
-      .catch((error) => setMessage({ type: "error", text: error.message || "Nao foi possivel carregar os convites. Confirme se o backend esta ligado." }))
+      .catch((error) => setMessage({ type: "error", text: error.message || "Não foi possível carregar os convites. Confirme se o backend está ligado." }))
       .finally(() => setLoading(false));
   };
 
@@ -1658,7 +2670,7 @@ function InviteList({ navigate }) {
 
   const statusLabel = (status) => ({
     sent: "Enviado",
-    pending_review: "Aguardando analise",
+    pending_review: "Aguardando análise",
     accepted: "Aceito",
     expired: "Expirado",
     cancelled: "Cancelado",
@@ -1693,7 +2705,7 @@ function InviteList({ navigate }) {
       <Card className="compactFilters inviteFiltersSticky">
         <FormGrid>
           <Field label="Buscar convite"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Empresa, CNPJ, e-mail ou telefone" /></Field>
-          <Field label="Status"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos</option><option value="sent">Enviado</option><option value="pending_review">Aguardando analise</option><option value="accepted">Aceito</option><option value="cancelled">Cancelado</option><option value="rejected">Recusado</option><option value="expired">Expirado</option></select></Field>
+          <Field label="Status"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos</option><option value="sent">Enviado</option><option value="pending_review">Aguardando análise</option><option value="accepted">Aceito</option><option value="cancelled">Cancelado</option><option value="rejected">Recusado</option><option value="expired">Expirado</option></select></Field>
           <Field label="Ordenar por"><select value={filters.sort} onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value }))}><option value="created_desc">Mais recentes</option><option value="created_asc">Mais antigos</option><option value="expires_asc">Validade mais próxima</option><option value="name_asc">Empresa A-Z</option></select></Field>
         </FormGrid>
       </Card>
@@ -1781,12 +2793,12 @@ function InviteAccept({ navigate }) {
 
     fetch(endpoint)
       .then((response) => {
-        if (!response.ok) throw new Error("Nao foi possivel carregar o convite.");
+        if (!response.ok) throw new Error("Não foi possível carregar o convite.");
         return response.text();
       })
       .then((text) => {
         const data = parseAPIResponseText(text);
-        if (!data || data.error) throw new Error(data?.error || "Convite nao encontrado.");
+        if (!data || data.error) throw new Error(data?.error || "Convite não encontrado.");
         setInvitation(data);
         setForm((current) => ({
           ...current,
@@ -1800,7 +2812,7 @@ function InviteAccept({ navigate }) {
           adminJobTitle: data.adminJobTitle || ""
         }));
       })
-      .catch((error) => setMessage({ type: "error", text: error.message || "Nao foi possivel carregar o convite." }))
+      .catch((error) => setMessage({ type: "error", text: error.message || "Não foi possível carregar o convite." }))
       .finally(() => setLoading(false));
   }, [token, invitationId]);
 
@@ -1814,7 +2826,7 @@ function InviteAccept({ navigate }) {
       return;
     }
     if (!isCorrection && form.password !== form.confirmPassword) {
-      setMessage({ type: "error", text: "A confirmacao da senha nao confere." });
+      setMessage({ type: "error", text: "A confirmação da senha não confere." });
       return;
     }
     if (!hasFirstAndLastName(form.adminFullName)) {
@@ -1859,16 +2871,16 @@ function InviteAccept({ navigate }) {
 
       const data = parseAPIResponseText(await response.text());
       if (!response.ok || data?.error) {
-        throw new Error(data?.error || "Nao foi possivel aceitar o convite.");
+        throw new Error(data?.error || "Não foi possível aceitar o convite.");
       }
 
-      setMessage({ type: "success", text: isCorrection ? "Cadastro corrigido e reenviado para nova análise." : "Cadastro enviado com sucesso. A empresa agora ficou aguardando analise da LicitaHub." });
+      setMessage({ type: "success", text: isCorrection ? "Cadastro corrigido e reenviado para nova análise." : "Cadastro enviado com sucesso. A empresa agora ficou aguardando análise da LicitaHub." });
       if (!isCorrection) {
         window.sessionStorage.setItem("licitahubLoginNotice", "Cadastro concluído com sucesso. Agora entre com o e-mail e a senha cadastrados.");
         window.location.hash = "";
       }
     } catch (error) {
-      setMessage({ type: "error", text: error.message || "Nao foi possivel concluir o aceite do convite." });
+      setMessage({ type: "error", text: error.message || "Não foi possível concluir o aceite do convite." });
     } finally {
       setSaving(false);
     }
@@ -1905,9 +2917,9 @@ function InviteAccept({ navigate }) {
               <div><input type="file" accept="image/png,image/jpeg,image/webp" onChange={handlePhotoChange} /><small>{form.profilePhotoFileName || "Nenhuma foto selecionada"}</small></div>
             </div>
           </Field>
-          <Field label="Descricao institucional"><textarea value={form.institutionalDescription} onChange={(event) => updateField("institutionalDescription", event.target.value)} placeholder="Resumo da atuacao da empresa" /></Field>
+          <Field label="Descrição institucional"><textarea value={form.institutionalDescription} onChange={(event) => updateField("institutionalDescription", event.target.value)} placeholder="Resumo da atuação da empresa" /></Field>
           <div className="formActionBar">
-            <Button type="submit" disabled={saving}>{saving ? "Enviando..." : invitation.reviewStatus === "adjustment_requested" ? "Reenviar cadastro corrigido" : "Enviar cadastro para analise"}</Button>
+            <Button type="submit" disabled={saving}>{saving ? "Enviando..." : invitation.reviewStatus === "adjustment_requested" ? "Reenviar cadastro corrigido" : "Enviar cadastro para análise"}</Button>
           </div>
         </form>
       )}
@@ -2339,14 +3351,14 @@ function CompanyProfileEdit({ refreshSession }) {
     fetch(`${API_BASE_URL}/api/companies/me`, { credentials: "include" })
       .then(async (response) => {
         const data = await response.json().catch(() => ({}));
-        if (!response.ok || data?.error) throw new Error(data?.error || "Nao foi possivel carregar o perfil.");
+        if (!response.ok || data?.error) throw new Error(data?.error || "Não foi possível carregar o perfil.");
         return data;
       })
       .then((data) => {
         setForm((current) => ({ ...current, ...data, logoDataUrl: "", logoFileName: "", logoMimeType: "" }));
         setLogoPreview(data.logoUrl || "");
       })
-      .catch((error) => setMessage({ type: "error", text: error.message || "Nao foi possivel carregar o perfil da empresa." }))
+      .catch((error) => setMessage({ type: "error", text: error.message || "Não foi possível carregar o perfil da empresa." }))
       .finally(() => setLoading(false));
   }, []);
 
@@ -2401,13 +3413,13 @@ function CompanyProfileEdit({ refreshSession }) {
         body: JSON.stringify(form)
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || data?.error) throw new Error(data?.error || "Nao foi possivel salvar o perfil.");
+        if (!response.ok || data?.error) throw new Error(data?.error || "Não foi possível salvar o perfil.");
       setForm((current) => ({ ...current, ...data, logoDataUrl: "", logoFileName: "", logoMimeType: "" }));
       setLogoPreview(data.logoUrl || logoPreview);
       await refreshSession?.();
       setMessage({ type: "success", text: "Perfil da empresa salvo com sucesso." });
     } catch (error) {
-      setMessage({ type: "error", text: error.message || "Nao foi possivel salvar o perfil." });
+      setMessage({ type: "error", text: error.message || "Não foi possível salvar o perfil." });
     } finally {
       setSaving(false);
     }
@@ -2464,7 +3476,7 @@ function CompanyUsers({ navigate, openUserAction, openUserProfile, sessionUser }
     fetch(`${API_BASE_URL}/api/company-users`, { credentials: "include" })
       .then(async (response) => {
         const data = await response.json().catch(() => ({}));
-        if (!response.ok || data?.error) throw new Error(data?.error || "Nao foi possivel carregar os usuarios.");
+        if (!response.ok || data?.error) throw new Error(data?.error || "Não foi possível carregar os usuários.");
         return data;
       })
       .then((data) => {
@@ -2477,7 +3489,7 @@ function CompanyUsers({ navigate, openUserAction, openUserProfile, sessionUser }
           setMessage({ type: "error", text: "Nenhum usuário da empresa logada foi encontrado nesta lista. Atualize o backend e tente novamente." });
         }
       })
-      .catch((error) => setMessage({ type: "error", text: error.message || "Nao foi possivel carregar os usuarios vinculados." }))
+      .catch((error) => setMessage({ type: "error", text: error.message || "Não foi possível carregar os usuários vinculados." }))
       .finally(() => setLoading(false));
   };
 
@@ -2669,7 +3681,7 @@ function CompanyUserProfile({ selectedUserProfile, navigate }) {
       if (!response.ok || data?.error) throw new Error(data?.error || "Não foi possível salvar o usuário.");
       if (!isEdit && data.setupUrl) {
         setSetupUrl(data.setupUrl);
-        setMessage({ type: "success", text: "Usuário cadastrado. Copie o link abaixo e envie para ele definir a senha." });
+        setMessage({ type: "success", text: data.draftPublicationId ? "Usuário cadastrado. Um rascunho de apresentação foi criado em Minhas publicações. Copie o link abaixo e envie para ele definir a senha." : "Usuário cadastrado. Copie o link abaixo e envie para ele definir a senha." });
       } else {
         setMessage({ type: "success", text: "Usuário atualizado com sucesso." });
         setTimeout(() => navigate?.("company-users"), 700);
@@ -2755,10 +3767,10 @@ function CompanyUserAccessConfirm({ navigate, selectedUserAction, updateUserStat
         credentials: "include"
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || data?.error) throw new Error(data?.error || "Nao foi possivel atualizar o usuario.");
+      if (!response.ok || data?.error) throw new Error(data?.error || "Não foi possível atualizar o usuário.");
       updateUserStatus(selectedUserAction.id, isUnlock ? "Ativo" : "Bloqueado");
     } catch (error) {
-      setMessage({ type: "error", text: error.message || "Nao foi possivel concluir a acao." });
+      setMessage({ type: "error", text: error.message || "Não foi possível concluir a ação." });
     } finally {
       setSaving(false);
     }
@@ -2794,10 +3806,10 @@ function CompanyUserDelete({ navigate, selectedUserAction }) {
         credentials: "include"
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || data?.error) throw new Error(data?.error || "Nao foi possivel desativar o vinculo.");
+      if (!response.ok || data?.error) throw new Error(data?.error || "Não foi possível desativar o vínculo.");
       navigate("company-users");
     } catch (error) {
-      setMessage({ type: "error", text: error.message || "Nao foi possivel desativar o vinculo." });
+      setMessage({ type: "error", text: error.message || "Não foi possível desativar o vínculo." });
     } finally {
       setSaving(false);
     }
@@ -2838,20 +3850,21 @@ function CommunityHome({ sessionUser, navigate }) {
     fetch(`${API_BASE_URL}/api/community/posts?${params.toString()}`, { credentials: "include" })
       .then(async (response) => {
         const data = await response.json().catch(() => []);
-        if (!response.ok) throw new Error(data.error || "Nao foi possivel carregar a comunidade.");
+        if (!response.ok) throw new Error(data.error || "Não foi possível carregar a comunidade.");
         return data;
       })
       .then((data) => {
         setPosts(Array.isArray(data) ? data : []);
         setMessage(null);
       })
-      .catch((error) => setMessage({ type: "error", text: error.message || "Nao foi possivel carregar a comunidade." }))
+      .catch((error) => setMessage({ type: "error", text: error.message || "Não foi possível carregar a comunidade." }))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    loadPosts();
-  }, [filters.categorySlug, filters.state]);
+    const delay = window.setTimeout(loadPosts, filters.company.trim() ? 280 : 0);
+    return () => window.clearTimeout(delay);
+  }, [filters.company, filters.categorySlug, filters.state]);
 
   const updateFilter = (field, value) => setFilters((current) => ({ ...current, [field]: value }));
   const updateForm = (field, value) => setForm((current) => ({ ...current, [field]: value }));
@@ -2897,13 +3910,13 @@ function CommunityHome({ sessionUser, navigate }) {
         body: JSON.stringify({ ...form, visibility: "both" })
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Nao foi possivel publicar.");
+      if (!response.ok) throw new Error(result.error || "Não foi possível publicar.");
       setForm({ categorySlug: "noticias", content: "", mainImageDataUrl: "", mainImageFileName: "", mainImageMimeType: "" });
       setImagePreview("");
       setMessage({ type: "success", text: "Publicação enviada para a comunidade." });
       loadPosts();
     } catch (error) {
-      setMessage({ type: "error", text: error.message || "Nao foi possivel publicar agora." });
+      setMessage({ type: "error", text: error.message || "Não foi possível publicar agora." });
     } finally {
       setPublishing(false);
     }
@@ -2916,45 +3929,49 @@ function CommunityHome({ sessionUser, navigate }) {
   return (
     <Page label="Comunidade" title="Rede de empresas">
       <div className="communityWorkspace">
-        <div className="communityTopRow">
-          <Card className="composer modern socialComposer">
-            <LogoSlot src={sessionUser?.companyLogoUrl} initials={String(sessionUser?.companyName || "EC").slice(0, 2).toUpperCase()} size="sm" label={`Logo da ${sessionUser?.companyName || "empresa"}`} />
-            <div>
-              <textarea value={form.content} onChange={(event) => updateForm("content", event.target.value)} placeholder="O que sua empresa quer publicar na comunidade?" />
-              <div className="composerFields">
-                <select value={form.categorySlug} onChange={(event) => updateForm("categorySlug", event.target.value)}>{communityCategoryOptions.map((option) => <option value={option.slug} key={option.slug}>{option.label}</option>)}</select>
-                <div className="inlineImagePicker">
-                  <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={handlePostImage} />
-                  <span>{form.mainImageFileName || "Imagem"}</span>
-                </div>
-                <button className="iconButton publishIcon" title="Publicar" aria-label="Publicar" disabled={publishing} onClick={publishPost}>{"\u2191"}</button>
+        <div className="communityFeedLayout">
+          <aside className="communityFilterRail" aria-label="Filtros da comunidade">
+            <div className="communityToolbar socialFilters communityFiltersSticky">
+              <div className="communityFilterHeading"><span className="eyebrow">Comunidade</span><strong>Filtrar publicações</strong></div>
+              <div className="communitySearch">
+                <span>Empresa</span>
+                <input value={filters.company} onChange={(event) => updateFilter("company", event.target.value)} placeholder="Nome da empresa" />
               </div>
-              {imagePreview && <div className="composerImagePreview"><img src={imagePreview} alt="Prévia da imagem da publicação" /></div>}
+              <label className="communityFilterField"><span>Tipo de publicação</span><select value={filters.categorySlug} onChange={(event) => updateFilter("categorySlug", event.target.value)}><option value="all">Todos os tipos</option>{communityCategoryOptions.map((option) => <option value={option.slug} key={option.slug}>{option.label}</option>)}</select></label>
+              <label className="communityFilterField"><span>Região</span><select value={filters.state} onChange={(event) => updateFilter("state", event.target.value)}><option value="BR">Brasil inteiro</option><option value="SP">SP</option><option value="MG">MG</option><option value="PR">PR</option><option value="RJ">RJ</option><option value="BA">BA</option><option value="GO">GO</option><option value="DF">DF</option></select></label>
             </div>
-          </Card>
+          </aside>
+
+          <main className="communityMainColumn">
+            <div className="communityTopRow">
+              <Card className="composer modern socialComposer">
+                <LogoSlot src={sessionUser?.companyLogoUrl} initials={String(sessionUser?.companyName || "EC").slice(0, 2).toUpperCase()} size="sm" label={`Logo da ${sessionUser?.companyName || "empresa"}`} />
+                <div>
+                  <textarea value={form.content} onChange={(event) => updateForm("content", event.target.value)} placeholder="O que sua empresa quer publicar na comunidade?" />
+                  <div className="composerFields">
+                    <select value={form.categorySlug} onChange={(event) => updateForm("categorySlug", event.target.value)}>{communityCategoryOptions.map((option) => <option value={option.slug} key={option.slug}>{option.label}</option>)}</select>
+                    <div className="inlineImagePicker">
+                      <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={handlePostImage} />
+                      <span>{form.mainImageFileName || "Imagem"}</span>
+                    </div>
+                    <button className="iconButton publishIcon" title="Publicar" aria-label="Publicar" disabled={publishing} onClick={publishPost}>{"\u2191"}</button>
+                  </div>
+                  {imagePreview && <div className="composerImagePreview"><img src={imagePreview} alt="Prévia da imagem da publicação" /></div>}
+                </div>
+              </Card>
+            </div>
+
+            {message && <Card className={`formFeedback ${message.type === "success" ? "success" : "dangerNotice"}`}><p>{message.text}</p></Card>}
+
+            <section className="communityFeed socialFeedWide">
+              <div className="socialFeed">
+                {loading && <Card><p>Carregando publicações...</p></Card>}
+                {!loading && posts.length === 0 && <Card><p>Nenhuma publicação encontrada para estes filtros.</p></Card>}
+                {!loading && posts.map((post) => <PostCard key={post.id} {...post} onPostUpdated={replacePost} onOpenCompany={(companyId) => navigate(`company-public-profile?companyId=${encodeURIComponent(companyId)}`)} />)}
+              </div>
+            </section>
+          </main>
         </div>
-
-        <div className="communityToolbar socialFilters communityFiltersSticky">
-          <div className="communitySearch">
-            <span>Empresa</span>
-            <input value={filters.company} onChange={(event) => updateFilter("company", event.target.value)} onBlur={loadPosts} onKeyDown={(event) => { if (event.key === "Enter") loadPosts(); }} placeholder="Buscar pelo nome da empresa" />
-          </div>
-          <select value={filters.categorySlug} onChange={(event) => updateFilter("categorySlug", event.target.value)}>
-            <option value="all">Todos os tipos</option>
-            {communityCategoryOptions.map((option) => <option value={option.slug} key={option.slug}>{option.label}</option>)}
-          </select>
-          <select value={filters.state} onChange={(event) => updateFilter("state", event.target.value)}><option value="BR">Brasil inteiro</option><option value="SP">SP</option><option value="MG">MG</option><option value="PR">PR</option><option value="RJ">RJ</option><option value="BA">BA</option><option value="GO">GO</option><option value="DF">DF</option></select>
-        </div>
-
-        {message && <Card className={`formFeedback ${message.type === "success" ? "success" : "dangerNotice"}`}><p>{message.text}</p></Card>}
-
-        <section className="communityFeed socialFeedWide">
-          <div className="socialFeed">
-            {loading && <Card><p>Carregando publicações...</p></Card>}
-            {!loading && posts.length === 0 && <Card><p>Nenhuma publicação encontrada para estes filtros.</p></Card>}
-            {!loading && posts.map((post) => <PostCard key={post.id} {...post} onPostUpdated={replacePost} onOpenCompany={(companyId) => navigate(`company-public-profile?companyId=${encodeURIComponent(companyId)}`)} />)}
-          </div>
-        </section>
 
       </div>
     </Page>
@@ -3016,7 +4033,7 @@ function PostCard({ id, companyId = "", category, company, region = "BR", compan
         body: JSON.stringify({ content: commentText.trim() })
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Nao foi possivel comentar.");
+      if (!response.ok) throw new Error(result.error || "Não foi possível comentar.");
       setPostComments((current) => [...current, result]);
       setCommentsTotal((current) => current + 1);
       setCommentText("");
@@ -3050,7 +4067,7 @@ function PostCard({ id, companyId = "", category, company, region = "BR", compan
         body: JSON.stringify({ content: editingCommentText.trim() })
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Nao foi possivel editar comentario.");
+      if (!response.ok) throw new Error(result.error || "Não foi possível editar o comentário.");
       setPostComments((current) => current.map((item) => item.id === comment.id ? { ...item, ...result } : item));
       setEditingCommentId("");
       setEditingCommentText("");
@@ -3070,7 +4087,7 @@ function PostCard({ id, companyId = "", category, company, region = "BR", compan
         credentials: "include"
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Nao foi possivel excluir comentario.");
+      if (!response.ok) throw new Error(result.error || "Não foi possível excluir o comentário.");
       setPostComments((current) => current.filter((item) => item.id !== comment.id));
       setCommentsTotal((current) => Math.max(0, current - 1));
     } finally {
@@ -3089,10 +4106,10 @@ function PostCard({ id, companyId = "", category, company, region = "BR", compan
           </span>
         </button>
       </div>
-      <div className="postImage">
-        {imageUrl ? <img src={imageUrl} alt={title || category} loading="lazy" decoding="async" /> : <><span>{imageLabel || category}</span><small>Imagem da publicação</small></>}
+      <div className={`postImage ${imageUrl ? "postImageWithMedia" : "postImageTitle"}`}>
+        {imageUrl ? <img src={imageUrl} alt={title || category} loading="lazy" decoding="async" /> : <span>{title || imageLabel || category}</span>}
       </div>
-      {title && <h3>{title}</h3>}
+      {imageUrl && title && <h3>{title}</h3>}
       <p>{text}</p>
       <div className="engagementSummary">
         <button onClick={(event) => { stopPostClick(event); setShowLikes(!showLikes); }}>{displayedLikeCount} curtidas</button>
@@ -3173,14 +4190,14 @@ function CompanyPublicProfile({ navigate, openPublicationManager, sessionUser, o
     fetch(`${API_BASE_URL}${profilePath}`, { credentials: "include" })
       .then(async (response) => {
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || "Nao foi possivel carregar o perfil publico.");
+        if (!response.ok) throw new Error(data.error || "Não foi possível carregar o perfil público.");
         return data;
       })
       .then((data) => {
         setProfile(data);
         setError("");
       })
-      .catch((err) => setError(err.message || "Nao foi possivel carregar o perfil publico."))
+      .catch((err) => setError(err.message || "Não foi possível carregar o perfil público."))
       .finally(() => setLoading(false));
   }, [requestedCompanyId]);
 
@@ -3223,7 +4240,6 @@ function CompanyPublicProfile({ navigate, openPublicationManager, sessionUser, o
               <div className="profileFactList">
                 <span><strong>Porte</strong>{companySizeLabel}</span>
                 <span><strong>Atuação</strong>{locationLabel}</span>
-                <span><strong>Status</strong>{profile.status || "ativo"}</span>
               </div>
             </Card>
           </div>
@@ -3321,14 +4337,14 @@ function PublicationNew({ openPublicationManager, navigate }) {
         body: JSON.stringify(form)
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Nao foi possivel criar a publicação.");
+      if (!response.ok) throw new Error(result.error || "Não foi possível criar a publicação.");
       if (result.id) {
         openPublicationManager(result.id);
       } else {
         navigate("publication-list");
       }
     } catch (error) {
-      setMessage({ type: "error", text: error.message || "Nao foi possivel publicar agora." });
+      setMessage({ type: "error", text: error.message || "Não foi possível publicar agora." });
     } finally {
       setSaving(false);
     }
@@ -3340,7 +4356,7 @@ function PublicationNew({ openPublicationManager, navigate }) {
       <FormGrid>
         <Field label="Tipo"><select value={form.categorySlug} onChange={(event) => updateField("categorySlug", event.target.value)}>{communityCategoryOptions.map((option) => <option value={option.slug} key={option.slug}>{option.label}</option>)}</select></Field>
         <Field label="Visibilidade"><select value={form.visibility} onChange={(event) => updateField("visibility", event.target.value)}><option value="both">Comunidade e perfil</option><option value="community">Apenas comunidade</option><option value="profile">Apenas perfil público</option></select></Field>
-        <Field label="Título"><input value={form.title} onChange={(event) => updateField("title", event.target.value)} placeholder="Título da publicação" /></Field>
+        <Field label="Título" hint={`${form.title.length}/100 caracteres`}><input value={form.title} onChange={(event) => updateField("title", event.target.value)} placeholder="Título da publicação" maxLength="100" /></Field>
       </FormGrid>
       <Field label="Imagem da publicação" hint="Essa imagem aparece no feed da comunidade, no perfil público e em minhas publicações.">
         <div className="imageUploadField">
@@ -3374,11 +4390,11 @@ function PublicationList({ selectedPublicationId }) {
     fetch(`${API_BASE_URL}/api/community/posts?scope=mine`, { credentials: "include" })
       .then(async (response) => {
         const data = await response.json().catch(() => []);
-        if (!response.ok) throw new Error(data.error || "Nao foi possivel carregar suas publicações.");
+        if (!response.ok) throw new Error(data.error || "Não foi possível carregar suas publicações.");
         return data;
       })
       .then((data) => setPublications(Array.isArray(data) ? data : []))
-      .catch((error) => setMessage({ type: "error", text: error.message || "Nao foi possivel carregar suas publicações." }))
+      .catch((error) => setMessage({ type: "error", text: error.message || "Não foi possível carregar suas publicações." }))
       .finally(() => setLoading(false));
   }, []);
 
@@ -3415,7 +4431,7 @@ function PublicationManagerCard({ publication, initiallyOpen = false, highlighte
   const [message, setMessage] = useState(null);
   const publicationType = publication.type || publication.category || "Publicação";
   const publicationVisibility = publication.visibility === "both" ? "Comunidade e perfil" : publication.visibility === "profile" ? "Perfil" : "Comunidade";
-  const publicationStatus = publication.status === "published" ? "Publicado" : publication.status || "Publicado";
+  const publicationStatus = publication.status === "published" ? "Publicado" : publication.status === "archived" ? "Arquivado" : publication.status === "draft" ? "Rascunho" : publication.status || "Publicado";
   const publishedAt = publication.publishedAt ? new Date(publication.publishedAt).toLocaleDateString("pt-BR") : "Ainda não publicado";
   const publicationLikes = Array.isArray(publication.likes) ? publication.likes : [];
   const publicationComments = Array.isArray(publication.comments) ? publication.comments : [];
@@ -3519,11 +4535,11 @@ function PublicationManagerCard({ publication, initiallyOpen = false, highlighte
     try {
       const response = await fetch(`${API_BASE_URL}/api/community/posts/${encodeURIComponent(publication.id)}/publish`, { method: "PATCH", credentials: "include" });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Não foi possível republicar.");
+      if (!response.ok) throw new Error(result.error || "Não foi possível publicar.");
       onUpdated?.({ ...publication, ...result, status: "published" });
-      setMessage({ type: "success", text: "Publicação voltou para a comunidade." });
+      setMessage({ type: "success", text: "Publicação publicada na comunidade." });
     } catch (error) {
-      setMessage({ type: "error", text: error.message || "Não foi possível republicar agora." });
+      setMessage({ type: "error", text: error.message || "Não foi possível publicar agora." });
     } finally {
       setSaving("");
     }
@@ -3576,7 +4592,7 @@ function PublicationManagerCard({ publication, initiallyOpen = false, highlighte
           {editing ? (
             <div className="publicationEditForm">
               <FormGrid>
-                <Field label="Título"><input value={editForm.title} onChange={(event) => updateEditField("title", event.target.value)} /></Field>
+                <Field label="Título" hint={`${editForm.title.length}/100 caracteres`}><input value={editForm.title} onChange={(event) => updateEditField("title", event.target.value)} maxLength="100" /></Field>
                 <Field label="Tipo"><select value={editForm.categorySlug} onChange={(event) => updateEditField("categorySlug", event.target.value)}>{communityCategoryOptions.map((option) => <option value={option.slug} key={option.slug}>{option.label}</option>)}</select></Field>
                 <Field label="Visibilidade"><select value={editForm.visibility} onChange={(event) => updateEditField("visibility", event.target.value)}><option value="both">Comunidade e perfil</option><option value="community">Apenas comunidade</option><option value="profile">Apenas perfil público</option></select></Field>
               </FormGrid>
@@ -3613,7 +4629,7 @@ function PublicationManagerCard({ publication, initiallyOpen = false, highlighte
           </div>
           <div className="postActions compactPostActions">
             <button className="iconButton secondaryIcon" title="Editar publicação" aria-label="Editar publicação" disabled={Boolean(saving)} onClick={() => setEditing((current) => !current)}>{"\u270E"}</button>
-            {publication.status === "archived" ? <button className="iconButton successIcon" title="Republicar na comunidade" aria-label="Republicar na comunidade" disabled={Boolean(saving)} onClick={publishPost}>{"\u21BB"}</button> : <button className="iconButton warningIcon" title="Arquivar publicação" aria-label="Arquivar publicação" disabled={Boolean(saving)} onClick={archivePost}>!</button>}
+            {publication.status === "published" ? <button className="iconButton warningIcon" title="Arquivar publicação" aria-label="Arquivar publicação" disabled={Boolean(saving)} onClick={archivePost}>!</button> : <button className="iconButton successIcon" title={publication.status === "draft" ? "Publicar na comunidade" : "Republicar na comunidade"} aria-label={publication.status === "draft" ? "Publicar na comunidade" : "Republicar na comunidade"} disabled={Boolean(saving)} onClick={publishPost}>{"\u21BB"}</button>}
             <button className="iconButton dangerIcon" title="Excluir publicação" aria-label="Excluir publicação" disabled={Boolean(saving)} onClick={deletePost}>{"\u00D7"}</button>
           </div>
         </div>
@@ -3650,7 +4666,7 @@ function RadarHomeConnected({ navigate, openNewsDetail }) {
       })
       .catch(() => {
         if (!active) return;
-        setError("Nao foi possivel carregar as noticias do banco. Confirme se o backend esta ligado.");
+        setError("Não foi possível carregar as notícias do banco. Confirme se o backend está ligado.");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -3927,7 +4943,7 @@ function RadarNewConnected({ navigate }) {
     }
 
     if ((form.status === "published" || form.status === "featured") && form.expiresAt < todayISO) {
-      setMessage({ type: "error", text: "A data final da publicacao nao pode ser anterior a hoje." });
+      setMessage({ type: "error", text: "A data final da publicação não pode ser anterior a hoje." });
       return;
     }
 
@@ -3941,7 +4957,7 @@ function RadarNewConnected({ navigate }) {
 
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(result.error || "Nao foi possivel cadastrar a noticia.");
+        throw new Error(result.error || "Não foi possível cadastrar a notícia.");
       }
 
       setMessage({ type: "success", text: "Noticia cadastrada no banco com sucesso." });
@@ -3960,7 +4976,7 @@ function RadarNewConnected({ navigate }) {
       });
       setImagePreview("");
     } catch (error) {
-      setMessage({ type: "error", text: error.message || "Nao foi possivel gravar agora. Confirme se o backend esta ligado." });
+      setMessage({ type: "error", text: error.message || "Não foi possível gravar agora. Confirme se o backend está ligado." });
     } finally {
       setSaving(false);
     }
@@ -4141,7 +5157,7 @@ function TenderAdmin({ navigate }) {
       .catch((e)=>setError(e.message))
       .finally(()=>setLoading(false));
   };
-  useEffect(loadTenders, []);
+  useEffect(() => { loadTenders(); }, []);
   const deleteTender = async (item) => {
     if (!window.confirm(`Excluir o edital ${item.number}?`)) return;
     try {
@@ -4166,16 +5182,235 @@ function TenderAdmin({ navigate }) {
   return <Page label="Editais" title="Painel administrativo de editais" actions={<Button onClick={() => navigate("tender-new")}>Cadastrar edital</Button>}><Stats items={[["Publicados", String(count("published"))], ["Ocorridos", String(count("occurred"))], ["Rascunhos", String(count("draft"))], ["Suspensos", String(count("suspended"))]]} /><Card className="compactFilters tenderAdminFiltersSticky"><FormGrid><Field label="Buscar edital"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Órgão, número, objeto, cidade ou critério" /></Field><Field label="Status"><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos</option><option value="draft">Rascunho</option><option value="published">Publicado</option><option value="under_review">Em análise</option><option value="suspended">Suspenso</option><option value="challenged">Impugnado</option><option value="occurred">Ocorrido</option><option value="closed">Encerrado</option><option value="cancelled">Cancelado</option></select></Field><Field label="Estado"><StateSelect value={filters.state} onChange={(event) => setFilters((current) => ({ ...current, state: event.target.value }))} /></Field><Field label="Modalidade"><select value={filters.modality} onChange={(event) => setFilters((current) => ({ ...current, modality: event.target.value }))}><option value="">Todas</option>{tenderModalityOptions.map((option) => <option value={option} key={option}>{option}</option>)}</select></Field></FormGrid></Card>{loading&&<Card><p>Carregando editais...</p></Card>}{error&&<Card className="dangerNotice"><p>{error}</p></Card>}{!loading&&!error&&filteredItems.length===0&&<Card><p>Nenhum edital encontrado com esses filtros.</p></Card>}{!loading&&!error&&filteredItems.length>0&&<Table columns={["Órgão","Número","Objeto","Abertura","Critério","Status","Ação"]} rows={filteredItems.map((item)=>[item.agency,item.number,item.object,date(item.openingDate),item.judgmentCriterion||"-",item.status,<div className="rowActions compactRowActions" key={item.id}><button className="iconButton secondaryIcon" title="Ver detalhe" onClick={()=>navigate(`tender-detail?id=${item.id}`)}>{"\u25C9"}</button><button className="iconButton partnerIcon" title="Editar edital" onClick={()=>navigate(`tender-new?id=${item.id}`)}>{"\u270E"}</button><button className="iconButton dangerIcon" title="Excluir edital" onClick={()=>deleteTender(item)}>{"\u00D7"}</button></div>])}/>}</Page>;
 }
 
+function TechnicalProfessionals({ sessionUser }) {
+  const blankEducation = () => ({ level: "graduation", courseName: "", institution: "" });
+  const educationLabels = { graduation: "Graduação", specialization: "Especialização / Pós-graduação", mba: "MBA", masters: "Mestrado", doctorate: "Doutorado", postdoctorate: "Pós-doutorado", extension: "Curso de extensão", certification: "Certificação", other: "Outra" };
+  const emptyForm = { fullName: "", professionalRegistration: "", roleTitle: "", phone: "", email: "", state: "", availabilityStatus: "available", profileSummary: "", status: "active", educations: [blankEducation()] };
+  const [items, setItems] = useState([]); const [search, setSearch] = useState(""); const [statusFilter, setStatusFilter] = useState("active"); const [form, setForm] = useState(emptyForm); const [editingId, setEditingId] = useState(""); const [showForm, setShowForm] = useState(false); const [saving, setSaving] = useState(false); const [message, setMessage] = useState(null);
+  const canManage = sessionUser?.roleKey !== "reader";
+  const load = async () => { try { const response = await fetch(`${API_BASE_URL}/api/technical-professionals?status=${encodeURIComponent(statusFilter)}&search=${encodeURIComponent(search)}`, { credentials: "include" }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Não foi possível carregar profissionais."); setItems(Array.isArray(data) ? data : []); } catch (error) { setMessage({ type: "error", text: error.message }); } };
+  useEffect(() => { load(); }, [statusFilter]);
+  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const close = () => { setShowForm(false); setEditingId(""); setForm(emptyForm); };
+  const edit = (item) => { setEditingId(item.id); setForm({ ...emptyForm, ...item, educations: Array.isArray(item.educations) && item.educations.length ? item.educations.map((education) => ({ level: education.level || "graduation", courseName: education.courseName || "", institution: education.institution || "" })) : [blankEducation()] }); setShowForm(true); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const updateEducation = (index, field, value) => setForm((current) => ({ ...current, educations: current.educations.map((education, currentIndex) => currentIndex === index ? { ...education, [field]: value } : education) }));
+  const addEducation = () => setForm((current) => ({ ...current, educations: [...current.educations, blankEducation()] }));
+  const removeEducation = (index) => setForm((current) => ({ ...current, educations: current.educations.filter((_, currentIndex) => currentIndex !== index) }));
+  const save = async (event) => { event.preventDefault(); if (!form.fullName.trim()) { setMessage({ type: "error", text: "Informe o nome do profissional." }); return; } setSaving(true); try { const response = await fetch(`${API_BASE_URL}/api/technical-professionals${editingId ? `/${editingId}` : ""}`, { method: editingId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(form) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Não foi possível salvar o profissional."); setMessage({ type: "success", text: editingId ? "Profissional atualizado." : "Profissional cadastrado." }); close(); await load(); } catch (error) { setMessage({ type: "error", text: error.message }); } finally { setSaving(false); } };
+  const remove = async (item) => { if (!window.confirm(`Remover ${item.fullName} da base de profissionais?`)) return; try { const response = await fetch(`${API_BASE_URL}/api/technical-professionals/${encodeURIComponent(item.id)}`, { method: "DELETE", credentials: "include" }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Não foi possível remover o profissional."); await load(); } catch (error) { setMessage({ type: "error", text: error.message }); } };
+  return <Page label="Capacidade técnica" title="Profissionais técnicos" actions={canManage ? <Button onClick={() => { setShowForm(true); setEditingId(""); setForm(emptyForm); }}>Cadastrar profissional</Button> : null}><Card className="certificateIntro"><span className="eyebrow">Base técnica da empresa</span><h3>Profissionais para CATs e licitações</h3><p>Cadastre as qualificações, contatos e disponibilidade de cada profissional que pode compor uma proposta.</p></Card>{message && <Card className={`formFeedback ${message.type === "success" ? "success" : "dangerNotice"}`}><p>{message.text}</p></Card>}{showForm && <Card className="certificateForm"><div className="sectionTitle"><h3>{editingId ? "Editar profissional" : "Cadastrar profissional"}</h3><Button variant="secondary" onClick={close}>Fechar</Button></div><form onSubmit={save}><FormGrid><Field label="Nome completo"><input value={form.fullName} onChange={(event) => update("fullName", event.target.value)} required maxLength="255" /></Field><Field label="Registro profissional"><input value={form.professionalRegistration} onChange={(event) => update("professionalRegistration", event.target.value)} placeholder="CREA, CAU, CRBio..." maxLength="180" /></Field><Field label="Cargo e função"><input value={form.roleTitle} onChange={(event) => update("roleTitle", event.target.value)} placeholder="Coordenador, engenheiro, especialista..." maxLength="180" /></Field><Field label="Telefone"><input value={form.phone} onChange={(event) => update("phone", formatPhoneBR(event.target.value))} placeholder="(00) 00000-0000" maxLength="15" /></Field><Field label="E-mail"><input type="email" value={form.email} onChange={(event) => update("email", event.target.value)} placeholder="profissional@empresa.com.br" maxLength="255" /></Field><Field label="UF"><StateSelect value={form.state} onChange={(event) => update("state", event.target.value)} /></Field><Field label="Disponibilidade"><select value={form.availabilityStatus} onChange={(event) => update("availabilityStatus", event.target.value)}><option value="available">Disponível</option><option value="limited">Disponibilidade parcial</option><option value="unavailable">Indisponível</option></select></Field><Field label="Situação"><select value={form.status} onChange={(event) => update("status", event.target.value)}><option value="active">Ativo</option><option value="archived">Arquivado</option></select></Field></FormGrid><section className="professionalEducations"><div className="sectionTitle"><div><span className="eyebrow">Qualificação acadêmica</span><h4>Formações</h4><p>Inclua graduação, pós-graduações e demais qualificações em linhas separadas.</p></div><Button type="button" variant="secondary" onClick={addEducation}>Adicionar formação</Button></div>{form.educations.map((education, index) => <div className="professionalEducationRow" key={index}><Field label="Nível"><select value={education.level} onChange={(event) => updateEducation(index, "level", event.target.value)}>{Object.entries(educationLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></Field><Field label="Curso ou formação"><input value={education.courseName} onChange={(event) => updateEducation(index, "courseName", event.target.value)} placeholder="Engenharia Civil, Gestão Ambiental..." maxLength="255" /></Field><Field label="Instituição"><input value={education.institution} onChange={(event) => updateEducation(index, "institution", event.target.value)} placeholder="Universidade ou instituição" maxLength="255" /></Field>{form.educations.length > 1 && <Button type="button" variant="secondary" onClick={() => removeEducation(index)}>Remover</Button>}</div>)}</section><Field label="Resumo profissional"><textarea value={form.profileSummary} onChange={(event) => update("profileSummary", event.target.value)} placeholder="Experiências e informações úteis para tomada de decisão em licitações" maxLength="8000" /></Field><div className="formActions"><Button type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar profissional"}</Button><Button variant="secondary" onClick={close}>Cancelar</Button></div></form></Card>}<Card className="compactFilters certificateFiltersSticky"><FormGrid><Field label="Pesquisar"><input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); load(); } }} placeholder="Nome, formação, registro ou função" /></Field><Field label="Situação"><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="active">Ativos</option><option value="archived">Arquivados</option><option value="">Todos</option></select></Field><Field label="Consulta"><Button onClick={load}>Pesquisar</Button></Field></FormGrid></Card><div className="certificateList">{items.length === 0 ? <Card><p>Nenhum profissional encontrado.</p></Card> : items.map((item) => <Card className="certificateCard" key={item.id}><div className="certificateCardHeader"><div><span className="eyebrow">{(item.educations || []).map((education) => educationLabels[education.level] || "Formação").join(" · ") || "Formação não informada"}</span><h3>{item.fullName}</h3><small>{[item.roleTitle, item.professionalRegistration].filter(Boolean).join(" | ") || "Sem função ou registro informado"}</small></div><span className={`statusBadge status-${item.status}`}>{item.status === "archived" ? "Arquivado" : item.availabilityStatus === "available" ? "Disponível" : item.availabilityStatus === "limited" ? "Parcial" : "Indisponível"}</span></div><div className="certificateInfoGrid"><div><span>Contato</span><strong>{[item.phone, item.email].filter(Boolean).join(" | ") || "Não informado"}</strong></div><div><span>UF</span><strong>{item.state || "Não informada"}</strong></div><div><span>Atestados vinculados</span><strong>{item.certificateCount || 0}</strong></div><div><span>Formações</span><strong>{(item.educations || []).map((education) => `${educationLabels[education.level] || "Formação"}: ${education.courseName}`).join(" | ") || "Não informadas"}</strong></div></div>{item.profileSummary && <details className="certificateContent"><summary>Ver resumo profissional</summary><p>{item.profileSummary}</p></details>}{canManage && <div className="certificateActions"><Button variant="secondary" onClick={() => edit(item)}>Editar</Button><Button variant="secondary" onClick={() => remove(item)}>Remover</Button></div>}</Card>)}</div></Page>;
+}
+
+function TechnicalCertificates({ sessionUser, navigate }) {
+  const blankQuantity = () => ({ description: "", value: "", unit: "", note: "" });
+  const emptyForm = { certificateNumber: "", issuerName: "", contractedName: "", object: "", state: "", executionStart: "", executionEnd: "", contractValue: "", catNumber: "", technicalProfessionalId: "", catProfessional: "", professionalRole: "", completionStatus: "final", usageScope: "both", quantities: [blankQuantity()], contentText: "", status: "active", fileDataUrl: "", fileName: "", mimeType: "" };
+  const [items, setItems] = useState([]);
+  const [professionals, setProfessionals] = useState([]);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("active");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [message, setMessage] = useState(null);
+  const [processingOCRId, setProcessingOCRId] = useState("");
+  const [selectedForAI, setSelectedForAI] = useState([]);
+  const canManage = sessionUser?.roleKey !== "reader";
+  const load = async (nextSearch = search, nextStatus = statusFilter) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (nextSearch.trim()) params.set("search", nextSearch.trim());
+      if (nextStatus) params.set("status", nextStatus);
+      const response = await fetch(`${API_BASE_URL}/api/technical-certificates?${params.toString()}`, { credentials: "include" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível carregar o acervo técnico.");
+      setItems(Array.isArray(data) ? data : []);
+    } catch (error) { setMessage({ type: "error", text: error.message }); }
+    finally { setLoading(false); }
+  };
+  const loadProfessionals = async () => { try { const response = await fetch(`${API_BASE_URL}/api/technical-professionals?status=active`, { credentials: "include" }); const data = await response.json(); if (response.ok) setProfessionals(Array.isArray(data) ? data : []); } catch (_error) {} };
+  useEffect(() => { load(); loadProfessionals(); }, []);
+  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const addQuantity = () => update("quantities", [...(form.quantities || []), blankQuantity()]);
+  const updateQuantity = (index, field, value) => update("quantities", (form.quantities || []).map((quantity, currentIndex) => currentIndex === index ? { ...quantity, [field]: value } : quantity));
+  const removeQuantity = (index) => update("quantities", (form.quantities || []).filter((_, currentIndex) => currentIndex !== index));
+  const selectProfessional = (id) => { const professional = professionals.find((item) => item.id === id); setForm((current) => ({ ...current, technicalProfessionalId: id, catProfessional: professional?.fullName || "", professionalRole: professional?.roleTitle || current.professionalRole })); };
+  const closeForm = () => { setEditingId(""); setForm(emptyForm); setShowForm(false); };
+  const selectFile = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) { setMessage({ type: "error", text: "Envie o atestado em PDF." }); return; }
+    if (file.size > 25 * 1024 * 1024) { setMessage({ type: "error", text: "Cada atestado pode ter no máximo 25 MB." }); return; }
+    const reader = new FileReader();
+    reader.onload = () => update("fileDataUrl", String(reader.result || ""));
+    reader.readAsDataURL(file);
+    setForm((current) => ({ ...current, fileName: file.name, mimeType: file.type || "application/pdf" }));
+  };
+  const edit = (item) => {
+    setEditingId(item.id);
+    setForm({ ...emptyForm, ...item, contractValue: item.contractValue ?? "", executionStart: item.executionStart ? String(item.executionStart).slice(0, 10) : "", executionEnd: item.executionEnd ? String(item.executionEnd).slice(0, 10) : "", quantities: Array.isArray(item.quantities) && item.quantities.length ? item.quantities.map((quantity) => ({ description: quantity.description || "", value: quantity.value ?? "", unit: quantity.unit || "", note: quantity.note || "" })) : [blankQuantity()] });
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const save = async (event) => {
+    event.preventDefault();
+    if (!form.object.trim()) { setMessage({ type: "error", text: "Informe o objeto ou a experiência registrada no atestado." }); return; }
+    if (!editingId && !form.fileDataUrl) { setMessage({ type: "error", text: "Anexe o PDF do atestado." }); return; }
+    setSaving(true); setMessage(editingId ? { type: "info", text: "Salvando as alterações do atestado..." } : { type: "info", text: "Arquivo salvo. A leitura OCR está sendo realizada e pode levar alguns instantes." });
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/technical-certificates${editingId ? `/${editingId}` : ""}`, { method: editingId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(form) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível salvar o atestado.");
+      setMessage({ type: "success", text: editingId ? "Atestado atualizado." : data.extractionStatus === "ocr_extracted" ? "Atestado gravado e leitura OCR concluída." : data.extractionStatus === "extracted" ? "Atestado gravado e texto do PDF capturado." : "Atestado gravado. A leitura não encontrou texto automaticamente; use Refazer leitura OCR ou registre o texto manualmente." });
+      closeForm();
+      await load();
+    } catch (error) { setMessage({ type: "error", text: error.message }); }
+    finally { setSaving(false); }
+  };
+  const remove = async (item) => {
+    if (!window.confirm(`Remover o atestado ${item.certificateNumber || item.fileName} do acervo?`)) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/technical-certificates/${encodeURIComponent(item.id)}`, { method: "DELETE", credentials: "include" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível remover o atestado.");
+      setMessage({ type: "success", text: "Atestado removido do acervo." });
+      await load();
+    } catch (error) { setMessage({ type: "error", text: error.message }); }
+  };
+  const reprocessOCR = async (item) => {
+    setProcessingOCRId(item.id); setSaving(true); setMessage({ type: "info", text: "Refazendo a leitura OCR do PDF. Aguarde a confirmação de conclusão." });
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/technical-certificates/${encodeURIComponent(item.id)}/reprocess-ocr`, { method: "POST", credentials: "include" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível refazer a leitura do atestado.");
+      setMessage({ type: "success", text: data.extractionStatus === "ocr_extracted" ? "Leitura OCR concluída." : data.extractionStatus === "extracted" ? "Leitura de texto concluída." : "Não foi possível identificar texto automaticamente neste documento." });
+      await load();
+    } catch (error) { setMessage({ type: "error", text: error.message }); }
+    finally { setSaving(false); setProcessingOCRId(""); }
+  };
+  const toggleAISelection = (id) => setSelectedForAI((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  const openAIAnalysis = () => {
+    window.sessionStorage.setItem("licitahubTechnicalCertificateAISelection", JSON.stringify(selectedForAI));
+    navigate("technical-certificate-ai");
+  };
+  const extractionLabel = (status) => ({ extracted: "Leitura de texto do PDF", ocr_extracted: "Leitura OCR de imagem", manual: "Texto revisado manualmente", pending_ocr: "Aguardando OCR", failed: "Leitura não concluída" }[status] || "Aguardando leitura");
+  const quantitiesLabel = (quantities) => (quantities || []).filter((quantity) => quantity.description).map((quantity) => [quantity.value, quantity.unit, quantity.description].filter(Boolean).join(" ")).join("; ");
+  return <Page label="Capacidade técnica" title="Atestados técnicos" actions={canManage ? <><Button variant="secondary" onClick={openAIAnalysis} disabled={selectedForAI.length === 0}>Analisar com IA ({selectedForAI.length})</Button><Button onClick={() => { setShowForm(true); setEditingId(""); setForm(emptyForm); }}>Adicionar atestado</Button></> : null}>
+    <Card className="certificateIntro"><span className="eyebrow">Consulta privada da empresa</span><h3>Atestados e capacidade técnica</h3><p>Registre o PDF, os dados contratuais, a CAT e todos os quantitativos que comprovam a experiência.</p></Card>
+    {message && <Card className={`formFeedback ${message.type === "success" ? "success" : message.type === "info" ? "infoNotice" : "dangerNotice"}`}><p>{message.text}</p></Card>}
+    {showForm && <Card className="certificateForm"><div className="sectionTitle"><div><span className="eyebrow">{editingId ? "Atualização" : "Novo documento"}</span><h3>{editingId ? "Editar atestado" : "Cadastrar atestado técnico"}</h3></div><Button variant="secondary" onClick={closeForm}>Fechar</Button></div><form onSubmit={save}><FormGrid>
+      <Field label="PDF do atestado" hint={editingId ? "O PDF atual permanece protegido. Para trocar o arquivo, remova e cadastre novamente." : "Somente PDF, até 25 MB."}>{!editingId ? <input type="file" accept="application/pdf,.pdf" onChange={selectFile} required={!editingId} /> : <span className="fileReference">{form.fileName || "Arquivo já cadastrado"}</span>}{form.fileName && !editingId && <small>{form.fileName}</small>}</Field>
+      <Field label="Identificação do atestado"><input value={form.certificateNumber} onChange={(event) => update("certificateNumber", event.target.value)} placeholder="Número ou identificação interna" maxLength="160" /></Field>
+      <Field label="Contratante"><input value={form.issuerName} onChange={(event) => update("issuerName", event.target.value)} placeholder="Órgão ou empresa que contratou" maxLength="255" /></Field>
+      <Field label="Contratado"><input value={form.contractedName} onChange={(event) => update("contractedName", event.target.value)} placeholder="Empresa que executou o contrato" maxLength="255" /></Field>
+      <Field label="Objeto"><textarea value={form.object} onChange={(event) => update("object", event.target.value)} placeholder="Objeto e experiência comprovada" maxLength="4000" required /></Field>
+      <Field label="Estado"><StateSelect value={form.state} onChange={(event) => update("state", event.target.value)} /></Field>
+      <Field label="Início da execução"><input type="date" value={form.executionStart} max={form.executionEnd || undefined} onChange={(event) => update("executionStart", event.target.value)} /></Field>
+      <Field label="Fim da execução"><input type="date" value={form.executionEnd} min={form.executionStart || undefined} onChange={(event) => update("executionEnd", event.target.value)} /></Field>
+      <Field label="Valor do contrato"><input type="number" min="0" step="0.01" value={form.contractValue} onChange={(event) => update("contractValue", event.target.value)} placeholder="0,00" /></Field>
+      <Field label="Número da CAT"><input value={form.catNumber} onChange={(event) => update("catNumber", event.target.value)} placeholder="Número da CAT" maxLength="180" /></Field>
+      <Field label="Profissional da CAT" hint="Escolha um profissional técnico já cadastrado."><select value={form.technicalProfessionalId} onChange={(event) => selectProfessional(event.target.value)}><option value="">Não vincular agora</option>{professionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.fullName}{professional.roleTitle ? ` | ${professional.roleTitle}` : ""}</option>)}</select></Field>
+      <Field label="Cargo e função"><input value={form.professionalRole} onChange={(event) => update("professionalRole", event.target.value)} placeholder="Cargo ou função exercida" maxLength="180" /></Field>
+      <Field label="Situação da execução"><select value={form.completionStatus} onChange={(event) => update("completionStatus", event.target.value)}><option value="final">Atestado final</option><option value="partial">Atestado parcial</option></select></Field>
+    </FormGrid><div className="certificateProfessionalHelper"><span>Não encontrou o profissional?</span><Button type="button" variant="secondary" onClick={() => navigate("technical-professionals")}>Cadastrar profissional técnico</Button></div><section className="certificateQuantities"><div className="sectionTitle"><div><span className="eyebrow">Experiência mensurável</span><h4>Quantitativos</h4><p>Inclua quantas linhas forem necessárias: extensão, área, volume, unidades ou qualquer outra medida registrada.</p></div><Button type="button" variant="secondary" onClick={addQuantity}>Adicionar quantitativo</Button></div>{(form.quantities || []).map((quantity, index) => <div className="certificateQuantityRow" key={index}><Field label="Serviço ou quantitativo"><input value={quantity.description} onChange={(event) => updateQuantity(index, "description", event.target.value)} placeholder="Pavimento rígido, drenagem, supervisão..." maxLength="1000" /></Field><Field label="Valor"><input type="number" min="0" step="any" value={quantity.value} onChange={(event) => updateQuantity(index, "value", event.target.value)} placeholder="300" /></Field><Field label="Unidade"><input value={quantity.unit} onChange={(event) => updateQuantity(index, "unit", event.target.value)} placeholder="km, m³, un." maxLength="80" /></Field><Field label="Observação"><input value={quantity.note} onChange={(event) => updateQuantity(index, "note", event.target.value)} placeholder="Detalhe complementar" maxLength="2000" /></Field>{form.quantities.length > 1 && <Button type="button" variant="secondary" onClick={() => removeQuantity(index)}>Remover</Button>}</div>)}</section><FormGrid>
+      <Field label="Texto capturado do atestado" hint="Leia, corrija e complemente o texto extraído. Esta versão será guardada para pesquisa e futuras análises por IA."><textarea value={form.contentText} onChange={(event) => update("contentText", event.target.value)} placeholder="Texto completo ou trecho relevante do atestado" /></Field>
+      <Field label="Uso permitido" hint="Define como esta comprovação pode ser utilizada nas licitações."><select value={form.usageScope} onChange={(event) => update("usageScope", event.target.value)}><option value="company">Somente como atestado da empresa</option><option value="professional">Somente como CAT / experiência profissional</option><option value="both">Como atestado da empresa e experiência profissional</option></select></Field>
+    </FormGrid><div className="formActions"><Button type="submit" disabled={saving}>{saving ? (editingId ? "Salvando..." : "Salvando e lendo OCR...") : editingId ? "Salvar alterações" : "Cadastrar atestado"}</Button><Button variant="secondary" onClick={closeForm} disabled={saving}>Cancelar</Button></div></form></Card>}
+    <Card className="compactFilters certificateFiltersSticky"><FormGrid>
+      <Field label="Pesquisar no acervo"><input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); load(); } }} placeholder="saneamento, supervisão, CAT, contratante..." /></Field>
+      <Field label="Situação"><select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); load(search, event.target.value); }}><option value="active">Ativos</option><option value="archived">Arquivados</option><option value="">Todos</option></select></Field>
+      <Field label="Consulta"><Button onClick={() => load()}>Pesquisar</Button></Field>
+    </FormGrid></Card>
+    {!loading && <div className="certificateSummary"><strong>{items.length}</strong> atestado(s) encontrado(s).</div>}
+    {loading && <Card><p>Carregando acervo técnico...</p></Card>}
+    {!loading && items.length === 0 && <Card><p>Nenhum atestado encontrado com os filtros escolhidos.</p></Card>}
+    {!loading && items.length > 0 && <div className="certificateList">{items.map((item) => <Card className={`certificateCard ${selectedForAI.includes(item.id) ? "isSelectedForAI" : ""}`} key={item.id}><div className="certificateCardHeader"><div><span className="eyebrow">{item.issuerName || "Contratante não informado"}</span><h3>{item.certificateNumber || item.fileName}</h3><small>{item.fileName}</small></div><div className="certificateHeaderActions"><label className="certificateSelect"><input type="checkbox" checked={selectedForAI.includes(item.id)} onChange={() => toggleAISelection(item.id)} disabled={!canManage} /><span>Selecionar para IA</span></label><span className={`statusBadge status-${item.status}`}>{item.status === "archived" ? "Arquivado" : "Ativo"}</span></div></div><p className="certificateObject">{item.object}</p><div className="certificateInfoGrid"><div><span>Contratado</span><strong>{item.contractedName || "Não informado"}</strong></div><div><span>CAT</span><strong>{item.catNumber || "Não informada"}</strong></div><div><span>Profissional / função</span><strong>{[item.catProfessional, item.professionalRole].filter(Boolean).join(" - ") || "Não informado"}</strong></div><div><span>Uso permitido</span><strong>{item.usageScope === "company" ? "Somente empresa" : item.usageScope === "professional" ? "Somente profissional" : "Empresa e profissional"}</strong></div><div><span>Execução</span><strong>{item.completionStatus === "partial" ? "Parcial" : "Final"}</strong></div><div><span>Estado</span><strong>{item.state || "Não informado"}</strong></div><div><span>Leitura</span><strong>{extractionLabel(item.extractionStatus)}</strong></div></div>{quantitiesLabel(item.quantities) && <div className="certificateQuantitiesSummary"><span>Quantitativos</span><strong>{quantitiesLabel(item.quantities)}</strong></div>}{item.contentText && <details className="certificateContent"><summary>Ver texto capturado</summary><p>{item.contentText}</p></details>}<div className="certificateActions"><a className="textLink" href={item.documentUrl} target="_blank" rel="noreferrer">Abrir PDF</a>{canManage && <><Button variant="secondary" onClick={() => reprocessOCR(item)} disabled={saving}>{processingOCRId === item.id ? "Lendo OCR..." : "Refazer leitura OCR"}</Button><Button variant="secondary" onClick={() => edit(item)}>Editar dados</Button><Button variant="secondary" onClick={() => edit(item)}>Ler e corrigir texto</Button><Button variant="secondary" onClick={() => remove(item)}>Remover</Button></>}</div></Card>)}</div>}
+  </Page>;
+}
+
+function TechnicalCertificateAI({ navigate }) {
+  const [selectedIds] = useState(() => {
+    try {
+      const saved = JSON.parse(window.sessionStorage.getItem("licitahubTechnicalCertificateAISelection") || "[]");
+      return Array.isArray(saved) ? [...new Set(saved.filter((item) => typeof item === "string"))] : [];
+    } catch (_error) { return []; }
+  });
+  const [certificates, setCertificates] = useState([]);
+  const [prompt, setPrompt] = useState("");
+  const [analysis, setAnalysis] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [message, setMessage] = useState(null);
+  const selectedKey = selectedIds.join(",");
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      if (!selectedIds.length) { if (active) { setCertificates([]); setLoading(false); } return; }
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/technical-certificates?status=active`, { credentials: "include" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Não foi possível carregar os atestados selecionados.");
+        if (active) setCertificates((Array.isArray(data) ? data : []).filter((item) => selectedIds.includes(item.id)));
+      } catch (error) { if (active) setMessage({ type: "error", text: error.message }); }
+      finally { if (active) setLoading(false); }
+    };
+    load();
+    return () => { active = false; };
+  }, [selectedKey]);
+  useEffect(() => {
+    if (!analysis?.id || !["queued", "processing"].includes(analysis.status)) return undefined;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/technical-certificate-ai-analyses/${encodeURIComponent(analysis.id)}`, { credentials: "include" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Não foi possível consultar a análise.");
+        if (active) setAnalysis(data);
+      } catch (error) { if (active) setMessage({ type: "error", text: error.message }); }
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 2500);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [analysis?.id, analysis?.status]);
+  const submit = async () => {
+    if (!prompt.trim()) { setMessage({ type: "error", text: "Descreva no roteiro o que a IA deve analisar." }); return; }
+    if (!certificates.length) { setMessage({ type: "error", text: "Nenhum atestado selecionado está disponível para análise." }); return; }
+    setSending(true); setMessage({ type: "info", text: "Preparando o JSON e enviando os atestados selecionados para análise." });
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/technical-certificate-ai-analyses`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ certificateIds: certificates.map((item) => item.id), prompt: prompt.trim() }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível iniciar a análise por IA.");
+      window.sessionStorage.removeItem("licitahubTechnicalCertificateAISelection");
+      setAnalysis(data);
+      setMessage({ type: "info", text: "Análise enviada. O resultado aparecerá nesta tela quando for concluído." });
+    } catch (error) { setMessage({ type: "error", text: error.message }); }
+    finally { setSending(false); }
+  };
+  const statusLabel = { queued: "Aguardando processamento", processing: "IA analisando os atestados", completed: "Análise concluída", failed: "Análise não concluída" };
+  return <Page label="Capacidade técnica" title="Análise de atestados por IA" actions={<Button variant="secondary" onClick={() => navigate("technical-certificates")}>Voltar aos atestados</Button>}>
+    <Card className="certificateIntro"><span className="eyebrow">Análise privada da empresa</span><h3>Capacidade técnica assistida por IA</h3><p>O sistema envia somente os dados estruturados e o texto capturado dos atestados marcados. O roteiro abaixo orienta a análise.</p></Card>
+    {message && <Card className={`formFeedback ${message.type === "success" ? "success" : message.type === "info" ? "infoNotice" : "dangerNotice"}`}><p>{message.text}</p></Card>}
+    {loading ? <Card><p>Carregando os atestados selecionados...</p></Card> : certificates.length === 0 ? <Card className="dangerNotice"><p>Selecione um ou mais atestados na tela anterior antes de abrir a análise por IA.</p></Card> : <><Card className="aiCertificateSelection"><div className="sectionTitle"><div><span className="eyebrow">Seleção enviada</span><h3>{certificates.length} atestado(s)</h3></div><span className="statusPill open">Dados da sua empresa</span></div><div className="aiCertificateList">{certificates.map((item) => <div key={item.id}><strong>{item.certificateNumber || item.fileName}</strong><span>{item.object}</span><small>{item.extractionStatus === "ocr_extracted" ? "Leitura OCR" : item.extractionStatus === "extracted" ? "Texto do PDF" : "Texto pendente ou manual"}</small></div>)}</div></Card>
+      <Card className="certificateForm"><Field label="Roteiro da análise" hint={`${prompt.length}/16000 caracteres. Explique o objetivo, os critérios e o formato de resultado desejado.`}><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength="16000" placeholder="Ex.: Analise os atestados e identifique quais comprovam supervisão ambiental em rodovias, relacionando os quantitativos, as limitações do texto e os pontos que precisam de conferência humana." /></Field><div className="formActions"><Button onClick={submit} disabled={sending || !!analysis && ["queued", "processing"].includes(analysis.status)}>{sending ? "Enviando para IA..." : analysis && ["queued", "processing"].includes(analysis.status) ? "Análise em andamento..." : "Analisar atestados"}</Button></div></Card></>}
+    {analysis && <Card className="aiAnalysisResult"><div className="sectionTitle"><div><span className="eyebrow">Resultado da análise</span><h3>{statusLabel[analysis.status] || analysis.status}</h3></div><span className={`statusPill ${analysis.status === "completed" ? "success" : analysis.status === "failed" ? "review" : "open"}`}>{analysis.model || "IA"}</span></div>{["queued", "processing"].includes(analysis.status) && <p>A IA está trabalhando. Esta tela será atualizada automaticamente quando o resultado estiver pronto.</p>}{analysis.status === "failed" && <p className="dangerText">{analysis.errorMessage || "Não foi possível concluir a análise."}</p>}{analysis.status === "completed" && <pre className="aiAnalysisText">{analysis.resultText}</pre>}</Card>}
+  </Page>;
+}
+
 function PNCPCapture({ navigate }) {
   const localISO = () => new Date().toISOString().slice(0, 10);
   const sevenDaysAgo = () => { const date = new Date(); date.setDate(date.getDate() - 7); return date.toISOString().slice(0, 10); };
+  const pncpModalities = [{ value: "6", label: "6 - Mão de obra" }, { value: "7", label: "7 - Obras" }, { value: "8", label: "8 - Serviços" }, { value: "9", label: "9 - Serviços de Engenharia" }];
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [capturing, setCapturing] = useState(false);
+  const [capturePage, setCapturePage] = useState(1);
+  const [captureHasMore, setCaptureHasMore] = useState(true);
   const [discardingAll, setDiscardingAll] = useState(false);
   const [actingId, setActingId] = useState("");
   const [message, setMessage] = useState(null);
-  const [filters, setFilters] = useState({ startDate: sevenDaysAgo(), endDate: localISO(), state: "", source: "pncp", status: "captured", relevance: "relevant", search: "", minValue: "", maxValue: "" });
+  const [filters, setFilters] = useState({ startDate: sevenDaysAgo(), endDate: localISO(), state: "", source: "pncp", modalities: pncpModalities.map((option) => option.value), status: "captured", relevance: "relevant", search: "", minValue: "", maxValue: "" });
   const load = async () => {
     setLoading(true);
     try {
@@ -4188,13 +5423,17 @@ function PNCPCapture({ navigate }) {
     } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
+  const resetCapture = () => { setCapturePage(1); setCaptureHasMore(true); };
   const capture = async () => {
     setCapturing(true); setMessage(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/pncp/captures`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ startDate: filters.startDate, endDate: filters.endDate, state: filters.state, source: filters.source }) });
+      const response = await fetch(`${API_BASE_URL}/api/pncp/captures`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ startDate: filters.startDate, endDate: filters.endDate, state: filters.state, source: filters.source, page: capturePage, modalities: filters.source === "pncp" ? filters.modalities : [] }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível consultar a fonte escolhida.");
-      setMessage({ type: "success", text: `${data.captured || 0} oportunidade(s) capturada(s). Revise a fila antes de publicar.` });
+	  const captured = Number(data.captured || 0);
+      setCaptureHasMore(captured > 0);
+      if (captured > 0) setCapturePage((current) => current + 1);
+      setMessage({ type: "success", text: `Página ${capturePage} consultada: ${captured} oportunidade(s) recebida(s).` });
 	  setFilters((current) => ({ ...current, status: "captured", relevance: "all", search: "" }));
       await load();
     } catch (error) { setMessage({ type: "error", text: error.message }); }
@@ -4249,12 +5488,14 @@ function PNCPCapture({ navigate }) {
     <Card className="pncpIntro"><span className="eyebrow">Fontes oficiais</span><h3>Fila de revisão da engenharia consultiva</h3><p>Consulte o PNCP ou o Compras.gov.br, filtre a aderência técnica e publique somente os editais revisados pelo administrador.</p></Card>
     {message && <Card className={`formFeedback ${message.type === "success" ? "success" : "dangerNotice"}`}><p>{message.text}</p></Card>}
     <Card className="compactFilters pncpFiltersSticky"><FormGrid>
-      <Field label="Publicados de"><input type="date" value={filters.startDate} max={filters.endDate} onChange={(event) => setFilters((current) => ({ ...current, startDate: event.target.value }))} /></Field>
-      <Field label="Até"><input type="date" value={filters.endDate} min={filters.startDate} max={localISO()} onChange={(event) => setFilters((current) => ({ ...current, endDate: event.target.value }))} /></Field>
-      <Field label="Estado"><StateSelect value={filters.state} onChange={(event) => setFilters((current) => ({ ...current, state: event.target.value }))} /></Field>
-      <Field label="Fonte"><select value={filters.source} onChange={(event) => setFilters((current) => ({ ...current, source: event.target.value }))}><option value="pncp">PNCP</option><option value="comprasgov">Compras.gov.br</option></select></Field>
-      <Field label="Consulta"><Button onClick={capture} disabled={capturing}>{capturing ? "Consultando..." : filters.source === "comprasgov" ? "Buscar no Compras.gov.br" : "Buscar no PNCP"}</Button></Field>
+      <Field label="Publicados de"><input type="date" value={filters.startDate} max={filters.endDate} onChange={(event) => { resetCapture(); setFilters((current) => ({ ...current, startDate: event.target.value })); }} /></Field>
+      <Field label="Até"><input type="date" value={filters.endDate} min={filters.startDate} max={localISO()} onChange={(event) => { resetCapture(); setFilters((current) => ({ ...current, endDate: event.target.value })); }} /></Field>
+      <Field label="Estado"><StateSelect value={filters.state} onChange={(event) => { resetCapture(); setFilters((current) => ({ ...current, state: event.target.value })); }} /></Field>
+      <Field label="Fonte"><select value={filters.source} onChange={(event) => { resetCapture(); setFilters((current) => ({ ...current, source: event.target.value })); }}><option value="pncp">PNCP</option><option value="comprasgov">Compras.gov.br</option></select></Field>
+      {filters.source === "pncp" && <Field label="Modalidades PNCP"><select multiple size="4" value={filters.modalities} onChange={(event) => { resetCapture(); setFilters((current) => ({ ...current, modalities: Array.from(event.target.selectedOptions).map((option) => option.value) })); }}>{pncpModalities.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></Field>}
+      <Field label="Consulta"><Button onClick={capture} disabled={capturing || !captureHasMore || (filters.source === "pncp" && filters.modalities.length === 0)}>{capturing ? `Consultando página ${capturePage}...` : !captureHasMore ? "Pesquisa concluída" : capturePage === 1 ? "Buscar página 1" : `Buscar próxima página (${capturePage})`}</Button></Field>
     </FormGrid></Card>
+    <Card className="pncpProgressCard"><div className="pncpProgressHeader"><div><span className="eyebrow">Andamento da pesquisa</span><strong>{capturing ? `Consultando página ${capturePage}` : captureHasMore ? `Próxima página: ${capturePage}` : "Pesquisa concluída"}</strong></div><span>{capturing ? "Em andamento" : "Pronto"}</span></div><div className={`pncpProgressTrack ${capturing ? "isRunning" : ""}`}><i /></div><small>{capturing ? "Aguarde o retorno da fonte oficial." : "Cada página recebida é salva na fila de captação."}</small></Card>
     <Card className="compactFilters pncpQueueFiltersSticky"><FormGrid>
       <Field label="Buscar na fila"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Órgão, número, objeto ou cidade" /></Field>
       <Field label="Valor mínimo"><input type="number" min="0" step="0.01" value={filters.minValue} onChange={(event) => setFilters((current) => ({ ...current, minValue: event.target.value }))} placeholder="R$ 0,00" /></Field>
@@ -4266,7 +5507,7 @@ function PNCPCapture({ navigate }) {
     {loading && <Card><p>Carregando fila de captação...</p></Card>}
     {!loading && filtered.length === 0 && <Card><p>Nenhuma oportunidade encontrada. Faça uma consulta na fonte escolhida ou amplie os filtros.</p></Card>}
     {!loading && filtered.length > 0 && <div className="pncpCaptureList">{filtered.map((item) => <Card className="pncpCaptureCard" key={item.id}>
-      <div className="pncpCaptureHeader"><div><span className="eyebrow">{item.agency}</span><h3>{item.number}</h3><span className="captureSource">{item.source === "comprasgov" ? "Compras.gov.br / Dados Abertos" : "PNCP"}</span></div><span className={`pncpRelevance score-${Number(item.relevanceScore || 0) >= 70 ? "high" : Number(item.relevanceScore || 0) >= 45 ? "medium" : "low"}`}>{relevanceLabel(item.relevanceScore)}</span></div>
+      <div className="pncpCaptureHeader"><div><span className="eyebrow">{item.agency}</span><h3>{item.number}</h3><span className="captureSource">{item.source === "pncp+comprasgov" ? "PNCP + Compras.gov.br / saneado" : item.source === "comprasgov" ? "Compras.gov.br / Dados Abertos" : "PNCP"}</span>{item.pncpControlNumber && <small className="captureControlNumber">Controle PNCP: {item.pncpControlNumber}</small>}</div><span className={`pncpRelevance score-${Number(item.relevanceScore || 0) >= 70 ? "high" : Number(item.relevanceScore || 0) >= 45 ? "medium" : "low"}`}>{relevanceLabel(item.relevanceScore)}</span></div>
       <p className="pncpObject">{item.object}</p>
       <div className="pncpInfoGrid">
         <div className="pncpInfo"><span>Modalidade</span><strong>{item.modality || "Não informada"}</strong></div>
@@ -4622,6 +5863,7 @@ function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
   const [generatingAIAnalysis, setGeneratingAIAnalysis] = useState(false);
   const [documentMessage, setDocumentMessage] = useState(null);
   const [uploadingDocuments, setUploadingDocuments] = useState(false);
+  const [timelineOpen, setTimelineOpen] = useState(false);
   const loadTender = () => {
     if (!id) {
       setError("Selecione um edital na lista.");
@@ -4632,7 +5874,7 @@ function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
       .then(setTender)
       .catch((e)=>setError(e.message));
   };
-  useEffect(loadTender, [id]);
+  useEffect(() => { loadTender(); }, [id]);
   useEffect(() => {
     const status = tender?.aiAnalysis?.status;
     if (status !== "queued" && status !== "processing") return undefined;
@@ -4763,20 +6005,30 @@ function TenderDetail({ navigate, sessionUser, openTenderInterestCompanies }) {
   const aiIsWorking = aiAnalysis?.status === "queued" || aiAnalysis?.status === "processing";
   const canChallengeTender = ["company_admin", "commercial", "technical"].includes(sessionUser?.roleKey) && ["published", "under_review", "challenged"].includes(tender.status);
   const formatDocumentSize = (bytes) => !bytes ? "Tamanho não informado" : bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
+  const timelineLabels = { created: "Edital cadastrado", captured: "Edital captado", published: "Edital publicado", resumed: "Edital retomado", suspended: "Edital suspenso", occurred: "Sessão ocorrida", closed: "Edital encerrado", cancelled: "Edital cancelado", under_review: "Edital em análise", challenged: "Edital impugnado", status_changed: "Status atualizado", interest_registered: "Interesse registrado", match: "Match realizado", consortium: "Consórcio formado", assembly: "Montagem iniciada" };
+  const timeline = Array.isArray(tender.timeline) ? tender.timeline : [];
   const myInterest = tender.myInterest || null;
-  const detailAction = !myInterest
-    ? <Button onClick={() => navigate(`tender-interest?id=${tender.id}`)}>Registrar interesse</Button>
+  const detailAction = tender.hasActiveConsortium
+    ? <><Button onClick={() => navigate("match-list")}>{tender.canSearchNewConsortiumMember ? "Gerenciar busca do consórcio" : "Ver meu consórcio"}</Button><span className="statusPill review">Participação em consórcio ativa</span></>
+    : !myInterest
+    ? tender.status === "published"
+      ? <Button onClick={() => navigate(`tender-interest?id=${tender.id}`)}>Registrar interesse</Button>
+      : <span className="statusPill review">Interesse indisponível: edital {tender.status}</span>
     : myInterest.participationMode === "individual"
       ? <><Button onClick={() => navigate(`assembly-board?interestId=${encodeURIComponent(myInterest.id)}`)}>Abrir montagem individual</Button><Button variant="secondary" onClick={() => navigate(`tender-interest?id=${tender.id}`)}>Buscar parceiros</Button></>
       : <><Button onClick={() => openTenderInterestCompanies(tender.id)}>Ver empresas interessadas</Button>{myInterest.individualAssemblyId && <Button variant="secondary" onClick={() => navigate(`assembly-board?interestId=${encodeURIComponent(myInterest.id)}`)}>Abrir montagem individual</Button>}<Button variant="secondary" onClick={() => navigate(`tender-interest?id=${tender.id}`)}>Editar participação</Button></>;
   return (
-    <Page label="Editais" title="Detalhe do edital" actions={<>{detailAction}{myInterest && <Button variant="secondary" onClick={withdrawInterest}>Desistir da participação</Button>}{canChallengeTender && <Button variant="secondary" onClick={() => navigate(`tender-challenge?id=${tender.id}`)}>{tender.myChallenge ? "Ver pedido de impugnação" : "Protocolar impugnação"}</Button>}</>}>
+    <Page label="Editais" title="Detalhe do edital" actions={<>{detailAction}{myInterest && !tender.hasActiveConsortium && <Button variant="secondary" onClick={withdrawInterest}>Desistir da participação</Button>}{canChallengeTender && <Button variant="secondary" onClick={() => navigate(`tender-challenge?id=${tender.id}`)}>{tender.myChallenge ? "Ver pedido de impugnação" : "Protocolar impugnação"}</Button>}</>}>
       <Card><h3>{tender.number} - {tender.agency}</h3><p>{tender.object}</p></Card>
       <div className="grid three">
         <Card><strong>Local</strong><p>{[tender.city,tender.state].filter(Boolean).join(" / ") || "Não informado"}</p></Card>
         <Card><strong>Critério</strong><p>{tender.judgmentCriterion || "Não informado"}</p></Card>
         <Card><strong>Status</strong><p>{tender.status}</p></Card>
       </div>
+      <Card className="tenderTimelineCard">
+        <div className="cardHeader"><div><h3>Linha do tempo</h3><p>Acontecimentos gerais e movimentações da sua empresa neste edital.</p></div><div className="timelineHeaderActions"><span className="statusPill open">{timeline.length} evento{timeline.length === 1 ? "" : "s"}</span><button type="button" className="iconButton secondaryIcon" title={timelineOpen ? "Recolher linha do tempo" : "Abrir linha do tempo"} aria-label={timelineOpen ? "Recolher linha do tempo" : "Abrir linha do tempo"} onClick={() => setTimelineOpen((open) => !open)}>{timelineOpen ? "⌃" : "⌄"}</button></div></div>
+        {timelineOpen && (timeline.length === 0 ? <div className="emptyAnalysisBox"><strong>Histórico começará aqui</strong><p>Os próximos acontecimentos do edital aparecerão nesta linha do tempo.</p></div> : <ol className="tenderTimeline">{timeline.map((event) => <li key={event.id} className={`timelineEvent timeline-${event.eventType}`}><span className="timelineMarker" aria-hidden="true" /><div><div className="timelineEventHead"><strong>{timelineLabels[event.eventType] || event.title}</strong><time>{event.createdAt ? new Date(event.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</time></div><p>{event.description || event.title}</p>{event.actorName && <small>Registrado por {event.actorName}</small>}</div></li>)}</ol>)}
+      </Card>
       {tender.myChallenge && <Card className="challengeSummary"><div><strong>Pedido de impugnação da sua empresa</strong><p>{tender.myChallenge.subject}</p></div><span className={`statusPill ${tender.myChallenge.status}`}>{tender.myChallenge.status === "submitted" ? "Protocolado" : tender.myChallenge.status}</span></Card>}
       {tender.cloudFolderUrl && <Card><h3>Documentos do edital</h3><a className="downloadButton" href={tender.cloudFolderUrl} target="_blank" rel="noreferrer">Abrir diretório em nuvem</a></Card>}
       <Card className="tenderDocumentsCard">
@@ -4836,7 +6088,7 @@ function TenderChallenge({ navigate }) {
       })
       .catch((error) => setMessage({ type: "error", text: error.message }));
   };
-  useEffect(load, [id]);
+  useEffect(() => { load(); }, [id]);
   const selectDocuments = (event) => {
     const selected = Array.from(event.target.files || []);
     const oversized = selected.find((file) => file.size > 25 * 1024 * 1024);
@@ -4940,7 +6192,7 @@ function TenderChallengeBoard({ navigate }) {
       .catch((loadError) => setError(loadError.message))
       .finally(() => setLoading(false));
   };
-  useEffect(load, []);
+  useEffect(() => { load(); }, []);
 
   const updateStatus = async (item, status) => {
     setSavingId(item.id);
@@ -5249,7 +6501,6 @@ function TenderInterest({ navigate }) {
           <textarea value={form.internalNote} onChange={(event) => setForm((current) => ({ ...current, internalNote: event.target.value }))} placeholder="Anotação privada da sua empresa, não exibida para outros participantes." />
         </Field>
       </div>
-      <div className="formActionBar"><Button onClick={submit} disabled={saving}>{saving ? "Salvando..." : form.participationMode === "individual" ? "Salvar e abrir montagem" : form.participationMode === "seeking_partners" ? "Salvar e ver empresas interessadas" : "Salvar participação"}</Button></div>
     </Page>
   );
 }
@@ -5313,7 +6564,7 @@ function TenderInterestList({ navigate, selectedTenderId = "cp-004-2026", sessio
           const requirement = (key) => ad.requirements?.find((item) => item.requirementKey === key);
           const isConsortiumMember = (ad.consortiumMembers || []).some((company) => company.companyId === sessionUser?.companyId);
           const isOwnAd = (ad.companyId && sessionUser?.companyId && ad.companyId === sessionUser.companyId) || isConsortiumMember;
-          const alreadyLiked = ad.currentEvaluationDecision === "liked";
+          const alreadyEvaluated = Boolean(ad.currentEvaluationDecision || ad.myEvaluationDecision);
           return [
             <div className="companyNameStack" key={`${ad.id}-company`}>
               <strong>{ad.adType === "consortium" ? "Consórcio em formação" : ad.companyName}</strong>
@@ -5335,7 +6586,7 @@ function TenderInterestList({ navigate, selectedTenderId = "cp-004-2026", sessio
               {ad.companyId && <button className="iconButton secondaryIcon" title="Abrir perfil público da empresa" aria-label="Abrir perfil público da empresa" onClick={() => navigate(`company-public-profile?companyId=${encodeURIComponent(ad.companyId)}`)}>{"\u2197"}</button>}
               <button className="iconButton secondaryIcon" title="Ver detalhe do anúncio" aria-label="Ver detalhe do anúncio" onClick={() => navigate(`match-profile?id=${ad.id}`)}>{"\u25C9"}</button>
               {!isOwnAd && <button className="iconButton chatIcon" title="Conversar com a empresa" aria-label="Conversar com a empresa" onClick={() => openChatForAd(ad)}>{"\u2709"}</button>}
-              {!isOwnAd && (alreadyLiked
+              {!isOwnAd && (alreadyEvaluated
                 ? <span className="iconButton successIcon isStatic" title="Avaliação já registrada" aria-label="Avaliação já registrada">{"\u2713"}</span>
                 : <button className="iconButton successIcon" title="Avaliar candidata" aria-label="Avaliar candidata" onClick={() => navigate(`match-tinder?id=${ad.id}`)}>{"\u2713"}</button>
               )}
@@ -5604,6 +6855,7 @@ function MatchTinder({ navigate, sessionUser }) {
   if (!ad) return <Page label="Match e consórcios" title="Avaliar candidata da licitação"><Card><p>Carregando candidata...</p></Card></Page>;
   const isConsortiumAd = ad.adType === "consortium";
   const isOwnAd = (ad.companyId && sessionUser?.companyId && ad.companyId === sessionUser.companyId) || (ad.consortiumMembers || []).some((company) => company.companyId === sessionUser?.companyId);
+  const alreadyLiked = ad.myEvaluationDecision === "liked";
 
   const hasItems = (ad.requirements || []).filter((item) => ["fully_meets", "partially_meets"].includes(item.statusKey)).map((item) => `${item.name}: ${interestStatusLabels[item.statusKey]}`);
   const seekItems = (ad.requirements || []).filter((item) => item.whatWeSeek || ["does_not_meet", "seeks_partner"].includes(item.statusKey)).map((item) => item.whatWeSeek || `${item.name}: ${interestStatusLabels[item.statusKey]}`);
@@ -5633,7 +6885,7 @@ function MatchTinder({ navigate, sessionUser }) {
           <div className="tinderBottomActions">
             <button className="circleButton info" onClick={() => navigate(`match-profile?id=${ad.id}`)}>i</button>
             {!isOwnAd && <button className="circleButton reject" title="Recusar candidata" aria-label="Recusar candidata" disabled={Boolean(saving)} onClick={() => evaluate("rejected")}>{"\u00D7"}</button>}
-            {!isOwnAd && <button className="circleButton like" title="Aprovar candidata" aria-label="Aprovar candidata" disabled={Boolean(saving)} onClick={() => evaluate("liked")}>{"\u2665"}</button>}
+            {!isOwnAd && !alreadyLiked && <button className="circleButton like" title="Aprovar candidata" aria-label="Aprovar candidata" disabled={Boolean(saving)} onClick={() => evaluate("liked")}>{"\u2665"}</button>}
             {!isOwnAd && <button className="circleButton save" title="Avaliar depois" aria-label="Avaliar depois" disabled={Boolean(saving)} onClick={() => evaluate("later")}>{"\u2605"}</button>}
           </div>
           {isOwnAd && <p className="ownAdNotice">Este é o anúncio da sua empresa. Você pode revisar o conteúdo, mas não pode gerar consórcio consigo mesmo.</p>}
@@ -5668,9 +6920,10 @@ function MatchProfile({ navigate, sessionUser, openChatForAd }) {
   const isConsortiumAd = ad.adType === "consortium";
   const isOwnAd = (ad.companyId && sessionUser?.companyId && ad.companyId === sessionUser.companyId) || (ad.consortiumMembers || []).some((company) => company.companyId === sessionUser?.companyId);
   const applicationSent = currentHashParams().get("application") === "sent";
+  const alreadyEvaluated = Boolean(ad.myEvaluationDecision);
 
   return (
-    <Page label="Match e consórcios" title="Detalhe do anúncio" actions={!isOwnAd ? <Button onClick={() => navigate(`match-tinder?id=${ad.id}`)}>Ir para avaliar candidata</Button> : null}>
+    <Page label="Match e consórcios" title="Detalhe do anúncio" actions={!isOwnAd ? (alreadyEvaluated ? <Button variant="secondary" disabled>Já avaliada</Button> : <Button onClick={() => navigate(`match-tinder?id=${ad.id}`)}>Ir para avaliar candidata</Button>) : null}>
       {applicationSent && isConsortiumAd && <Card className="successNotice"><strong>Interesse enviado para a líder do consórcio.</strong><p>A empresa líder receberá a candidata em Meus consórcios e poderá dar o match final para incluí-la na composição.</p></Card>}
       <section className="partnerAdHero">
         <div>

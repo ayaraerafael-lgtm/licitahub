@@ -1,97 +1,202 @@
 # LicitaHub
 
-Plataforma web para rede empresarial de engenharia consultiva, com comunidade, Radar de noticias, central de editais, vitrine de parceiros e fluxo de match/consorcio.
+Plataforma web para empresas de engenharia consultiva. O produto reune rede social empresarial, noticias, editais publicos, formacao de consorcios, montagem colaborativa de propostas, capacidade tecnica e capacitacao profissional.
 
-## Estado atual
+Documentacao revisada em 18/07/2026.
 
-O projeto deixou de ser apenas prototipo visual. Ele ja possui frontend React compilado, backend local em Go e banco PostgreSQL.
+## Estado do projeto
 
-Rodada de testes manuais encerrada em 11/07/2026, com ajustes finais aplicados nos modulos de acesso, empresa, Radar, editais, interesse, vitrine, match e consorcios.
+O LicitaHub possui frontend React compilado, backend em Go, banco PostgreSQL e armazenamento local de arquivos. Os principais fluxos funcionam no ambiente local de desenvolvimento e homologacao.
 
-Dashboards analiticos e auditorias completas ficam para uma fase posterior.
+O sistema ainda nao deve ser tratado como producao publica. Antes da hospedagem externa, devem ser concluidos os pontos de seguranca, infraestrutura, backup, e-mail, HTTPS, armazenamento de arquivos, monitoramento e testes descritos em `docs/SEGURANCA.md`.
 
-## Stack
+## Tecnologias
 
-- Frontend: React compilado com Vite, HTML e CSS
-- Backend: Go
-- Banco de dados: PostgreSQL
-- Execucao local: backend Go servindo API e frontend compilado
+- Frontend: React, HTML e CSS, compilados com Vite.
+- Backend: Go, API HTTP e servidor do frontend compilado.
+- Banco: PostgreSQL 17.
+- Arquivos: diretorio local `backend/uploads/`.
+- OCR: Tesseract instalado no servidor.
+- IA opcional: API da OpenAI configurada apenas no backend.
+- Fontes oficiais: PNCP e Compras.gov.br/Dados Abertos.
 
 ## Estrutura
 
-- `src/`: codigo-fonte do frontend React.
+- `src/`: codigo-fonte do frontend.
 - `dist/`: frontend compilado pelo Vite.
-- `backend/`: API Go e executaveis locais.
-- `database/`: schema PostgreSQL e base das migracoes.
-- `docs/`: documentacao funcional do sistema.
-- `preview-react-cdn.html`: arquivo legado que redireciona para a versao Vite.
+- `backend/`: API Go, migracoes de inicializacao, prompts, uploads e scripts locais.
+- `database/schema.sql`: referencia consolidada do banco PostgreSQL.
+- `docs/SISTEMA.md`: fluxos, telas e regras de negocio.
+- `docs/SEGURANCA.md`: plano e situacao de seguranca para producao.
+- `docs/ROTEIRO-DE-TESTES.md`: cenarios manuais de validacao.
+- `preview-react-cdn.html`: redirecionador legado; nao deve ser usado como aplicacao principal.
 
-## Como rodar localmente
+## Como executar localmente
 
-1. Instale Node.js, Go e PostgreSQL.
-2. Rode `npm.cmd install` quando precisar instalar dependencias.
-3. Rode `npm.cmd run build` para gerar a pasta `dist/`.
-4. Abra `backend/run-dev.cmd`.
-5. Acesse `http://127.0.0.1:8080/`.
+Pre-requisitos:
 
-O `run-dev.cmd` liga o backend e, se a pasta `dist/` nao existir, tenta gerar a versao Vite automaticamente.
+- Node.js.
+- Go.
+- PostgreSQL 17.
+- Banco `licitahub_dev`.
+- Tesseract, somente para OCR de documentos digitalizados.
 
-## Acesso local
+Passos:
 
-- Usuario administrador local: `admin@licitahub.local`
-- A senha nao fica documentada no repositorio. Use a senha definida no seu banco local ou gere uma nova pelo fluxo de recuperacao/configuracao de senha.
+1. Na raiz do projeto, execute `npm.cmd install` se as dependencias ainda nao estiverem instaladas.
+2. Execute `npm.cmd run build` para gerar `dist/`.
+3. Abra `backend/run-dev.cmd`.
+4. Informe a senha do PostgreSQL quando solicitada.
+5. Aguarde a mensagem `LicitaHub API listening on :8080`.
+6. Acesse `http://127.0.0.1:8080/`.
 
-Nao publique senhas, tokens ou credenciais no GitHub.
+O script recompila o backend antes de iniciar. Se `dist/index.html` nao existir, ele tambem tenta compilar o frontend.
+
+## Papeis de acesso
+
+- Administrador da plataforma: empresas, convites, noticias, editais, impugnacoes, cursos, captacao oficial e rodadas de avaliacao.
+- Administrador da empresa: perfil empresarial, usuarios vinculados e distribuicao institucional de estrelas.
+- Comercial: comunidade, editais, anuncios, matches, consorcios e operacao comercial permitida.
+- Tecnico: capacidade tecnica, tarefas, documentos e consultas autorizadas.
+- Leitor: consulta de conteudos sem comandos administrativos.
+
+As permissoes sao verificadas no menu e novamente no backend. Esconder um comando na tela nao substitui a validacao da API.
 
 ## Modulos implementados
 
-- Acesso e administracao.
-- Empresa e usuarios vinculados.
-- Meu perfil.
-- Comunidade.
-- Perfil publico da empresa.
-- Radar LicitaHub.
-- Editais.
-- Interesse em edital.
-- Vitrine de parceiros.
-- Empresas interessadas.
-- Avaliacao de candidata.
-- Match/consorcio.
-- Chat de parceria em tempo real.
-- Notificacoes no sino.
+### Acesso e administracao
 
-## Ajustes recentes validados
+- Convites, aceite, analise e aprovacao de empresas.
+- Bloqueio de empresa e encerramento das sessoes vinculadas.
+- Perfis de acesso, login, limite de tentativas e recuperacao de senha.
+- Consulta administrativa dos pedidos de recuperacao.
+- Logs de acesso, erros e acoes sensiveis selecionadas.
 
-- Convite com mascara/validacao de CNPJ, email, telefone e contato com nome completo.
-- Estados brasileiros em selects e apoio para cidades principais por UF.
-- Aceite de convite redirecionando para login apos cadastro concluido.
-- Menu lateral sem telas dependentes de contexto, como detalhe de noticia e analise de empresa.
-- Cadastro/edicao de edital com modalidade, valor monetario, estado, cidade e status impugnado.
-- Editais com data de abertura passada tratados como ocorridos.
-- Lista de editais indica quando a empresa ja registrou interesse e remove o botao de registrar novamente.
-- Empresas interessadas e vitrine mostram o proprio anuncio como "Meu anuncio", sem permitir match consigo mesmo.
-- Vitrine separa meus anuncios dos anuncios de outras empresas, com edicao de resumo e encerramento seguro do anuncio proprio.
-- Consorcios permitem inclusao de terceira empresa pela lider, com candidatura, aceite e registro dos membros.
-- Desistencia de consorcio registra a retirada e exige sucessora quando a lider deixa uma composicao que permanece ativa.
-- Perfil publico permite abrir detalhes profissionais de usuarios ativos sem expor dados internos.
-- Registrar interesse usa linguagem de requisitos e pontuacao.
-- Radar com filtro fixo, paginacao e limite de titulo/resumo.
-- Usuarios vinculados e admin de editais com filtros fixos.
-- Captacao de editais por PNCP e Compras.gov.br, com fonte, valor e criterio de julgamento.
+### Radar LicitaHub
 
-## Documentacao funcional
+- Noticias com imagem, destaque, periodo de publicacao e situacao.
+- Gerenciamento, filtros, paginacao e detalhe da noticia.
 
-Consulte [docs/SISTEMA.md](docs/SISTEMA.md) para ver os fluxos, regras de acesso, telas principais e itens deixados para fase posterior.
+### Comunidade
 
-## Cuidados antes de testar
+- Publicacoes empresariais, imagens, categorias, curtidas, favoritos e comentarios.
+- Gestao de publicacoes proprias, inclusive arquivamento e reativacao.
+- Perfil publico de empresas e profissionais.
 
-- Abrir sempre `http://127.0.0.1:8080/`, nao o arquivo HTML antigo.
-- Manter a janela do backend aberta.
-- Se alterar o frontend, rodar `npm.cmd run build` antes de testar pela URL do backend.
-- Testar com perfis diferentes: administrador da plataforma, administrador da empresa, comercial, tecnico e leitor.
+### Avaliacao de parcerias
 
-## Integracoes externas planejadas
+- Rodadas anonimas abertas pelo administrador da plataforma.
+- Fotografia das empresas ativas no momento da abertura.
+- Prazo obrigatorio e encerramento automatico.
+- Saldo de estrelas igual a 30% das participantes, arredondado para cima.
+- Distribuicao livre do saldo, inclusive todas as estrelas para uma unica empresa.
+- Revisao final, envio unico, ranking da rodada, media historica e tendencia.
+- Exclusao administrativa somente de rodada encerrada.
 
-- A captacao consulta PNCP e Compras.gov.br/Dados Abertos, sem publicacao automatica.
-- A integracao de alertas por WhatsApp ainda depende de conta Meta Business, numero dedicado, templates aprovados e token protegido no backend.
-- Nao versionar tokens, senhas ou chaves de API.
+### Empresa
+
+- Perfil institucional, logo, site, porte, cidade, UF e atuacao nacional.
+- Usuarios vinculados, foto, cargo, perfil, bloqueio, desbloqueio e remocao.
+- Meu perfil e perfil publico empresarial.
+
+### Editais e parcerias
+
+- Cadastro, edicao, documentos, HTML de pre-analise e ciclo de vida do edital.
+- Lista, detalhe, linha do tempo e registro de interesse.
+- Participacao individual, busca de parceiros ou acompanhamento.
+- Empresas interessadas, vitrine, avaliacao reciproca, match e consorcio.
+- Consorcios com lideranca, terceira empresa, desistencias e anuncios complementares.
+- Chat em tempo real relacionado a anuncios, tarefas e profissionais.
+
+### Area de trabalho
+
+- Central de montagens individuais e consorciais.
+- Fases, tarefas, responsaveis, prazos, comentarios e evidencias.
+- Kanban pessoal de tarefas.
+- Calendario mensal de montagens.
+
+### Impugnacoes
+
+- Pedido de impugnacao por empresa, fundamentacao e anexos.
+- Alerta de intempestividade conforme prazo informado.
+- Kanban administrativo, situacoes, responsavel e contato do solicitante.
+
+### Captacao oficial
+
+- Consulta PNCP e Compras.gov.br.
+- Fila administrativa sem publicacao automatica.
+- Aderencia por termos de engenharia consultiva.
+- Preparacao de rascunho, descarte e saneamento objetivo entre fontes.
+
+### Capacidade tecnica
+
+- Profissionais, formacoes e contatos.
+- Atestados, CAT, quantitativos, documentos e texto completo.
+- Extracao de PDF, OCR e correcao manual.
+- Selecao de atestados e analise opcional pela API da OpenAI.
+
+### Academia LicitaHub
+
+- Cursos, aulas por YouTube ou video enviado, progresso e retomada.
+- Questionarios, nota minima, bloqueio de aulas e historico individual.
+- Certificado PDF com codigo publico de validacao.
+
+### Notificacoes
+
+- Sino com contador, leitura, destino relacionado e historico pesquisavel.
+- Alertas para noticias, editais, comunidade, convites, matches, tarefas, chat e rodadas de avaliacao.
+
+## Dados locais e credenciais
+
+- O usuario administrativo local padrao e `admin@licitahub.local`.
+- Senhas, tokens e chaves reais nao devem ser documentados nem enviados ao GitHub.
+- O arquivo `backend/.env.example` contem somente nomes de variaveis.
+- A chave da OpenAI, quando utilizada, fica em `backend/.env.openai`, ignorado pelo Git.
+
+## Comandos de verificacao
+
+Frontend:
+
+```powershell
+npm.cmd run build
+```
+
+Backend:
+
+```powershell
+cd backend
+go test ./...
+```
+
+Testes automatizados locais:
+
+```powershell
+npm.cmd run test:smoke
+npm.cmd run test:homologacao
+```
+
+O teste de homologacao exige o backend ativo e uma base preparada exclusivamente para validacao. Ele nao deve ser executado contra dados de producao.
+
+Banco de referencia:
+
+```powershell
+psql -U postgres -d licitahub_dev -f database/schema.sql
+```
+
+O ultimo comando deve ser usado com cuidado e somente em banco apropriado. O backend tambem aplica migracoes incrementais ao iniciar.
+
+## Limites do ambiente atual
+
+- Senhas locais ainda exigem migracao para algoritmo de hash adequado antes da producao.
+- Cookies locais usam configuracao sem `Secure`, apropriada apenas para HTTP local.
+- Uploads ficam no disco do servidor e precisam migrar para armazenamento persistente em producao.
+- Recuperacao de senha ainda depende de atendimento administrativo quando o e-mail nao esta configurado.
+- IA depende de chave e creditos independentes da assinatura do ChatGPT.
+- WhatsApp permanece planejado e depende da plataforma oficial da Meta.
+- Backup, HTTPS, monitoramento externo, rotacao de logs e testes automatizados amplos ainda precisam ser implantados.
+
+## Documentacao
+
+- [Sistema e regras de negocio](docs/SISTEMA.md)
+- [Seguranca e preparacao para producao](docs/SEGURANCA.md)
+- [Roteiro completo de testes](docs/ROTEIRO-DE-TESTES.md)

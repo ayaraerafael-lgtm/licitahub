@@ -1,10 +1,38 @@
 # Mapa de Seguranca do LicitaHub
 
+Documentacao revisada em 18/07/2026.
+
 ## Objetivo
 
 Preparar o LicitaHub para uso online sem alterar os fluxos funcionais ja aprovados: convite, login, empresa, comunidade, noticias, editais, interesse, consorcios, montagem, chat e impugnacoes.
 
 O trabalho deve ser feito por etapas pequenas, com testes antes e depois de cada mudanca. Nenhuma tela precisa ser redesenhada para a seguranca ser aplicada.
+
+## Situacao atual
+
+Controles ja presentes no ambiente local:
+
+- Perfis de acesso e verificacoes de autorizacao no backend para rotas administrativas.
+- Isolamento por empresa aplicado nos principais fluxos privados.
+- Sessoes por cookie `HttpOnly` e `SameSite=Lax`.
+- Bloqueio temporario do login depois de 15 tentativas em 15 minutos, com contador de tentativas restantes exibido a partir do terceiro erro.
+- Encerramento de sessoes quando usuario ou empresa e bloqueado e nos fluxos sensiveis de redefinicao.
+- Tokens de convite e recuperacao com validade e controle de uso.
+- Logs estruturados de acesso HTTP, falhas da API, banco, autenticacao e eventos sensiveis selecionados.
+- Segredos de banco e de integracoes lidos por variaveis locais, sem incorporacao deliberada ao frontend.
+- Validacoes funcionais de tipo, tamanho e permissao nos fluxos de upload mais recentes.
+
+Pendencias que bloqueiam uma publicacao profissional:
+
+- As senhas ainda precisam ser migradas para hash forte, preferencialmente `Argon2id`.
+- O cookie deve receber `Secure` quando o sistema estiver sob HTTPS.
+- A camada de banco baseada em comandos `psql` e SQL montado deve migrar gradualmente para conexao nativa e consultas parametrizadas.
+- Os uploads locais precisam de armazenamento persistente privado, verificacao antimalware e downloads autorizados.
+- Backup automatico, restauracao testada, centralizacao de logs e monitoramento ainda precisam ser implantados no ambiente de hospedagem.
+- Recuperacao de senha ainda depende de atendimento administrativo; o envio seguro por e-mail precisa ser configurado.
+- A bateria automatizada de seguranca e regressao ainda nao cobre integralmente todos os modulos.
+
+Portanto, o LicitaHub esta em condicao de desenvolvimento e homologacao local, mas esta documentacao nao classifica a versao atual como pronta para exposicao publica.
 
 ## Principios
 
@@ -46,7 +74,7 @@ Referencia: [OWASP - SQL Injection Prevention](https://cheatsheetseries.owasp.or
 ## Fase 2 - Autenticacao, senha e sessao
 
 - Migrar senhas para `Argon2id` com salt individual e parametros adequados; manter compatibilidade temporaria para que usuarios existentes atualizem a senha no proximo login.
-- Exigir senha minima forte, bloquear senhas muito comuns e aplicar limite de tentativas por IP e por conta.
+- Exigir senha minima forte, bloquear senhas muito comuns e aplicar limite de tentativas por IP e por conta. O ambiente atual usa bloqueio temporario apos 15 tentativas em 15 minutos e informa tentativas restantes a partir do terceiro erro.
 - Usar cookies de sessao com `HttpOnly`, `Secure` e `SameSite` adequados quando houver HTTPS.
 - Renovar o identificador de sessao apos login e troca de senha; encerrar todas as sessoes ao bloquear uma empresa, bloquear/remover usuario ou trocar senha. O bloqueio de empresa ja encerra as sessoes de seus usuarios no ambiente local.
 - Recuperacao de senha com token aleatorio, uso unico, expiracao curta e resposta generica para nao revelar se um email existe.
@@ -71,6 +99,7 @@ Aplicacoes praticas:
 - Leitor: apenas consulta autorizada.
 - Chat: somente participantes da conversa, membros autorizados do consorcio ou profissionais especificamente envolvidos em tarefa.
 - Arquivos: permissao conferida antes de gerar download.
+- Consorcio: empresa membro ativa nao pode abrir, por URL direta ou API, anuncios, chat ou avaliacao de terceiros no mesmo edital. A unica excecao e a empresa lider apos publicar anuncio complementar de busca por nova consorciada.
 
 Testes obrigatorios:
 
@@ -109,8 +138,9 @@ Referencia: [OWASP - File Upload Security](https://cheatsheetseries.owasp.org/ch
 - Manter senha do banco, chave da OpenAI e demais segredos somente em gerenciador de segredos ou variaveis do ambiente de hospedagem.
 - Nunca enviar segredos ao GitHub, frontend, URL, mensagens de erro ou log.
 - Usar banco gerenciado com backup automatico, criptografia, restauracao testada e acesso restrito por rede.
-- Criar logs estruturados para erros, login, alteracao de perfil, convite, bloqueio, edicao de edital, impugnacao, match e consorcio.
-- Criar auditoria funcional: quem fez, quando fez, qual empresa, qual registro e qual alteracao ocorreu.
+- Logs estruturados foram iniciados no backend: acessos HTTP, erros da API, falhas de banco, login, logout e tentativas de login recusadas.
+- A auditoria funcional existente registra acoes sensiveis com usuario, empresa, data, registro afetado e metadados; a cobertura deve continuar sendo ampliada para novos fluxos.
+- No ambiente local, o link temporario de recuperacao fica armazenado para atendimento autorizado. Em producao, essa armazenagem deve ser removida e substituida por envio seguro por e-mail, sem exibir o token no painel.
 - Definir politica de retencao de documentos e dados pessoais, termos de uso e politica de privacidade alinhados a LGPD.
 - Atualizar dependencias e verificar vulnerabilidades antes de cada entrega.
 

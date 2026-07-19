@@ -45,6 +45,7 @@ if not exist "%~dp0..\dist\index.html" (
 echo.
 echo Encerrando eventual instancia antiga do backend...
 taskkill /IM licitahub-v97.exe /F >nul 2>&1
+taskkill /IM licitahub-v98.exe /F >nul 2>&1
 
 echo.
 echo Compilando o backend atual...
@@ -53,7 +54,7 @@ if not exist "C:\Program Files\Go\bin\go.exe" (
   pause
   exit /b 1
 )
-"C:\Program Files\Go\bin\go.exe" build -o "%~dp0licitahub-v97.exe" .
+"C:\Program Files\Go\bin\go.exe" build -o "%~dp0licitahub-v98.exe" .
 if errorlevel 1 (
   echo.
   echo Nao foi possivel compilar o backend.
@@ -66,7 +67,7 @@ echo Ligando backend em http://127.0.0.1:8080 ...
 echo Aguarde aparecer: LicitaHub API listening on :8080
 echo.
 
-"%~dp0licitahub-v97.exe"
+"%~dp0licitahub-v98.exe"
 
 echo.
 echo O backend foi encerrado.

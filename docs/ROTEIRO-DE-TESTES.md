@@ -2,6 +2,8 @@
 
 Este roteiro serve para validar o sistema como se ele estivesse em operacao real. Cada teste deve registrar: data, usuario utilizado, resultado, evidencia (imagem quando necessario) e observacao.
 
+Documentacao revisada em 18/07/2026.
+
 ## 1. Regra de ouro antes dos testes
 
 Nao usar exclusao como forma normal de interromper um edital que ja foi publicado. Para manter historico e evitar perda de rastreabilidade, a regra recomendada e:
@@ -169,7 +171,7 @@ Preparar antes de iniciar:
 | CH-07 | Histórico | Abrir Histórico no sino e filtrar alertas lidos, não lidos, tipo e período | Registros antigos aparecem paginados e cada item abre sua origem correta. |
 | CH-08 | Isolamento por usuário | Gerar alerta para uma pessoa da Empresa Alfa e abrir o sino de outra pessoa da mesma empresa | A segunda pessoa não vê o alerta pessoal da primeira; apenas avisos gerais da empresa aparecem para ambas. |
 
-## 13. Seguranca, dados e regressao
+## 13. Integracoes, seguranca e modulos complementares
 
 ## 13A. Captação PNCP
 
@@ -179,9 +181,11 @@ Preparar antes de iniciar:
 | PN-02 | Triagem | Alternar aderência e situação da fila | Editais com termos técnicos ficam priorizados; administrador ainda pode exibir todas as capturas. |
 | PN-03 | Preparar cadastro | Preparar uma captura ainda pendente | Um único edital em rascunho é criado, com os dados do PNCP preenchidos, e o sistema abre seu cadastro para complementação. |
 | PN-03A | Publicação final | Completar o rascunho, anexar documentos se necessário e salvar com status Publicado | O edital fica visível na lista das associadas e gera alerta somente neste momento. |
-| PN-04 | Descarte | Descartar uma captura pendente | Registro deixa a fila de decisão e não cria edital no LicitaHub. |
+| PN-04 | Descarte | Descartar uma captura pendente | Registro e removido da fila e do banco, o contador diminui e nenhum edital e criado. |
 | PN-05 | Duplicidade | Repetir uma consulta que já retornou o mesmo registro do PNCP | A fila atualiza a mesma captura sem duplicar o edital. |
 | PN-06 | Fonte indisponível | Consultar quando a fonte externa não responder | Sistema mostra mensagem clara e não altera a fila existente. |
+
+## 13B. Seguranca e regressao
 
 | ID | Cenario | Passos | Resultado esperado |
 |---|---|---|---|
@@ -192,6 +196,59 @@ Preparar antes de iniciar:
 | SE-05 | Reinicio | Reiniciar backend e navegador durante cada fluxo critico | Dados gravados permanecem e telas recarregam sem erro. |
 | SE-06 | Duplicidade | Clicar duas vezes em salvar, dar match ou criar tarefa | Nao cria registros duplicados. |
 | SE-07 | Auditoria | Bloquear empresa, trocar lider, desistir e cancelar edital | Operacoes ficam registradas para consulta futura. |
+
+## 13C. Avaliacao de parcerias
+
+| ID | Cenario | Passos | Resultado esperado |
+|---|---|---|---|
+| AV-01 | Abertura | Administrador abre rodada com prazo futuro | Empresas ativas sao fotografadas, recebem alerta e a rodada aparece como aberta. |
+| AV-02 | Empresa posterior | Aprovar nova empresa depois da abertura | Nova empresa nao entra na rodada atual e participara somente da proxima. |
+| AV-03 | Saldo | Abrir rodada com dez participantes | Cada empresa recebe tres estrelas, equivalentes a 30% arredondados para cima. |
+| AV-04 | Concentracao | Entregar todo o saldo a uma unica empresa | Sistema aceita qualquer quantidade para a mesma empresa, limitada apenas pelo saldo total. |
+| AV-05 | Autoavaliacao | Tentar selecionar a propria empresa | Logo nao permite receber estrelas da propria avaliadora. |
+| AV-06 | Saldo incompleto | Distribuir menos que o total | Botao de conclusao permanece inativo e informa quantas estrelas faltam. |
+| AV-07 | Revisao | Distribuir todo o saldo e clicar em Concluir distribuicao | Sistema lista empresas e quantidades antes da gravacao. |
+| AV-08 | Confirmacao unica | Clicar uma vez em Confirmar envio na revisao | Distribuicao e gravada e a tela passa ao resultado, sem pedir nova confirmacao. |
+| AV-09 | Repeticao tecnica | Repetir a requisicao de confirmacao | Backend devolve o estado ja concluido sem duplicar estrelas. |
+| AV-10 | Anonimato | Consultar resultado como empresa avaliada | Pontuacao aparece sem identificar quem enviou cada estrela. |
+| AV-11 | Prazo | Deixar a data limite passar com empresas pendentes | Rodada fecha automaticamente e pendentes perdem o direito de votar. |
+| AV-12 | Fechamento completo | Todas as participantes concluem antes do prazo | Rodada fecha automaticamente quando a ultima distribuicao e gravada. |
+| AV-13 | Resultado da sessao | Abrir ranking de rodada encerrada | Indice relativo da sessao e exibido de forma retratil. |
+| AV-14 | Media geral | Comparar empresas em varias rodadas encerradas | Resultado geral corresponde a media aritmetica dos indices das rodadas, nao a soma dos pontos. |
+| AV-15 | Historico | Filtrar por sessao, ano e quantidade de rodadas | Grafico, media de mercado e tendencia usam apenas as sessoes filtradas. |
+| AV-16 | Exclusao fechada | Administrador exclui rodada encerrada | Rodada, distribuicoes, resultados e alertas vinculados somem; media historica e recalculada. |
+| AV-17 | Protecao da aberta | Tentar excluir rodada em andamento | Backend impede a exclusao. |
+
+## 13D. Capacidade tecnica e IA
+
+| ID | Cenario | Passos | Resultado esperado |
+|---|---|---|---|
+| CT-01 | Profissional | Cadastrar profissional com mais de uma formacao e formacao complementar | Todas as formacoes ficam vinculadas e disponiveis na consulta. |
+| CT-02 | Profissional externo | Registrar atestado de profissional que nao pertence a empresa | Cadastro e permitido e a regra de uso do acervo define empresa, profissional ou ambos. |
+| CT-03 | Datas | Informar inicio posterior ao fim da execucao | Sistema impede a gravacao e explica a inconsistencia. |
+| CT-04 | Quantitativos | Incluir varios quantitativos com unidades diferentes | Todos ficam vinculados ao mesmo atestado sem impor um tipo unico. |
+| CT-05 | PDF pesquisavel | Enviar PDF com camada de texto | Leitura comum e registrada e identificada na listagem. |
+| CT-06 | PDF digitalizado | Enviar PDF composto por imagem | OCR e executado, o status informa processamento/conclusao e o texto fica pesquisavel. |
+| CT-07 | Correcao | Abrir texto extraido, corrigir e salvar | Versao corrigida substitui o texto de trabalho sem perder os dados do atestado. |
+| CT-08 | Pesquisa | Buscar termo existente em varios atestados | Sistema retorna somente os registros cujo texto ou dados contenham o termo. |
+| CT-09 | Selecao IA | Marcar varios atestados e abrir Analise com IA | Tela recebe somente os atestados selecionados e monta o conjunto estruturado para analise. |
+| CT-10 | IA indisponivel | Solicitar analise sem chave ou credito | Sistema preserva os dados e mostra erro compreensivel sem travar o modulo. |
+
+## 13E. Academia LicitaHub
+
+| ID | Cenario | Passos | Resultado esperado |
+|---|---|---|---|
+| AC-01 | Curso | Administrador cria curso com capa, carga horaria e descricao | Curso aparece no gerenciamento e, quando publicado, no catalogo. |
+| AC-02 | Fonte de video | Cadastrar aula por YouTube e outra por upload | Cada aula aceita somente uma fonte e reproduz o video correspondente. |
+| AC-03 | Ordem | Tentar abrir aula seguinte sem concluir a anterior | Sistema impede o avanco. |
+| AC-04 | Progresso | Assistir parte do video, sair e retornar | Reproducao continua proxima ao ponto salvo. |
+| AC-05 | Conclusao do video | Assistir ate o fim | Aula libera questionario quando ele existir. |
+| AC-06 | Reprovacao | Obter menos de 75% no questionario | Sistema mostra quais questoes foram erradas, sem revelar a alternativa correta, e nao libera a proxima aula. |
+| AC-07 | Aprovacao | Obter pelo menos 75% | Proxima aula e liberada e o questionario concluido nao pode ser respondido novamente. |
+| AC-08 | Catalogo | Iniciar um curso do catalogo | Curso deixa o catalogo de nao iniciados e aparece em Meus cursos. |
+| AC-09 | Certificado | Concluir ultima aula e avaliacao | Um unico botao libera PDF formal com dados do usuario, curso, capa, aulas, duracoes e codigo verificavel. |
+| AC-10 | Validacao publica | Consultar codigo do certificado | Pagina informa autenticidade e dados essenciais sem exigir acesso administrativo. |
+| AC-11 | Administracao | Editar, arquivar e excluir curso conforme suas dependencias | Lista administrativa reflete o novo estado sem afetar cursos alheios. |
 
 ## 14. Criterio de aceite
 

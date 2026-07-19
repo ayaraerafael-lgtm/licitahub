@@ -14,10 +14,12 @@ import (
 
 // PNCP is an external source. Captures stay in their own queue until an administrator publishes them.
 type pncpCaptureSearchRequest struct {
-	StartDate string `json:"startDate"`
-	EndDate   string `json:"endDate"`
-	State     string `json:"state"`
-	Source    string `json:"source"`
+	StartDate  string   `json:"startDate"`
+	EndDate    string   `json:"endDate"`
+	State      string   `json:"state"`
+	Source     string   `json:"source"`
+	Page       int      `json:"page"`
+	Modalities []string `json:"modalities"`
 }
 
 type pncpCaptureActionRequest struct {
@@ -27,6 +29,7 @@ type pncpCaptureActionRequest struct {
 type pncpCandidate struct {
 	Source            string
 	SourceKey         string
+	PNCPControlNumber string
 	Agency            string
 	Number            string
 	Object            string
@@ -101,7 +104,7 @@ func (a *app) listPNCPCaptures(w http.ResponseWriter, r *http.Request) {
 		SELECT COALESCE(json_agg(row_to_json(item)), '[]'::json)
 		FROM (
 			SELECT
-				pc.id::text AS id, pc.source AS source, pc.source_key AS "sourceKey", pc.agency, pc.number, pc.object,
+				pc.id::text AS id, pc.source AS source, pc.source_key AS "sourceKey", COALESCE(pc.pncp_control_number, '') AS "pncpControlNumber", pc.agency, pc.number, pc.object,
 				COALESCE(pc.modality, '') AS modality, COALESCE(pc.judgment_criterion, '') AS "judgmentCriterion", COALESCE(pc.state, '') AS state,
 				COALESCE(pc.city, '') AS city, pc.opening_date AS "openingDate",
 				pc.estimated_value AS "estimatedValue", COALESCE(pc.external_url, '') AS "externalUrl",
@@ -150,6 +153,9 @@ func (a *app) capturePNCPOpportunities(w http.ResponseWriter, r *http.Request, s
 	if req.Source == "" {
 		req.Source = "pncp"
 	}
+	if req.Page < 1 {
+		req.Page = 1
+	}
 	var candidates []pncpCandidate
 	switch req.Source {
 	case "pncp":
@@ -184,76 +190,88 @@ func (a *app) fetchPNCPCandidates(ctx context.Context, req pncpCaptureSearchRequ
 	// The PNCP consultation endpoint requires a modality code. Keep the initial
 	// capture focused on formats that commonly contain technical services and do
 	// not make a burst of requests that causes the public source to rate-limit us.
-	modalities := []string{"3", "4", "5", "6", "7", "10"}
+	// Modalidades do PNCP priorizadas pelo LicitaHub para engenharia consultiva:
+	// 6 - Mao de obra, 7 - Obras, 8 - Servicos e 9 - Servicos de engenharia.
+	modalities := req.Modalities
+	if len(modalities) == 0 {
+		modalities = []string{"6", "7", "8", "9"}
+	}
 	resultByKey := map[string]pncpCandidate{}
 	// The PNCP consultation service validates dates in the yyyyMMdd format.
 	startDate := strings.ReplaceAll(req.StartDate, "-", "")
 	endDate := strings.ReplaceAll(req.EndDate, "-", "")
 	var firstQueryError error
 	for _, modality := range modalities {
-		query := url.Values{}
-		query.Set("dataInicial", startDate)
-		query.Set("dataFinal", endDate)
-		query.Set("codigoModalidadeContratacao", modality)
-		query.Set("pagina", "1")
-		if state := normalizeState(req.State); state != "" {
-			query.Set("uf", state)
-		}
-		endpoint := "https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao?" + query.Encode()
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return nil, err
-		}
-		httpReq.Header.Set("Accept", "application/json")
-		httpReq.Header.Set("User-Agent", "LicitaHub/1.0 (consulta publica de oportunidades)")
-		response, err := a.httpClient.Do(httpReq)
-		if err != nil {
-			return nil, err
-		}
-		if response.StatusCode == http.StatusNoContent {
-			response.Body.Close()
-			continue
-		}
-		if response.StatusCode == http.StatusTooManyRequests {
-			response.Body.Close()
-			return nil, fmt.Errorf("o PNCP limitou temporariamente as consultas (HTTP 429). Aguarde cerca de um minuto antes de tentar novamente")
-		}
-		if response.StatusCode < 200 || response.StatusCode > 299 {
-			detail, _ := io.ReadAll(io.LimitReader(response.Body, 1200))
-			response.Body.Close()
-			message := strings.TrimSpace(strings.Join(strings.Fields(string(detail)), " "))
-			if len(message) > 500 {
-				message = message[:500]
+		for page := req.Page; page <= req.Page; page++ {
+			query := url.Values{}
+			query.Set("dataInicial", startDate)
+			query.Set("dataFinal", endDate)
+			query.Set("codigoModalidadeContratacao", modality)
+			query.Set("pagina", strconv.Itoa(page))
+			query.Set("tamanhoPagina", "50")
+			if state := normalizeState(req.State); state != "" {
+				query.Set("uf", state)
 			}
-			if firstQueryError == nil {
-				if message != "" {
-					firstQueryError = fmt.Errorf("o PNCP recusou a consulta da modalidade %s (HTTP %d): %s", modality, response.StatusCode, message)
-				} else {
-					firstQueryError = fmt.Errorf("o PNCP recusou a consulta da modalidade %s (HTTP %d)", modality, response.StatusCode)
+			endpoint := "https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao?" + query.Encode()
+			httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+			if err != nil {
+				return nil, err
+			}
+			httpReq.Header.Set("Accept", "application/json")
+			httpReq.Header.Set("User-Agent", "LicitaHub/1.0 (consulta publica de oportunidades)")
+			response, err := doPNCPRequestWithRetry(ctx, a.httpClient, httpReq)
+			if err != nil {
+				return nil, err
+			}
+			if response.StatusCode == http.StatusNoContent {
+				response.Body.Close()
+				break
+			}
+			if response.StatusCode == http.StatusTooManyRequests {
+				response.Body.Close()
+				return nil, fmt.Errorf("o PNCP limitou temporariamente as consultas (HTTP 429). Aguarde cerca de um minuto antes de tentar novamente")
+			}
+			if response.StatusCode < 200 || response.StatusCode > 299 {
+				detail, _ := io.ReadAll(io.LimitReader(response.Body, 1200))
+				response.Body.Close()
+				message := strings.TrimSpace(strings.Join(strings.Fields(string(detail)), " "))
+				if len(message) > 500 {
+					message = message[:500]
+				}
+				if firstQueryError == nil {
+					if message != "" {
+						firstQueryError = fmt.Errorf("o PNCP recusou a consulta da modalidade %s (HTTP %d): %s", modality, response.StatusCode, message)
+					} else {
+						firstQueryError = fmt.Errorf("o PNCP recusou a consulta da modalidade %s (HTTP %d)", modality, response.StatusCode)
+					}
+				}
+				break
+			}
+			var payload any
+			decodeErr := json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&payload)
+			response.Body.Close()
+			if decodeErr != nil {
+				if firstQueryError == nil {
+					firstQueryError = decodeErr
+				}
+				break
+			}
+			items := pncpItems(payload)
+			for _, item := range items {
+				candidate := candidateFromPNCP(item)
+				if candidate.SourceKey != "" && candidate.Agency != "" && candidate.Number != "" && candidate.Object != "" {
+					resultByKey[candidate.SourceKey] = candidate
 				}
 			}
-			continue
-		}
-		var payload any
-		decodeErr := json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&payload)
-		response.Body.Close()
-		if decodeErr != nil {
-			if firstQueryError == nil {
-				firstQueryError = decodeErr
+			if len(items) == 0 || (payloadTotalPages(payload) > 0 && page >= payloadTotalPages(payload)) {
+				break
 			}
-			continue
-		}
-		for _, item := range pncpItems(payload) {
-			candidate := candidateFromPNCP(item)
-			if candidate.SourceKey != "" && candidate.Agency != "" && candidate.Number != "" && candidate.Object != "" {
-				resultByKey[candidate.SourceKey] = candidate
+			// A small interval respects the public API and avoids a request burst.
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(1500 * time.Millisecond):
 			}
-		}
-		// A small interval respects the public API and avoids a request burst.
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(700 * time.Millisecond):
 		}
 	}
 	candidates := make([]pncpCandidate, 0, len(resultByKey))
@@ -280,6 +298,53 @@ func pncpItems(payload any) []map[string]any {
 		}
 	}
 	return nil
+}
+
+func doPNCPRequestWithRetry(ctx context.Context, client *http.Client, request *http.Request) (*http.Response, error) {
+	retryDelays := []time.Duration{2 * time.Second, 5 * time.Second, 15 * time.Second}
+	for attempt := 0; ; attempt++ {
+		response, err := client.Do(request)
+		if err != nil || response.StatusCode != http.StatusTooManyRequests || attempt >= len(retryDelays) {
+			return response, err
+		}
+
+		delay := retryDelays[attempt]
+		if seconds, parseErr := strconv.Atoi(strings.TrimSpace(response.Header.Get("Retry-After"))); parseErr == nil && seconds > 0 {
+			delay = time.Duration(seconds) * time.Second
+		}
+		response.Body.Close()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+}
+
+func payloadTotalPages(payload any) int {
+	object, ok := payload.(map[string]any)
+	if !ok {
+		return 0
+	}
+	for _, key := range []string{"totalPaginas", "totalPages", "numeroPaginas", "pages"} {
+		value, ok := object[key]
+		if !ok {
+			continue
+		}
+		switch typed := value.(type) {
+		case float64:
+			return int(typed)
+		case json.Number:
+			if parsed, err := strconv.Atoi(string(typed)); err == nil {
+				return parsed
+			}
+		case string:
+			if parsed, err := strconv.Atoi(strings.TrimSpace(typed)); err == nil {
+				return parsed
+			}
+		}
+	}
+	return 0
 }
 
 func mapItems(items []any) []map[string]any {
@@ -311,10 +376,11 @@ func candidateFromPNCP(item map[string]any) pncpCandidate {
 	return pncpCandidate{
 		Source:    "pncp",
 		SourceKey: sourceKey, Agency: agency, Number: number, Object: object,
+		PNCPControlNumber: stringValue(item, "numeroControlePNCP"),
 		Modality:          firstNonEmptyPNCP(stringValue(item, "modalidadeNome"), stringValue(item, "modalidadeContratacaoNome")),
 		JudgmentCriterion: firstNonEmptyPNCP(stringValue(item, "criterioJulgamentoNome"), stringValue(item, "criterioJulgamento"), stringValue(item, "criterioJulgamentoDescricao")),
 		State:             state, City: city,
-		OpeningDate:    firstNonEmptyPNCP(stringValue(item, "dataAberturaProposta"), stringValue(item, "dataAbertura")),
+		OpeningDate:    firstNonEmptyPNCP(stringValue(item, "dataAberturaProposta"), stringValue(item, "dataHoraAberturaProposta"), stringValue(item, "dataAbertura"), stringValue(item, "dataHoraAbertura"), stringValue(item, "dataSessao")),
 		EstimatedValue: firstNonEmptyPNCP(stringValue(item, "valorTotalEstimado"), stringValue(item, "valorEstimado")),
 		ExternalURL:    pncpExternalURL(item, agencyObject),
 		RelevanceScore: score, RelevanceReasons: reasons, Raw: item,
@@ -325,69 +391,77 @@ func candidateFromPNCP(item map[string]any) pncpCandidate {
 // separate from the PNCP client because the services have different limits and
 // response contracts, even when some records overlap.
 func (a *app) fetchComprasGovCandidates(ctx context.Context, req pncpCaptureSearchRequest) ([]pncpCandidate, error) {
+	// A fonte Compras.gov possui sua propria tabela de modalidades; os codigos
+	// desta consulta nao devem ser confundidos com os codigos do PNCP acima.
 	modalities := []string{"3", "4", "5", "6", "7", "10"}
 	resultByKey := map[string]pncpCandidate{}
 	var firstQueryError error
 	for _, modality := range modalities {
-		query := url.Values{}
-		query.Set("pagina", "1")
-		query.Set("tamanhoPagina", "100")
-		query.Set("dataPublicacaoPncpInicial", req.StartDate)
-		query.Set("dataPublicacaoPncpFinal", req.EndDate)
-		query.Set("codigoModalidade", modality)
-		endpoint := "https://dadosabertos.compras.gov.br/modulo-contratacoes/1_consultarContratacoes_PNCP_14133?" + query.Encode()
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return nil, err
-		}
-		httpReq.Header.Set("Accept", "application/json")
-		httpReq.Header.Set("User-Agent", "LicitaHub/1.0 (consulta publica de oportunidades)")
-		response, err := a.httpClient.Do(httpReq)
-		if err != nil {
-			return nil, err
-		}
-		if response.StatusCode == http.StatusNoContent {
+		for page := req.Page; page <= req.Page; page++ {
+			query := url.Values{}
+			query.Set("pagina", strconv.Itoa(page))
+			query.Set("tamanhoPagina", "100")
+			query.Set("dataPublicacaoPncpInicial", req.StartDate)
+			query.Set("dataPublicacaoPncpFinal", req.EndDate)
+			query.Set("codigoModalidade", modality)
+			endpoint := "https://dadosabertos.compras.gov.br/modulo-contratacoes/1_consultarContratacoes_PNCP_14133?" + query.Encode()
+			httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+			if err != nil {
+				return nil, err
+			}
+			httpReq.Header.Set("Accept", "application/json")
+			httpReq.Header.Set("User-Agent", "LicitaHub/1.0 (consulta publica de oportunidades)")
+			response, err := doPNCPRequestWithRetry(ctx, a.httpClient, httpReq)
+			if err != nil {
+				return nil, err
+			}
+			if response.StatusCode == http.StatusNoContent {
+				response.Body.Close()
+				break
+			}
+			if response.StatusCode == http.StatusTooManyRequests {
+				response.Body.Close()
+				return nil, fmt.Errorf("o Compras.gov.br limitou temporariamente as consultas (HTTP 429). Aguarde antes de tentar novamente")
+			}
+			if response.StatusCode < 200 || response.StatusCode > 299 {
+				detail, _ := io.ReadAll(io.LimitReader(response.Body, 1200))
+				response.Body.Close()
+				message := strings.TrimSpace(strings.Join(strings.Fields(string(detail)), " "))
+				if len(message) > 500 {
+					message = message[:500]
+				}
+				if firstQueryError == nil {
+					firstQueryError = fmt.Errorf("o Compras.gov.br recusou a consulta da modalidade %s (HTTP %d): %s", modality, response.StatusCode, message)
+				}
+				break
+			}
+			var payload any
+			decodeErr := json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&payload)
 			response.Body.Close()
-			continue
-		}
-		if response.StatusCode == http.StatusTooManyRequests {
-			response.Body.Close()
-			return nil, fmt.Errorf("o Compras.gov.br limitou temporariamente as consultas (HTTP 429). Aguarde antes de tentar novamente")
-		}
-		if response.StatusCode < 200 || response.StatusCode > 299 {
-			detail, _ := io.ReadAll(io.LimitReader(response.Body, 1200))
-			response.Body.Close()
-			message := strings.TrimSpace(strings.Join(strings.Fields(string(detail)), " "))
-			if len(message) > 500 {
-				message = message[:500]
+			if decodeErr != nil {
+				if firstQueryError == nil {
+					firstQueryError = decodeErr
+				}
+				break
 			}
-			if firstQueryError == nil {
-				firstQueryError = fmt.Errorf("o Compras.gov.br recusou a consulta da modalidade %s (HTTP %d): %s", modality, response.StatusCode, message)
+			items := pncpItems(payload)
+			for _, item := range items {
+				candidate := candidateFromComprasGov(item)
+				if state := normalizeState(req.State); state != "" && candidate.State != "" && candidate.State != state {
+					continue
+				}
+				if candidate.SourceKey != "" && candidate.Agency != "" && candidate.Number != "" && candidate.Object != "" {
+					resultByKey[candidate.SourceKey] = candidate
+				}
 			}
-			continue
-		}
-		var payload any
-		decodeErr := json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&payload)
-		response.Body.Close()
-		if decodeErr != nil {
-			if firstQueryError == nil {
-				firstQueryError = decodeErr
+			if len(items) == 0 || (payloadTotalPages(payload) > 0 && page >= payloadTotalPages(payload)) {
+				break
 			}
-			continue
-		}
-		for _, item := range pncpItems(payload) {
-			candidate := candidateFromComprasGov(item)
-			if state := normalizeState(req.State); state != "" && candidate.State != "" && candidate.State != state {
-				continue
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(1500 * time.Millisecond):
 			}
-			if candidate.SourceKey != "" && candidate.Agency != "" && candidate.Number != "" && candidate.Object != "" {
-				resultByKey[candidate.SourceKey] = candidate
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(700 * time.Millisecond):
 		}
 	}
 	candidates := make([]pncpCandidate, 0, len(resultByKey))
@@ -411,13 +485,14 @@ func candidateFromComprasGov(item map[string]any) pncpCandidate {
 	object := firstNonEmptyPNCP(stringValue(item, "objetoCompra"), stringValue(item, "objeto"), stringValue(item, "informacaoComplementar"))
 	state := normalizeState(firstNonEmptyPNCP(stringValue(item, "unidadeOrgaoUfSigla"), stringValue(item, "ufSigla"), stringValue(unitObject, "ufSigla")))
 	city := firstNonEmptyPNCP(stringValue(item, "unidadeOrgaoMunicipioNome"), stringValue(item, "municipioNome"), stringValue(unitObject, "municipioNome"))
-	externalID := firstNonEmptyPNCP(stringValue(item, "idCompra"), stringValue(item, "numeroControlePNCP"), stringValue(item, "id"))
+	controlNumber := stringValue(item, "numeroControlePNCP")
+	externalID := firstNonEmptyPNCP(stringValue(item, "idCompra"), controlNumber, stringValue(item, "id"))
 	sourceKey := "comprasgov:" + externalID
 	if externalID == "" {
 		sourceKey = "comprasgov:" + strings.Join([]string{agency, number, object}, "|")
 	}
 	reasons, score := consultantRelevance(agency + " " + object)
-	return pncpCandidate{Source: "comprasgov", SourceKey: sourceKey, Agency: agency, Number: number, Object: object, Modality: firstNonEmptyPNCP(stringValue(item, "modalidadeNome"), stringValue(item, "modalidadeContratacaoNome")), JudgmentCriterion: firstNonEmptyPNCP(stringValue(item, "criterioJulgamentoNome"), stringValue(item, "criterioJulgamento"), stringValue(item, "criterioJulgamentoDescricao")), State: state, City: city, OpeningDate: firstNonEmptyPNCP(stringValue(item, "dataAberturaProposta"), stringValue(item, "dataAbertura")), EstimatedValue: firstNonEmptyPNCP(stringValue(item, "valorTotalEstimado"), stringValue(item, "valorEstimado")), ExternalURL: comprasGovExternalURL(externalID), RelevanceScore: score, RelevanceReasons: reasons, Raw: item}
+	return pncpCandidate{Source: "comprasgov", SourceKey: sourceKey, PNCPControlNumber: controlNumber, Agency: agency, Number: number, Object: object, Modality: firstNonEmptyPNCP(stringValue(item, "modalidadeNome"), stringValue(item, "modalidadeContratacaoNome")), JudgmentCriterion: firstNonEmptyPNCP(stringValue(item, "criterioJulgamentoNome"), stringValue(item, "criterioJulgamento"), stringValue(item, "criterioJulgamentoDescricao")), State: state, City: city, OpeningDate: firstNonEmptyPNCP(stringValue(item, "dataAberturaProposta"), stringValue(item, "dataHoraAberturaProposta"), stringValue(item, "dataAbertura"), stringValue(item, "dataHoraAbertura"), stringValue(item, "dataSessao")), EstimatedValue: firstNonEmptyPNCP(stringValue(item, "valorTotalEstimado"), stringValue(item, "valorEstimado")), ExternalURL: comprasGovExternalURL(externalID), RelevanceScore: score, RelevanceReasons: reasons, Raw: item}
 }
 
 func comprasGovExternalURL(id string) string {
@@ -479,18 +554,58 @@ func stringValue(value map[string]any, key string) string {
 }
 
 func consultantRelevance(value string) ([]string, int) {
-	text := strings.ToLower(value)
+	text := normalizeConsultantRelevanceText(value)
 	keywords := []struct{ word, label string }{
-		{"engenharia consultiva", "engenharia consultiva"}, {"supervis", "supervisao"}, {"fiscaliza", "fiscalizacao"},
-		{"projeto", "projetos"}, {"estudo", "estudos"}, {"licenciamento ambiental", "meio ambiente"},
-		{"ambiental", "meio ambiente"}, {"arqueolog", "arqueologia"}, {"trabalho social", "projetos sociais"},
-		{"saneamento", "saneamento"}, {"rodovia", "infraestrutura viaria"}, {"ferrovia", "infraestrutura ferroviaria"},
-		{"mobilidade", "mobilidade"}, {"recursos hidricos", "recursos hidricos"}, {"geotec", "geotecnia"},
+		{"engenharia consultiva", "engenharia consultiva"},
+		{"consultoria de engenharia", "consultoria de engenharia"},
+		{"servicos tecnicos especializados de engenharia", "servicos tecnicos especializados de engenharia"},
+		{"apoio tecnico especializado", "apoio tecnico especializado"},
+		{"estudos e projetos", "estudos e projetos"},
+		{"estudos de viabilidade", "estudos de viabilidade"},
+		{"evtea", "EVTEA"}, {"oae", "OAE"}, {"bim", "BIM"}, {"eia", "EIA"},
+		{"rima", "RIMA"}, {"pba", "PBA"}, {"prad", "PRAD"}, {"pae", "PAE"},
+		{"pmo", "PMO"}, {"pnp", "PNP"}, {"pncv", "PNCV"}, {"pmv", "PMV"},
+		{"ppd", "PPD"}, {"aet", "AET"},
+		{"projeto basico", "projeto basico"},
+		{"projeto executivo", "projeto executivo"},
+		{"anteprojeto", "anteprojeto"},
+		{"supervisao de obras", "supervisao de obras"},
+		{"fiscalizacao de obras", "fiscalizacao de obras"},
+		{"gerenciamento de obras", "gerenciamento de obras"},
+		{"gerenciamento de contratos", "gerenciamento de contratos"},
+		{"controle tecnologico", "controle tecnologico"},
+		{"auditoria de engenharia", "auditoria de engenharia"},
+		{"inspecao de oae", "inspecao de OAE"},
+		{"monitoramento estrutural", "monitoramento estrutural"},
+		{"gestao ambiental", "gestao ambiental"},
+		{"supervisao ambiental", "supervisao ambiental"},
+		{"levantamento topografico", "levantamento topografico"},
+		{"geoprocessamento", "geoprocessamento"},
+		{"engenharia rodoviaria", "engenharia rodoviaria"},
+		{"supervisao rodoviaria", "supervisao rodoviaria"},
+		{"operacao rodoviaria", "operacao rodoviaria"},
+		{"seguranca viaria", "seguranca viaria"},
+		{"engenharia de trafego", "engenharia de trafego"},
+		{"gestao de pavimentos", "gestao de pavimentos"},
+		{"mobilidade urbana", "mobilidade urbana"},
+		{"saneamento", "saneamento"},
+		{"drenagem", "drenagem"},
+		{"recursos hidricos", "recursos hidricos"},
+		{"apoio a fiscalizacao", "apoio a fiscalizacao"},
+		{"apoio ao gerenciamento", "apoio ao gerenciamento"},
+		{"elaboracao de projeto", "elaboracao de projeto"},
+		{"contratacao integrada", "contratacao integrada"},
+		{"supervis", "supervisao"}, {"fiscaliza", "fiscalizacao"},
+		{"projeto", "projetos"}, {"estudo", "estudos"},
+		{"licenciamento ambiental", "meio ambiente"}, {"ambiental", "meio ambiente"},
+		{"arqueolog", "arqueologia"}, {"trabalho social", "projetos sociais"},
+		{"rodovia", "infraestrutura viaria"}, {"ferrovia", "infraestrutura ferroviaria"},
+		{"mobilidade", "mobilidade"}, {"geotec", "geotecnia"},
 	}
 	exclusions := []string{"aquisicao de material", "generos alimenticios", "merenda", "combustivel", "mobiliario", "limpeza", "vigilancia armada"}
 	reasons := []string{}
 	for _, keyword := range keywords {
-		if strings.Contains(text, keyword.word) {
+		if containsConsultantTerm(text, keyword.word, len(keyword.word) <= 4) {
 			reasons = append(reasons, keyword.label)
 		}
 	}
@@ -509,6 +624,43 @@ func consultantRelevance(value string) ([]string, int) {
 	return reasons, score
 }
 
+func containsConsultantTerm(text, term string, wholeWord bool) bool {
+	if !wholeWord {
+		return strings.Contains(text, term)
+	}
+	start := 0
+	for start < len(text) {
+		relative := strings.Index(text[start:], term)
+		if relative < 0 {
+			return false
+		}
+		index := start + relative
+		beforeIsWord := index > 0 && isConsultantWordByte(text[index-1])
+		afterIndex := index + len(term)
+		afterIsWord := afterIndex < len(text) && isConsultantWordByte(text[afterIndex])
+		if !beforeIsWord && !afterIsWord {
+			return true
+		}
+		start = afterIndex
+	}
+	return false
+}
+
+func isConsultantWordByte(value byte) bool {
+	return (value >= 'a' && value <= 'z') || (value >= '0' && value <= '9') || value == '_'
+}
+
+func normalizeConsultantRelevanceText(value string) string {
+	text := strings.ToLower(value)
+	return strings.NewReplacer(
+		"á", "a", "à", "a", "ã", "a", "â", "a", "ä", "a",
+		"é", "e", "è", "e", "ê", "e", "ë", "e",
+		"í", "i", "ì", "i", "î", "i", "ï", "i",
+		"ó", "o", "ò", "o", "õ", "o", "ô", "o", "ö", "o",
+		"ú", "u", "ù", "u", "û", "u", "ü", "u", "ç", "c",
+	).Replace(text)
+}
+
 func (a *app) savePNCPCandidate(ctx context.Context, candidate pncpCandidate) error {
 	raw, _ := json.Marshal(candidate.Raw)
 	reasons, _ := json.Marshal(candidate.RelevanceReasons)
@@ -520,22 +672,74 @@ func (a *app) savePNCPCandidate(ctx context.Context, candidate pncpCandidate) er
 	if normalized := normalizePNCPNumber(candidate.EstimatedValue); normalized != "" {
 		valueSQL = sqlQuote(normalized) + "::numeric"
 	}
+	// When the PNCP control number exists, merge the two public sources into
+	// the same queue item. PNCP values are authoritative; Compras.gov.br only
+	// fills fields that are still empty.
+	if candidate.PNCPControlNumber != "" {
+		preferIncoming := candidate.Source == "pncp"
+		field := func(column, value string) string {
+			if preferIncoming {
+				return fmt.Sprintf("COALESCE(NULLIF(%s, ''), %s)", sqlQuote(value), column)
+			}
+			return fmt.Sprintf("COALESCE(NULLIF(%s, ''), %s)", column, sqlQuote(value))
+		}
+		openingExpr := "opening_date"
+		if openingSQL != "NULL" {
+			if preferIncoming {
+				openingExpr = fmt.Sprintf("COALESCE(%s, opening_date)", openingSQL)
+			} else {
+				openingExpr = fmt.Sprintf("COALESCE(opening_date, %s)", openingSQL)
+			}
+		}
+		valueExpr := "estimated_value"
+		if valueSQL != "NULL" {
+			if preferIncoming {
+				valueExpr = fmt.Sprintf("COALESCE(%s, estimated_value)", valueSQL)
+			} else {
+				valueExpr = fmt.Sprintf("COALESCE(estimated_value, %s)", valueSQL)
+			}
+		}
+		identityWhere := fmt.Sprintf("pncp_control_number = %s", sqlQuote(candidate.PNCPControlNumber))
+		if candidate.PNCPControlNumber == "" && valueSQL != "NULL" {
+			identityWhere = fmt.Sprintf("lower(trim(agency)) = lower(trim(%s)) AND lower(trim(number)) = lower(trim(%s)) AND estimated_value = %s AND source <> %s", sqlQuote(candidate.Agency), sqlQuote(candidate.Number), valueSQL, sqlQuote(candidate.Source))
+		}
+		mergedSource := "CASE WHEN source = 'pncp' AND " + sqlQuote(candidate.Source) + " = 'comprasgov' THEN 'pncp+comprasgov' WHEN source = 'comprasgov' AND " + sqlQuote(candidate.Source) + " = 'pncp' THEN 'pncp+comprasgov' ELSE source END"
+		updated, updateErr := a.queryJSON(ctx, fmt.Sprintf(`
+			UPDATE pncp_captures
+			SET source = %s, agency = %s, number = %s, object = %s,
+				modality = %s, judgment_criterion = %s, state = %s, city = %s,
+				opening_date = %s, estimated_value = %s, external_url = COALESCE(NULLIF(external_url, ''), %s),
+				relevance_score = GREATEST(relevance_score, %d), relevance_reasons = %s::jsonb,
+				raw_payload = raw_payload || jsonb_build_object(%s, %s::jsonb), pncp_control_number = %s, updated_at = now()
+			WHERE %s
+			RETURNING id;
+		`, mergedSource, field("agency", candidate.Agency), field("number", candidate.Number), field("object", candidate.Object),
+			field("modality", candidate.Modality), field("judgment_criterion", candidate.JudgmentCriterion), field("state", candidate.State), field("city", candidate.City),
+			openingExpr, valueExpr, sqlQuote(candidate.ExternalURL), candidate.RelevanceScore, sqlQuote(string(reasons)), sqlQuote(candidate.Source), sqlQuote(string(raw)), sqlQuote(candidate.PNCPControlNumber), identityWhere))
+		if updateErr != nil {
+			return updateErr
+		}
+		if strings.TrimSpace(string(updated)) != "null" && strings.TrimSpace(string(updated)) != "[]" {
+			return nil
+		}
+	}
+
 	_, err := a.runPSQL(ctx, fmt.Sprintf(`
 		INSERT INTO pncp_captures (
-			source, source_key, agency, number, object, modality, judgment_criterion, state, city, opening_date,
+			source, source_key, pncp_control_number, agency, number, object, modality, judgment_criterion, state, city, opening_date,
 			estimated_value, external_url, relevance_score, relevance_reasons, raw_payload
 		) VALUES (
-			%s, %s, %s, %s, %s, NULLIF(%s, ''), NULLIF(%s, ''), NULLIF(%s, ''), NULLIF(%s, ''), %s,
+			%s, %s, NULLIF(%s, ''), %s, %s, %s, NULLIF(%s, ''), NULLIF(%s, ''), NULLIF(%s, ''), NULLIF(%s, ''), %s,
 			%s, NULLIF(%s, ''), %d, %s::jsonb, %s::jsonb
 		)
 		ON CONFLICT (source_key) DO UPDATE SET
-			agency = EXCLUDED.agency, number = EXCLUDED.number, object = EXCLUDED.object,
-			modality = EXCLUDED.modality, state = EXCLUDED.state, city = EXCLUDED.city,
-			opening_date = EXCLUDED.opening_date, estimated_value = EXCLUDED.estimated_value,
-			external_url = EXCLUDED.external_url, relevance_score = EXCLUDED.relevance_score,
-			relevance_reasons = EXCLUDED.relevance_reasons, raw_payload = EXCLUDED.raw_payload,
+			agency = COALESCE(NULLIF(pncp_captures.agency, ''), EXCLUDED.agency), number = COALESCE(NULLIF(pncp_captures.number, ''), EXCLUDED.number), object = COALESCE(NULLIF(pncp_captures.object, ''), EXCLUDED.object),
+			pncp_control_number = COALESCE(pncp_captures.pncp_control_number, EXCLUDED.pncp_control_number), modality = COALESCE(NULLIF(pncp_captures.modality, ''), EXCLUDED.modality), state = COALESCE(NULLIF(pncp_captures.state, ''), EXCLUDED.state), city = COALESCE(NULLIF(pncp_captures.city, ''), EXCLUDED.city),
+			judgment_criterion = COALESCE(NULLIF(pncp_captures.judgment_criterion, ''), EXCLUDED.judgment_criterion), opening_date = COALESCE(pncp_captures.opening_date, EXCLUDED.opening_date), estimated_value = COALESCE(pncp_captures.estimated_value, EXCLUDED.estimated_value),
+			external_url = COALESCE(NULLIF(pncp_captures.external_url, ''), EXCLUDED.external_url), relevance_score = GREATEST(pncp_captures.relevance_score, EXCLUDED.relevance_score),
+			relevance_reasons = EXCLUDED.relevance_reasons, raw_payload = pncp_captures.raw_payload || jsonb_build_object(EXCLUDED.source, EXCLUDED.raw_payload),
 			updated_at = now();
-	`, sqlQuote(candidate.Source), sqlQuote(candidate.SourceKey), sqlQuote(candidate.Agency), sqlQuote(candidate.Number), sqlQuote(candidate.Object),
+	`, sqlQuote(candidate.Source), sqlQuote(candidate.SourceKey), sqlQuote(candidate.PNCPControlNumber), sqlQuote(candidate.Agency), sqlQuote(candidate.Number), sqlQuote(candidate.Object),
 		sqlQuote(candidate.Modality), sqlQuote(candidate.JudgmentCriterion), sqlQuote(candidate.State), sqlQuote(candidate.City), openingSQL, valueSQL,
 		sqlQuote(candidate.ExternalURL), candidate.RelevanceScore, sqlQuote(string(reasons)), sqlQuote(string(raw))))
 	return err
@@ -543,7 +747,7 @@ func (a *app) savePNCPCandidate(ctx context.Context, candidate pncpCandidate) er
 
 func parsePNCPDate(value string) (time.Time, bool) {
 	value = strings.TrimSpace(value)
-	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02"} {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.000", "2006-01-02T15:04:05", "2006-01-02 15:04:05", "2006-01-02"} {
 		if parsed, err := time.Parse(layout, value); err == nil {
 			return parsed, true
 		}
@@ -562,11 +766,10 @@ func normalizePNCPNumber(value string) string {
 
 func (a *app) discardPNCPCapture(w http.ResponseWriter, r *http.Request, captureID string, session sessionUser) {
 	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
-		UPDATE pncp_captures
-		SET status = 'discarded', discarded_at = now(), discarded_by_user_id = %s::uuid, updated_at = now()
+		DELETE FROM pncp_captures
 		WHERE id = %s::uuid AND status = 'captured'
 		RETURNING row_to_json(pncp_captures);
-	`, sqlQuote(session.UserID), sqlQuote(captureID)))
+	`, sqlQuote(captureID)))
 	if err != nil || strings.TrimSpace(string(payload)) == "null" {
 		writeError(w, http.StatusBadRequest, "esta captacao nao pode mais ser descartada")
 		return
@@ -575,15 +778,14 @@ func (a *app) discardPNCPCapture(w http.ResponseWriter, r *http.Request, capture
 }
 
 func (a *app) discardPendingPNCPCaptures(w http.ResponseWriter, r *http.Request, session sessionUser) {
-	payload, err := a.queryJSON(r.Context(), fmt.Sprintf(`
-		WITH discarded AS (
-			UPDATE pncp_captures
-			SET status = 'discarded', discarded_at = now(), discarded_by_user_id = %s::uuid, updated_at = now()
-			WHERE status = 'captured'
+	payload, err := a.queryJSON(r.Context(), `
+		WITH deleted AS (
+			DELETE FROM pncp_captures
+			WHERE status IN ('captured', 'discarded')
 			RETURNING id
 		)
-		SELECT json_build_object('discarded', (SELECT count(*) FROM discarded));
-	`, sqlQuote(session.UserID)))
+		SELECT json_build_object('discarded', (SELECT count(*) FROM deleted));
+	`)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "nao foi possivel descartar as captacoes pendentes")
 		return

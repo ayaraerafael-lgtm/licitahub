@@ -21,5 +21,5 @@ echo.
 echo Ligando homologacao em http://127.0.0.1:8081 ...
 echo Esta janela deve ficar aberta durante os testes.
 echo.
-"%CD%\licitahub-v97.exe"
+"%CD%\licitahub-v98.exe"
 pause

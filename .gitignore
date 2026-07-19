@@ -5,9 +5,14 @@ dist/
 .go-cache/
 .gocache/
 .go-mod-cache/
+backend/.tmp-go-build/
+backend/.tmp-go-cache/
+backend/tools/
+tmp/
 backend/*.exe
 backend/*.exe~
 backend/uploads/
+backend/private_uploads/
 *.log
 *~
 .env
